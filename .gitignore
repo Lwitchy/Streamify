@@ -137,6 +137,7 @@ dmypy.json
 #Database/Dev/*
 #Database/Users/*
 #MusicLibrary/*
+*.db
 !.gitkeep
 
 # Temporary files
