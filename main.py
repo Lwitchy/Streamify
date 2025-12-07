@@ -51,16 +51,12 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(msg.encode())
 
     def do_GET(self):
-        # logging.debug(f"Requested path: {self.path}")
         
-        # ---------------------------------------------------------
-        # 1. Path Security & Normalization
-        # ---------------------------------------------------------
-        # Normalize path to prevent traversal in the raw URL handling
+
         self.path = os.path.normpath(self.path).replace('\\', '/')
         
         # ---------------------------------------------------------
-        # 2. Authorization Check
+        # Authorization Check
         # ---------------------------------------------------------
         public_prefixes = [
             "/login", 
@@ -72,10 +68,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         # Allow checking public prefixes
         is_public = any(self.path.startswith(prefix) for prefix in public_prefixes)
         
-        # Special case for Static: Only allow specific subdirectories publicly? 
-        # For now, following requirements: "Static files are exposed without login" -> Fix: "Secure /Static"
-        # We will allow /Static/avatars and /Static/loginpage publicly. 
-        # Others might need auth.
         if self.path.startswith("/Static/"):
             if self.path.startswith("/Static/loginpage") or self.path.startswith("/Static/avatars"):
                 is_public = True
@@ -83,13 +75,12 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 # Covers should generally be public or at least low-risk
                 is_public = True
             else:
-                # E.g. /Static/home -> Requires Login
+                # Requires Login
                 is_public = False
         
         current_user = self.get_current_user()
         
         if not is_public and not current_user:
-            # Redirect to login for pages, 401 for API
             if self.path.startswith("/api/"):
                 self.send_error_msg("Unauthorized", 401)
                 return
@@ -100,7 +91,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 return
 
         # ---------------------------------------------------------
-        # 3. Request Routing
+        #  Request Routing
         # ---------------------------------------------------------
 
         # --- Base Navigation ---
@@ -112,7 +103,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
             ip = self.client_address[0]
             
             if login_limiter.is_blocked(ip):
-                 # Redirect to include the blocked parameter
+
                 if "blocked=true" not in self.path:
                     self.send_response(302)
                     self.send_header("Location", "/login?blocked=true")
@@ -136,26 +127,23 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         elif self.path.startswith("/Static/"):
             return super().do_GET()
 
-        # --- Database File Serving (Protected) ---
+        # --- Database File Pushing ---
         elif self.path.startswith("/Database"):
             if not current_user: # Double check (though caught above)
                 self.send_response(403); self.end_headers(); return
 
             BASE_DB_DIR = os.path.abspath("Database")
             requested = urllib.parse.unquote(self.path.lstrip('/'))
-            # Fix for windows mixing slashes
             requested = requested.replace('/', os.sep)
             
             candidate = os.path.abspath(os.path.join(os.getcwd(), requested))
 
-            # Secure Path Traversal Check
             try:
                 if os.path.commonpath([BASE_DB_DIR, candidate]) != BASE_DB_DIR:
                     logging.warning(f"Attempted unauthorized database access: {candidate}")
                     self.send_error_msg("Forbidden", 403)
                     return
             except ValueError:
-                 # Different drives on Windows will raise ValueError in commonpath
                  self.send_error_msg("Forbidden", 403)
                  return
 
@@ -168,10 +156,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
 
         # --- API: Current User ---
         elif self.path == "/api/me":
-            avatar_url = Media.resolve_cover(current_user) # Checking for avatar (reusing logic if namings match)
-            # Re-implement avatar lookup since Media.resolve_cover assumes songs for now, 
-            # or usage is slightly different.
-            # Let's simple check:
+            avatar_url = Media.resolve_cover(current_user) 
             avatar_url = None
             for ext in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
                 cand = f"Static/avatars/{current_user}{ext}"
@@ -193,7 +178,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 for u in users:
                     # u: (id, username)
                     uname = u[1]
-                    # Avatar lookup
                     avatar_url = None
                     for ext in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
                         cand = f"Static/avatars/{uname}{ext}"
@@ -222,14 +206,12 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 return
 
             with HandleDatabase.HandleDatabase() as db:
-                # 1. Users
-                # Note: This could be optimized at DB level with LIKE, but existing logic is in python
+                # Note: This could be optimized at DB level
                 all_users = db.getAllUsers()
                 matching_users = []
                 for u in all_users:
                     if query_str in u[1].lower():
                         uname = u[1]
-                        # Avatar
                         avatar_url = None
                         for ext in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
                             cand = f"Static/avatars/{uname}{ext}"
@@ -242,7 +224,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 all_songs = db.getAllSongs()
                 matching_songs = []
                 for song in all_songs:
-                     # Robust unpacking
                     if len(song) >= 9:
                         song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by = song[:9]
                     else:
@@ -251,7 +232,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
 
                     if (query_str in name.lower()) or (query_str in artist.lower()) or (query_str in album.lower()):
                         base_name = os.path.basename(file_path).rsplit('.', 1)[0]
-                        # Use Cached Resolver
                         cover_url = Media.resolve_cover(base_name)
                         
                         matching_songs.append({
@@ -325,7 +305,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 except: pass
             
             self.send_response(302)
-            # Clear Cookie
+            # Clearingg
             cookie = http.cookies.SimpleCookie()
             cookie["session_id"] = ""
             cookie["session_id"]["path"] = "/"
@@ -353,7 +333,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                         song_id, name, artist, album, genre, duration, file_path, timestamp = song_data[:8]
                         uploaded_by = "Unknown"
 
-                    # Security Check: Ensure file_path is inside Database/Dev/Music (or just Database)
+                    # Security Check: file_path should be in Database/Dev/Music
                     abs_path = os.path.abspath(file_path)
                     allowed_base = os.path.abspath("Database")
                     try:
@@ -390,7 +370,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
             self.serve_file_range("Static/pwa/manifest.json")
         
         elif self.path == "/sw.js":
-             # Service Worker must be served with correct content type
             self.send_response(200)
             self.send_header("Content-Type", "application/javascript")
             self.end_headers()
@@ -409,7 +388,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(b"<h1>404 Not Found</h1>")
 
     def serve_file_range(self, file_path):
-        """Helper to serve file content with Range support."""
         file_size = os.path.getsize(file_path)
         content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
         range_header = self.headers.get('Range')
@@ -494,8 +472,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                  return
             
             # Authenticate
-            # Note: HandleSafeLogin.checkUser takes (post_data, db) and returns bool. 
-            # We trust it handles the password check securely.
             if HandleSafeLogin.checkUser(post_data, db):
                 # Extract username for session
                 try:
@@ -574,7 +550,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
 
         saved_song_path = save_song(mp3_full_path, uploaded_by=current_username)
         
-        # Cleanup temp
         try:
             if os.path.exists(mp3_full_path): os.remove(mp3_full_path)
         except: pass
@@ -658,7 +633,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
             try: os.makedirs("Static/avatars")
             except: pass
         
-        # Cleanup old
         for ext in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
             try:
                 p = f"Static/avatars/{current_user}{ext}"
@@ -679,7 +653,6 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         self.send_header("Location", location)
         self.end_headers()
 
-# IP Addr
 host = "0.0.0.0"
 port = 4443
 
@@ -690,7 +663,7 @@ if __name__ == "__main__":
     db = HandleDatabase.HandleDatabase()
     db.createUsersTable()
     db.createSongsTable()
-    db.close() # checking if tables exist
+    db.close()
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(certfile="SSL/cert.pem", keyfile="SSL/key.pem")

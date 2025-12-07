@@ -1,28 +1,51 @@
+/**
+ * ============================================================================
+ * STREAMIFY MUSIC APP - MAIN CSS
+ * ============================================================================
+ * A modern, glass-morphism music player with real-time interactivity
+ * Built with CSS variables for easy theme customization
+ * ============================================================================
+ */
+
 /* --- CSS VARIABLES & RESET --- */
+/* Define all color schemes, sizes, and animation values as variables */
+/* This allows for easy theme switching and consistent styling throughout */
 :root {
+    /* Primary background colors */
     --bg-color: #000;
     --sidebar-bg: rgba(0, 0, 0, 0.2);
-    /* More transparent */
+    
+    /* Card styling - uses glass-morphism effect */
     --card-bg: rgba(255, 255, 255, 0.02);
     --card-hover: rgba(255, 255, 255, 0.12);
-    /* Brighter, glassier hover */
+    
+    /* Text colors - white with varying opacity for hierarchy */
     --text-primary: #ffffff;
     --text-secondary: rgba(255, 255, 255, 0.65);
+    
+    /* Accent colors (Spotify green) */
     --accent: #1db954;
     --accent-hover: #1ed760;
+    
+    /* Gradient colors for buttons and visual effects */
     --gradient-1: #4169e1;
     --gradient-2: #8164d7;
+    
+    /* Glass effect border and shadow */
     --glass-border: rgba(255, 255, 255, 0.08);
-    /* Subtly stronger border */
     --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    
+    /* Layout dimensions */
     --border-radius: 12px;
-    --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    --click-anim: transform 0.1s ease;
-    /* Fast click response */
     --sidebar-width: 240px;
     --player-height: 90px;
+    
+    /* Animation timings for smooth transitions */
+    --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    --click-anim: transform 0.1s ease;
 }
 
+/* Global reset - removes default margins/padding and sets border-box model */
 * {
     margin: 0;
     padding: 0;
@@ -30,21 +53,23 @@
     font-family: 'Segoe UI', sans-serif;
 }
 
+/* Main body styling - dark theme with radial gradient background */
 body {
     background-color: var(--bg-color);
-    /* Dynamic Radial Gradient Background - Identical to Login */
+    /* Dynamic radial gradient creates depth and visual interest */
     background-image:
         radial-gradient(circle at 15% 50%, rgba(30, 30, 35, 0.9), transparent 25%),
         radial-gradient(circle at 85% 30%, rgba(20, 20, 25, 0.9), transparent 25%);
+    /* Fixed attachment creates a parallax effect when scrolling */
     background-attachment: fixed;
-    /* Parallax-like fix */
     color: var(--text-primary);
     height: 100vh;
     display: flex;
     overflow: hidden;
 }
 
-/* --- SCROLLBAR --- */
+/* === SCROLLBAR CUSTOMIZATION === */
+/* Custom scrollbar styling for webkit browsers (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
     width: 8px;
 }
@@ -58,12 +83,18 @@ body {
     border-radius: 4px;
 }
 
+/* Brighten scrollbar on hover for better visibility */
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
 }
 
-/* --- ANIMATION UTILITIES --- */
-/* Click/Active Scaling Effect */
+/* === ANIMATION UTILITIES === */
+
+/* 
+ * SCALE DOWN ANIMATION ON CLICK
+ * Applied to all interactive elements for tactile feedback
+ * Creates the "pressed" effect when user clicks
+ */
 .btn:active,
 .card:active,
 .song-row:active,
@@ -76,9 +107,15 @@ body {
     transition: var(--click-anim);
 }
 
+/* 
+ * ANIMATED GRADIENT TEXT
+ * Creates a flowing rainbow gradient effect on text elements
+ * Used for special emphasis or branded text
+ */
 .gradient-text {
     background: linear-gradient(90deg, #4169e1, #aa60c8, #e3689c, #e4ac7f, #deb887);
     background-size: 200%;
+    /* Background is 2x size so gradient can shift */
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -99,10 +136,12 @@ body {
     }
 }
 
-/* --- SIDEBAR --- */
+/* === SIDEBAR NAVIGATION === */
+/* Left sidebar with navigation menu */
 .sidebar {
     width: var(--sidebar-width);
     background: var(--sidebar-bg);
+    /* Glass-morphism effect with blur backdrop */
     backdrop-filter: blur(40px);
     -webkit-backdrop-filter: blur(40px);
     border-right: 1px solid var(--glass-border);
@@ -113,6 +152,7 @@ body {
     z-index: 10;
 }
 
+/* Logo in sidebar header */
 .logo {
     font-size: 28px;
     font-weight: 800;
@@ -123,17 +163,19 @@ body {
     letter-spacing: -0.5px;
 }
 
+/* Navigation list - remove default list styling */
 .sidebar-nav ul {
     list-style: none;
 }
 
-/* Entry Animation */
+/* Individual navigation items with staggered entrance animation */
 .sidebar-nav li {
     margin-bottom: 8px;
     opacity: 0;
     animation: slideInLeft 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
+/* Stagger animation delays for each menu item */
 .sidebar-nav ul:nth-of-type(1) li:nth-child(1) {
     animation-delay: 0.1s;
 }
@@ -158,6 +200,7 @@ body {
     animation-delay: 0.6s;
 }
 
+/* Slide in animation - items appear from left */
 @keyframes slideInLeft {
     from {
         opacity: 0;
@@ -170,6 +213,7 @@ body {
     }
 }
 
+/* Navigation links styling */
 .sidebar-nav a {
     text-decoration: none;
     color: var(--text-secondary);
@@ -184,6 +228,7 @@ body {
     border: 1px solid transparent;
 }
 
+/* Hover and active states for navigation links */
 .sidebar-nav a:hover,
 .sidebar-nav a.active {
     color: var(--text-primary);
@@ -193,26 +238,30 @@ body {
     border-color: rgba(255, 255, 255, 0.05);
 }
 
+/* Icon sizing for navigation items */
 .sidebar-nav i {
     font-size: 22px;
 }
 
+/* Visual divider between nav sections */
 .sidebar-divider {
     height: 1px;
     background-color: var(--glass-border);
     margin: 20px 0;
 }
 
-/* --- MAIN CONTENT --- */
+/* === MAIN CONTENT AREA === */
+/* Main container for all page content */
 .main-content {
     flex: 1;
     background: transparent;
     overflow-y: auto;
     position: relative;
+    /* Add padding-bottom to prevent content from hiding behind the player */
     padding-bottom: var(--player-height);
 }
 
-/* Top Bar */
+/* TOP BAR - Sticky header with navigation and user menu */
 .top-bar {
     position: sticky;
     top: 0;
@@ -222,12 +271,12 @@ body {
     align-items: center;
     background-color: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(40px);
-    /* Deep Glass */
     -webkit-backdrop-filter: blur(40px);
     z-index: 5;
     border-bottom: 1px solid var(--glass-border);
 }
 
+/* Navigation arrow buttons (back/forward) */
 .nav-arrows i {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 50%;
@@ -242,6 +291,7 @@ body {
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
 }
 
+/* User profile pill in top-right corner */
 .user-pill {
     background-color: rgba(255, 255, 255, 0.1);
     padding: 4px 12px 4px 4px;
@@ -260,6 +310,7 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+/* User avatar circle with gradient background */
 .user-avatar {
     width: 28px;
     height: 28px;
@@ -272,19 +323,20 @@ body {
     font-size: 14px;
 }
 
-/* Sections */
+/* CONTENT SECTIONS */
+
+/* Main content container with fade-in animation */
 .content-container {
     padding: 32px;
-    /* Initial load animation for container */
     animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-/* Animate sections when they become visible (display: none -> block) */
-/* We use a utility class to force re-trigger in JS */
+/* Utility class to force re-trigger animation when sections become visible */
 .fade-in-animate {
     animation: fadeInUp 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
 }
 
+/* Fade in and slide up animation for content sections */
 @keyframes fadeInUp {
     from {
         opacity: 0;
@@ -297,6 +349,7 @@ body {
     }
 }
 
+/* Section titles and headings */
 h2,
 .section-title {
     font-size: 28px;
@@ -307,7 +360,8 @@ h2,
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* Grid Layouts */
+/* GRID LAYOUT FOR CARDS */
+/* Responsive grid that adapts to different screen sizes */
 .grid-container {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -315,6 +369,7 @@ h2,
     margin-bottom: 40px;
 }
 
+/* Individual card styling with glass-morphism effect */
 .card {
     background: var(--card-bg);
     padding: 16px;
@@ -324,18 +379,18 @@ h2,
     position: relative;
     border: 1px solid var(--glass-border);
     backdrop-filter: blur(40px);
-    /* Deep Glass */
     -webkit-backdrop-filter: blur(40px);
 }
 
+/* Card hover state - lift up and brighten */
 .card:hover {
     background: var(--card-hover);
     transform: translateY(-8px);
-    /* Deeper lift */
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
     border-color: rgba(255, 255, 255, 0.15);
 }
 
+/* Card image container with aspect ratio */
 .card-img-wrapper {
     position: relative;
     width: 100%;
@@ -347,6 +402,7 @@ h2,
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
 }
 
+/* Card image styling with zoom on hover */
 .card-img-wrapper img {
     width: 100%;
     height: 100%;
@@ -358,7 +414,8 @@ h2,
     transform: scale(1.1);
 }
 
-/* Gradient Play Button */
+/* GRADIENT PLAY BUTTON OVERLAY */
+/* Appears on card hover with smooth animations */
 .play-btn-overlay {
     position: absolute;
     bottom: 8px;
@@ -392,6 +449,7 @@ h2,
     filter: brightness(1.2);
 }
 
+/* Card text content */
 .card-title {
     font-weight: 700;
     margin-bottom: 8px;
@@ -411,7 +469,7 @@ h2,
     overflow: hidden;
 }
 
-/* Song List Row */
+/* SONG LIST ROW - Individual song entries in playlists */
 .song-row {
     display: grid;
     grid-template-columns: 40px 4fr 3fr 2fr 1fr;
@@ -427,18 +485,19 @@ h2,
 
 .song-row:hover {
     background-color: rgba(255, 255, 255, 0.08);
-    /* Glass hover */
     color: var(--text-primary);
     backdrop-filter: blur(10px);
     border-color: rgba(255, 255, 255, 0.05);
 }
 
+/* Highlight the currently playing song */
 .song-row.playing {
     color: #fff;
     background: linear-gradient(90deg, rgba(65, 105, 225, 0.2), rgba(129, 100, 215, 0.1));
     border: 1px solid rgba(65, 105, 225, 0.3);
 }
 
+/* Song thumbnail image */
 .song-row img {
     width: 44px;
     height: 44px;
@@ -447,6 +506,7 @@ h2,
     object-fit: cover;
 }
 
+/* Song metadata container */
 .song-info {
     display: flex;
     align-items: center;
@@ -462,6 +522,7 @@ h2,
     flex: 1;
 }
 
+/* Song title styling with truncation */
 .song-title-row {
     color: var(--text-primary);
     font-weight: 600;
@@ -471,6 +532,7 @@ h2,
     font-size: 15px;
 }
 
+/* Scrolling animation for long song titles */
 .song-title-row.scrolling {
     text-overflow: unset;
     overflow: visible;
@@ -480,7 +542,6 @@ h2,
 }
 
 @keyframes scrollText {
-
     0%,
     15% {
         transform: translateX(0);
@@ -496,7 +557,7 @@ h2,
     }
 }
 
-/* Upload Section */
+/* UPLOAD SECTION - File upload area styling */
 .upload-section {
     background: rgba(255, 255, 255, 0.03);
     padding: 40px;
@@ -506,7 +567,9 @@ h2,
     backdrop-filter: blur(40px);
 }
 
-/* Primary Button */
+/* === BUTTONS === */
+
+/* Primary button with gradient background */
 .btn {
     background: linear-gradient(90deg, #4169e1, #8164d7);
     color: white;
@@ -524,6 +587,7 @@ h2,
     box-shadow: 0 8px 25px rgba(65, 105, 225, 0.6);
 }
 
+/* Outline button variant - transparent with border */
 .btn-outline {
     background: transparent;
     border: 1px solid rgba(74, 118, 249, 0.3);
@@ -537,7 +601,9 @@ h2,
     transform: translateY(-2px);
 }
 
-/* Music Player */
+/* === MUSIC PLAYER - Fixed bottom player bar === */
+
+/* Main player container - always visible at bottom */
 .music-player {
     position: fixed;
     bottom: 0;
@@ -545,7 +611,6 @@ h2,
     width: 100%;
     height: var(--player-height);
     background: rgba(20, 20, 25, 0.65);
-    /* Deeper but transparent glass */
     backdrop-filter: blur(50px);
     -webkit-backdrop-filter: blur(50px);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -558,6 +623,7 @@ h2,
     transition: var(--transition);
 }
 
+/* LEFT SECTION - Current playing song info */
 .player-left {
     display: flex;
     align-items: center;
@@ -565,6 +631,7 @@ h2,
     min-width: 180px;
 }
 
+/* Album artwork in player */
 .now-playing-img {
     width: 56px;
     height: 56px;
@@ -579,6 +646,7 @@ h2,
     transform: scale(1.05);
 }
 
+/* Spinning animation when music is playing */
 .now-playing-img.spinning {
     animation: spin 6s linear infinite;
     border-radius: 50%;
@@ -590,6 +658,7 @@ h2,
     }
 }
 
+/* Song name and artist information */
 .track-info {
     display: flex;
     flex-direction: column;
@@ -621,6 +690,7 @@ h2,
     color: #fff;
 }
 
+/* CENTER SECTION - Playback controls */
 .player-center {
     width: 40%;
     display: flex;
@@ -628,6 +698,7 @@ h2,
     align-items: center;
 }
 
+/* Control buttons row (previous, play/pause, next) */
 .player-controls {
     display: flex;
     align-items: center;
@@ -635,6 +706,7 @@ h2,
     margin-bottom: 10px;
 }
 
+/* Standard control button styling */
 .control-btn {
     background: transparent;
     border: none;
@@ -661,6 +733,7 @@ h2,
     transform: scale(0.9);
 }
 
+/* Play/Pause button - larger with gradient */
 .play-pause-btn {
     width: 44px;
     height: 44px;
@@ -687,6 +760,7 @@ h2,
     transform: scale(0.95);
 }
 
+/* PROGRESS BAR - Shows song playback progress */
 .progress-container {
     width: 100%;
     display: flex;
@@ -721,7 +795,7 @@ h2,
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 }
 
-/* Handle for progress bar */
+/* Draggable handle for progress bar */
 .progress-bar::after {
     content: '';
     position: absolute;
@@ -740,6 +814,7 @@ h2,
     transform: translateY(-50%) scale(1);
 }
 
+/* RIGHT SECTION - Volume control */
 .player-right {
     width: 30%;
     display: flex;
@@ -748,6 +823,7 @@ h2,
     padding-right: 20px;
 }
 
+/* Volume control wrapper */
 .volume-wrapper {
     display: flex;
     align-items: center;
@@ -764,8 +840,10 @@ h2,
     border-color: rgba(255, 255, 255, 0.1);
 }
 
+/* Volume slider input */
 .volume-slider {
     width: 100px;
+    appearance: none;
     -webkit-appearance: none;
     height: 4px;
     background: rgba(255, 255, 255, 0.1);
@@ -778,8 +856,10 @@ h2,
     height: 6px;
 }
 
+/* Volume slider thumb/handle */
 .volume-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
+    appearance: none;
     width: 12px;
     height: 12px;
     background: #fff;
@@ -794,16 +874,19 @@ h2,
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
-/* Mobile */
+/* === RESPONSIVE DESIGN - Mobile adjustments === */
 @media (max-width: 768px) {
+    /* Hide sidebar on mobile */
     .sidebar {
         display: none;
     }
 
+    /* Increase padding to account for taller player */
     .main-content {
         padding-bottom: 140px;
     }
 
+    /* Stack player vertically on mobile */
     .music-player {
         flex-direction: column;
         height: auto;
@@ -811,6 +894,7 @@ h2,
         background: rgba(10, 10, 10, 0.95);
     }
 
+    /* Make player sections full width on mobile */
     .player-left,
     .player-center,
     .player-right {
@@ -819,12 +903,15 @@ h2,
         margin-bottom: 12px;
     }
 
+    /* Hide volume control on mobile */
     .player-right {
         display: none;
     }
 }
 
-/* Menu */
+/* === DROPDOWN MENU - User menu styling === */
+
+/* Menu overlay positioning */
 .user-menu {
     position: absolute;
     top: 100%;
@@ -842,6 +929,7 @@ h2,
     animation: fadeInMenu 0.2s ease forwards;
 }
 
+/* Fade in animation for menu */
 @keyframes fadeInMenu {
     from {
         opacity: 0;
@@ -854,10 +942,12 @@ h2,
     }
 }
 
+/* Show menu when active */
 .user-menu.show {
     display: block;
 }
 
+/* Logout button styling */
 .logout-btn {
     display: flex;
     align-items: center;
@@ -874,6 +964,7 @@ h2,
     background-color: rgba(255, 255, 255, 0.1);
 }
 
+/* Settings button styling */
 .settings-btn {
     display: flex;
     align-items: center;
@@ -890,11 +981,14 @@ h2,
     background-color: rgba(255, 255, 255, 0.1);
 }
 
+/* Hidden utility class */
 .hidden {
     display: none !important;
 }
 
-/* --- THANKS BUTTON EFFECTS --- */
+/* === SPECIAL EFFECTS - Thanks/Like button animation === */
+
+/* Active glow state for thank button */
 .glow-active {
     color: #ff4d6d !important;
     text-shadow: 0 0 10px #ff4d6d, 0 0 20px #ff4d6d !important;
@@ -907,6 +1001,7 @@ h2,
     color: #ff4d6d !important;
 }
 
+/* Pulsing animation for thanks button */
 @keyframes thanksPulse {
     from {
         box-shadow: 0 0 5px rgba(255, 77, 109, 0.2);
@@ -917,6 +1012,7 @@ h2,
     }
 }
 
+/* Floating particle effect (hearts/icons) */
 .particle {
     position: fixed;
     pointer-events: none;
@@ -925,6 +1021,7 @@ h2,
     animation: floatHeart 1.5s ease-out forwards;
 }
 
+/* Animation that makes particles float up and fade */
 @keyframes floatHeart {
     0% {
         opacity: 1;
@@ -937,7 +1034,9 @@ h2,
     }
 }
 
-/* --- MODAL STYLES --- */
+/* === MODAL DIALOG STYLING === */
+
+/* Semi-transparent overlay behind modal */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -956,28 +1055,25 @@ h2,
     visibility: visible;
     pointer-events: auto;
 
-    /* Matches your other smooth transitions */
+    /* Smooth fade transition */
     transition: opacity 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s linear 0s;
 }
 
-/* HIDDEN STATE */
+/* HIDDEN STATE - modal is still in DOM but invisible and non-interactive */
 .modal-overlay.hidden {
-    /* !!! CRITICAL FIX: Override the global .hidden !important */
     display: flex !important;
-
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    /* Prevents clicking while fading out */
 
-    /* Delay visibility hidden until opacity finishes (0.3s) */
+    /* Delay visibility hidden until opacity finishes fading */
     transition: opacity 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s linear 0.3s;
 }
 
+/* Modal dialog box */
 .modal-box {
     background: var(--sidebar-bg);
     backdrop-filter: blur(50px);
-    /* Reduced slightly for performance */
     -webkit-backdrop-filter: blur(50px);
     border: 1px solid var(--glass-border);
     padding: 30px;
@@ -985,22 +1081,21 @@ h2,
     border-radius: 16px;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
 
-    /* OPEN STATE ANIMATION */
+    /* OPEN STATE - scale up with pop effect */
     transform: scale(1) translateY(0);
     opacity: 1;
 
-    /* Uses a "pop" back-bow effect for the zoom */
+    /* "Pop" back-bow effect on open */
     transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
 }
 
-/* CLOSED STATE ANIMATION */
+/* CLOSED STATE - scale down when hidden */
 .modal-overlay.hidden .modal-box {
     transform: scale(0.9) translateY(10px);
     opacity: 0;
 }
 
-/* You can remove the @keyframes zoomIn block entirely now */
-
+/* Modal header with close button */
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -1017,7 +1112,9 @@ h2,
 }
 
 
-/* Form Styling */
+/* FORM ELEMENTS IN MODAL */
+
+/* Input field container */
 .input-group {
     margin-bottom: 20px;
     display: flex;
@@ -1031,6 +1128,7 @@ h2,
     font-weight: 600;
 }
 
+/* Input and select styling */
 .input-group input,
 .input-group select {
     background: rgba(255, 255, 255, 0.05);
@@ -1042,11 +1140,13 @@ h2,
     font-family: inherit;
 }
 
+/* Focus state for inputs */
 .input-group input:focus {
     border-color: var(--accent);
     background: rgba(255, 255, 255, 0.1);
 }
 
+/* Modal action buttons container */
 .modal-actions {
     display: flex;
     justify-content: flex-end;
@@ -1054,16 +1154,17 @@ h2,
     margin-top: 30px;
 }
 
+/* CUSTOM FILE UPLOAD */
 
-/* Custom File Upload Styling */
+/* File upload button and text container */
 .custom-file-upload {
     display: flex;
     align-items: center;
     gap: 10px;
-    /* Space between button and text */
     margin-top: 8px;
 }
 
+/* Filename display */
 #avatar-file-name {
     font-size: 13px;
     color: var(--text-secondary);
@@ -1072,44 +1173,40 @@ h2,
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 200px;
-    /* Cut off very long filenames */
 }
 
 
-/* --- SEARCH BAR GLASS STYLE --- */
+/* === SEARCH BAR - Glass morphism style === */
+
+/* Main search input container */
 .search-wrapper {
     display: flex;
     align-items: center;
     background: rgba(255, 255, 255, 0.1);
-    /* Low opacity white */
     border: 1px solid var(--glass-border);
     border-radius: 50px;
-    /* Pill shape */
     padding: 10px 18px;
     width: 360px;
-    /* Fixed width, or use 100% max-width */
     transition: all 0.3s ease;
     position: relative;
 }
 
-/* Hover Effect */
+/* Hover state - slightly brighter background */
 .search-wrapper:hover {
     background: rgba(255, 255, 255, 0.15);
     border-color: rgba(255, 255, 255, 0.2);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
-/* Focus State (When user clicks inside) */
+/* Focus state - darker background for better readability when typing */
 .search-wrapper:focus-within {
     background: #1e1e23;
-    /* Darker solid background for readability */
     border-color: #fff;
-    /* Bright white border highlight */
     transform: scale(1.02);
     box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
 }
 
-/* The Search Icon */
+/* Search icon styling */
 .search-wrapper i {
     font-size: 20px;
     color: var(--text-secondary);
@@ -1119,10 +1216,9 @@ h2,
 
 .search-wrapper:focus-within i {
     color: #fff;
-    /* Icon turns white on focus */
 }
 
-/* The Input Field Itself */
+/* Search input field itself */
 .search-wrapper input {
     background: transparent;
     border: none;
@@ -1134,12 +1230,12 @@ h2,
     font-family: inherit;
 }
 
-/* Placeholder Text Color */
+/* Placeholder text styling */
 .search-wrapper input::placeholder {
     color: rgba(255, 255, 255, 0.4);
 }
 
-/* Remove the 'x' clear button in some browsers (optional, looks cleaner) */
+/* Remove browser's default search clear button (X) */
 .search-wrapper input::-webkit-search-cancel-button {
-    -webkit-appearance: none;
+    display: none;
 }

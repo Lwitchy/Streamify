@@ -137,8 +137,6 @@ SSL/*.crt
 Database/Dev/*
 Database/Users/*
 MusicLibrary/*
-Static/covers/*
-Static/avatars/*
 !.gitkeep
 
 # Temporary files

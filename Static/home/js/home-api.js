@@ -1,37 +1,58 @@
-/* --- STATE --- */
-let isPlaying = false;
-let currentPlaylist = []; // Array of song objects
-let shuffledPlaylist = []; // Array of song indices [0, 1, 2...]
-let currentIndex = -1; // Current index in the PLAYLIST (not necessarily the song ID)
-let isShuffle = false;
-let repeatMode = 0; // 0: OFF, 1: ALL, 2: ONE
+/**
+ * ============================================================================
+ * STREAMIFY MUSIC PLAYER - JavaScript API
+ * ============================================================================
+ * Handles all music playback, UI interactions, search, and user management
+ * ============================================================================
+ */
 
+/* ========== GLOBAL VARIABLES ========== */
+/* These variables maintain the state of the music player throughout the app */
+
+let isPlaying = false;                    // Current playback status
+let currentPlaylist = [];                 // Array of all song objects in current view
+let shuffledPlaylist = [];                // Shuffled order of song indices (for shuffle mode)
+let currentIndex = -1;                    // Current position in the playlist
+let isShuffle = false;                    // Shuffle mode toggle
+let repeatMode = 0;                       // 0: Off, 1: Repeat All, 2: Repeat One
+
+/* Get the hidden audio element that actually plays the music */
 const audio = document.getElementById('audio-player');
 
-/* --- ELEMENTS --- */
-const playerTitle = document.getElementById('player-title');
-const playerArtist = document.getElementById('player-artist');
-const playerImg = document.getElementById('player-img');
-const btnPlay = document.getElementById('btn-play');
-const btnNext = document.getElementById('btn-next');
-const btnPrev = document.getElementById('btn-prev');
-const btnShuffle = document.getElementById('btn-shuffle');
-const btnRepeat = document.getElementById('btn-repeat');
+/* ========== DOM ELEMENTS ========== */
+/* Cache frequently accessed DOM elements for performance */
 
-const progressBar = document.getElementById('progress-bar');
-const progressContainer = document.querySelector('.progress-bar-wrapper');
-const currTimeEl = document.getElementById('current-time');
-const durTimeEl = document.getElementById('duration');
-const volSlider = document.getElementById('volume-slider');
-const volIcon = document.getElementById('vol-icon');
+/* Player display elements */
+const playerTitle = document.getElementById('player-title');        // Song title in player
+const playerArtist = document.getElementById('player-artist');      // Artist name in player
+const playerImg = document.getElementById('player-img');            // Album artwork in player
 
-/* --- INITIALIZATION --- */
+/* Player control buttons */
+const btnPlay = document.getElementById('btn-play');                // Play/Pause button
+const btnNext = document.getElementById('btn-next');                // Next track button
+const btnPrev = document.getElementById('btn-prev');                // Previous track button
+const btnShuffle = document.getElementById('btn-shuffle');          // Shuffle toggle
+const btnRepeat = document.getElementById('btn-repeat');            // Repeat mode toggle
+
+/* Progress bar and time display elements */
+const progressBar = document.getElementById('progress-bar');        // Progress bar fill indicator
+const progressContainer = document.querySelector('.progress-bar-wrapper'); // Progress bar background/wrapper
+const currTimeEl = document.getElementById('current-time');         // Current time display
+const durTimeEl = document.getElementById('duration');              // Total duration display
+
+/* Volume control elements */
+const volSlider = document.getElementById('volume-slider');         // Volume slider input
+const volIcon = document.getElementById('vol-icon');                // Volume icon (shows mute state)
+
+/* ========== INITIALIZATION & EVENT LISTENERS ========== */
+/* All setup happens here once the DOM is fully loaded */
 document.addEventListener('DOMContentLoaded', () => {
-    /* --- UI INTERACTIONS --- */
+    /* ========== USER MENU DROPDOWN ========== */
+    /* Handle the user profile pill and dropdown menu */
     const userPill = document.querySelector('.user-pill');
     const userMenu = document.getElementById('user-menu');
 
-    // Toggle dropdown
+    // Toggle dropdown menu when user clicks their profile
     if (userPill && userMenu) {
         userPill.addEventListener('click', (e) => {
             e.stopPropagation(); // prevent immediate close
@@ -39,7 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /* --- CUSTOM FILE UPLOAD LOGIC --- */
+    /* ========== CUSTOM FILE UPLOAD ========== */
+    /* Create a custom styled file upload button that triggers the hidden input */
     const realInput = document.getElementById('avatar-upload');
     const customBtn = document.getElementById('trigger-upload-btn');
     const fileNameSpan = document.getElementById('avatar-file-name');
@@ -64,7 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /* --- SETTINGS MODAL LOGIC --- */
+    /* ========== SETTINGS MODAL ========== */
+    /* Handle opening, closing, and submitting the settings/profile modal */
     const settingsBtn = document.getElementById('open-settings-btn');
     const modal = document.getElementById('settings-modal');
     const closeModalBtn = document.getElementById('close-modal-btn');
@@ -117,6 +140,8 @@ document.addEventListener('DOMContentLoaded', () => {
         avatarForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const fileInput = document.getElementById('avatar-upload');
+            
+            /* Submit avatar to server and handle response */
             if (fileInput.files.length === 0) {
                 alert("Please choose a file first.");
                 return;
@@ -159,6 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let searchTimeout = null;
 
     if (searchInput) {
+        /* Debounced search - wait 500ms after user stops typing */
         searchInput.addEventListener('input', (e) => {
             const query = e.target.value.trim();
             if (searchTimeout) clearTimeout(searchTimeout);
@@ -186,6 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuBtn = document.getElementById('menu-btn');
     const sidebar = document.querySelector('.sidebar');
 
+    /* Toggle sidebar visibility when menu button is clicked on mobile */
     if (menuBtn && sidebar) {
         menuBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -217,12 +244,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadLink = document.getElementById('upload-link');
     const thanksLink = document.getElementById('thanks-link');
 
+    /* Get section containers that will be shown/hidden */
     const trendingSection = document.getElementById('trending-section');
     const peopleSection = document.getElementById('people-section');
     const uploadSection = document.getElementById('upload-section');
     const searchSection = document.getElementById('search-section');
 
-    // Thanks Button Interaction
+    /* Thanks/Like button - show glow effect when clicked */
     if (thanksLink) {
         thanksLink.addEventListener('click', (e) => {
             e.preventDefault();
@@ -246,11 +274,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!section) return;
         section.classList.remove('hidden');
         section.classList.remove('fade-in-animate');
-        // Force reflow
+        // Force reflow to restart animation
         void section.offsetWidth;
         section.classList.add('fade-in-animate');
     }
 
+    /* Hide all sections and clear active nav states */
     function hideAllSections() {
         [trendingSection, peopleSection, uploadSection, searchSection].forEach(sec => {
             if (sec) {
@@ -315,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function performSearch(query) {
         if (!query) return;
 
-        // hideAllSections and showSection are available here!
+        /* Show search results section and hide others */
         hideAllSections();
         showSection(searchSection);
 
@@ -422,6 +451,7 @@ function fetchLibrary() {
     list.innerHTML = '';
     list.appendChild(header);
 
+    /* Show loading message while fetching */
     list.insertAdjacentHTML('beforeend', '<div style="padding:20px; color:#b3b3b3;">Loading your songs...</div>');
 
     fetch('/api/library')
@@ -482,6 +512,7 @@ function fetchLibrary() {
 
 // 3. Fetch Current User
 function fetchCurrentUser() {
+    /* Get current logged-in user data from server */
     fetch('/api/me')
         .then(response => response.json())
         .then(data => {
@@ -512,6 +543,7 @@ function fetchCurrentUser() {
 function fetchTrending() {
     const list = document.getElementById('trending-list');
 
+    /* Fetch trending songs from the backend API */
     fetch('/api/trending')
         .then(response => response.json())
         .then(songs => {
@@ -556,7 +588,7 @@ function fetchTrending() {
                             <span>${duration}</span>
                         `;
 
-                // [Mobile Fix] Distinguish Scroll vs Click
+                /* Distinguish between scrolling and clicking on touch devices */
                 let isScrolling = false;
                 let startX = 0;
                 let startY = 0;
@@ -591,6 +623,7 @@ function fetchTrending() {
                 // [NEW CODE] Hover effect to scroll long titles
                 row.addEventListener('mouseenter', () => {
                     const titleEl = row.querySelector('.song-title-row');
+                    /* Check if title overflows and needs scrolling animation */
                     if (titleEl.scrollWidth > titleEl.clientWidth) {
                         // Calculate how much to scroll (difference + some padding)
                         const difference = titleEl.scrollWidth - titleEl.clientWidth;
@@ -608,6 +641,7 @@ function fetchTrending() {
 
                 // [NEW CODE] If no backend cover, try to fetch from web
                 if (!hasBackendCover) {
+                    /* Try to fetch album artwork from iTunes API */
                     fetchWebCover(song.artist, song.title).then(newUrl => {
                         if (newUrl) {
                             const img = document.getElementById(`trend-img-${index}`);
@@ -627,6 +661,7 @@ function fetchTrending() {
 // [NEW] Fetch People Directory
 function fetchPeople() {
     const grid = document.getElementById('people-grid');
+    /* Show loading state while fetching users */
     grid.innerHTML = '<p style="color:#b3b3b3; padding: 20px;">Loading...</p>';
 
     fetch('/api/users')
@@ -681,14 +716,10 @@ function fetchPeople() {
 function playSongAtIndex(index) {
     if (index < 0 || index >= currentPlaylist.length) return;
 
-    // In shuffle mode, we map the "shuffle index" to the "real index"
-    // But direct clicks usually force play specific song. 
-    // Complexity: If user clicks song #5, and we are in shuffle, 
-    // we should find where song #5 is in the shuffled array and set currentIndex to that.
-
+    /* Convert UI index to real playlist index (handles shuffle mapping) */
     let realIndex = index;
     if (isShuffle) {
-        // Find which position in shuffledPlaylist holds 'realIndex'
+        /* Find which position in shuffledPlaylist holds 'realIndex' */
         const shufflePos = shuffledPlaylist.indexOf(realIndex);
         if (shufflePos !== -1) {
             currentIndex = shufflePos;
@@ -703,18 +734,8 @@ function playSongAtIndex(index) {
 
     const song = currentPlaylist[realIndex];
 
-    // We need to fetch the actual URL which might be behind an API call that returns JSON
-    // Actually, looking at previous playSongFromServer, it fetches /api/play/Title
-    // Let's replicate that logic but streamlined.
-
-    // Check if we need to fetch a cover (lazy load check)
-    if (!song.cover || song.cover.includes('placeholder')) {
-        // It might be being fetched async by the list, but let's just use what we have or placeholder
-        // If we really want to ensure high res cover, we could fetch here. 
-        // For now, let's proceed.
-    }
-
-    // Fetch Song Data (URL)
+    /* Fetch the actual playable URL from the backend API */
+    // The backend returns signed URLs and updated cover art if available
     fetch(song.url)
         .then(response => response.json())
         .then(songData => {
@@ -739,6 +760,7 @@ function playSongAtIndex(index) {
 function nextSong() {
     if (currentPlaylist.length === 0) return;
 
+    /* Handle next song logic with shuffle and repeat modes */
     if (isShuffle) {
         if (currentIndex >= shuffledPlaylist.length - 1) {
             // End of shuffle queue
@@ -768,7 +790,7 @@ function nextSong() {
 function prevSong() {
     if (currentPlaylist.length === 0) return;
 
-    // If song played for > 3 seconds, restart it
+    /* If song played > 3 seconds, restart instead of going to previous */
     if (audio.currentTime > 3) {
         audio.currentTime = 0;
         return;
@@ -796,6 +818,7 @@ function getCurrentRealIndex() {
 
 function toggleShuffle() {
     isShuffle = !isShuffle;
+    /* Update button color to show active state */
     btnShuffle.style.color = isShuffle ? 'var(--accent)' : '#b3b3b3';
 
     if (isShuffle) {
@@ -840,6 +863,7 @@ function toggleRepeat() {
     // 0: Off -> 1: All -> 2: One -> 0
     repeatMode = (repeatMode + 1) % 3;
 
+    /* Update repeat button appearance based on current mode */
     if (repeatMode === 0) {
         btnRepeat.style.color = '#b3b3b3';
         btnRepeat.innerHTML = "<i class='bx bx-repeat'></i>";
@@ -870,6 +894,7 @@ function loadSong(song) {
     progressBar.style.width = '0%';
     currTimeEl.textContent = '0:00';
 
+    /* Highlight currently playing song in the list */
     const rows = document.querySelectorAll('.song-row');
     rows.forEach(r => r.classList.remove('playing'));
 
@@ -896,6 +921,7 @@ function loadSong(song) {
 
         // Optional: If you implement Next/Prev logic later, add these:
         navigator.mediaSession.setActionHandler('previoustrack', function () {
+            /* Allow lock screen previous track button to work */
             document.getElementById('btn-prev').click();
         });
         navigator.mediaSession.setActionHandler('nexttrack', function () {
@@ -906,6 +932,7 @@ function loadSong(song) {
 
 function playSong() {
     isPlaying = true;
+    /* Start audio playback (may fail if autoplay is blocked) */
     audio.play().catch(e => console.log("Autoplay blocked or invalid source"));
     btnPlay.innerHTML = "<i class='bx bx-pause' style='margin-left:0;'></i>";
 
@@ -913,6 +940,7 @@ function playSong() {
 
 function pauseSong() {
     isPlaying = false;
+    /* Pause audio playback */
     audio.pause();
     btnPlay.innerHTML = "<i class='bx bx-play' style='margin-left:2px;'></i>";
 
@@ -930,7 +958,8 @@ btnPrev.addEventListener('click', prevSong);
 btnShuffle.addEventListener('click', toggleShuffle);
 btnRepeat.addEventListener('click', toggleRepeat);
 
-// Auto-play next song
+/* ========== AUDIO EVENT LISTENERS ========== */
+/* When song finishes, auto-play next song (or repeat current) */
 audio.addEventListener('ended', () => {
     if (repeatMode === 2) { // Repeat One
         audio.currentTime = 0;
@@ -946,6 +975,7 @@ audio.addEventListener('timeupdate', (e) => {
     const progressPercent = (currentTime / duration) * 100;
     progressBar.style.width = `${progressPercent}%`;
 
+    /* Helper to format time in MM:SS format */
     const formatTime = (time) => {
         const min = Math.floor(time / 60);
         const sec = Math.floor(time % 60);
@@ -988,7 +1018,7 @@ function updateProgressFromEvent(e) {
     const width = rect.width;
     const newTime = (clickX / width) * audio.duration;
 
-    // Immediate update for responsiveness
+    /* Update playback position based on click/drag location */
     audio.currentTime = Math.max(0, Math.min(newTime, audio.duration));
 }
 
@@ -1016,8 +1046,10 @@ progressContainer.addEventListener('wheel', (e) => {
     // Scroll Up (neg) = +5s, Down (pos) = -5s
     const step = 5;
     if (e.deltaY < 0) {
+        /* Scroll up = skip forward 5 seconds */
         audio.currentTime = Math.min(audio.currentTime + step, audio.duration);
     } else {
+        /* Scroll down = skip backward 5 seconds */
         audio.currentTime = Math.max(audio.currentTime - step, 0);
     }
 });
@@ -1044,23 +1076,25 @@ volIcon.addEventListener('wheel', handleVolumeScroll);
 const volWrapper = document.querySelector('.volume-wrapper');
 if (volWrapper) volWrapper.addEventListener('wheel', handleVolumeScroll);
 
-// Mute Toggle
+/* Mute/Unmute when user clicks the volume icon */
 volIcon.addEventListener('click', () => {
     if (audio.volume > 0) {
         lastVolume = audio.volume;
         audio.volume = 0;
         volSlider.value = 0;
     } else {
-        // Restore
+        /* Restore previous volume level */
         audio.volume = lastVolume > 0.1 ? lastVolume : 0.5;
         volSlider.value = audio.volume * 100;
     }
     volSlider.dispatchEvent(new Event('input'));
 });
 
+/* Update volume and icon when slider is moved */
 volSlider.addEventListener('input', (e) => {
     const val = e.target.value;
     audio.volume = val / 100;
+    /* Change icon based on volume level */
     if (val == 0) volIcon.className = 'bx bx-volume-mute';
     else if (val < 50) volIcon.className = 'bx bx-volume-low';
     else volIcon.className = 'bx bx-volume-full';
@@ -1068,6 +1102,7 @@ volSlider.addEventListener('input', (e) => {
 
 /* --- UPLOAD UI HELPER --- */
 function handleFileUpload(input) {
+    /* Display the selected filename to the user */
     if (input.files.length > 0) {
         document.getElementById('file-name').textContent = input.files[0].name;
     }
@@ -1124,17 +1159,18 @@ function triggerHeartConfetti(element) {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
+    /* Create 30 floating heart particles */
     for (let i = 0; i < 30; i++) {
         const heart = document.createElement('div');
         heart.className = 'particle';
-        heart.innerHTML = "<i class='bx bxs-heart'></i>"; // FontAwesome/Boxicons heart
+        heart.innerHTML = "<i class='bx bxs-heart'></i>";
         heart.style.color = `hsl(${330 + Math.random() * 20}, 100%, 70%)`; // Pink variations
 
         document.body.appendChild(heart);
 
-        // Random spread values for CSS variables
-        const tx = (Math.random() - 0.5) * 200 + 'px'; // Spread X
-        const rot = (Math.random() - 0.5) * 360 + 'deg'; // Rotate
+        /* Random spread values for particle animation */
+        const tx = (Math.random() - 0.5) * 200 + 'px';
+        const rot = (Math.random() - 0.5) * 360 + 'deg';
 
         heart.style.setProperty('--tx', tx);
         heart.style.setProperty('--rot', rot);
@@ -1142,7 +1178,7 @@ function triggerHeartConfetti(element) {
         heart.style.left = `${centerX}px`;
         heart.style.top = `${centerY}px`;
 
-        // Cleanup
+        /* Remove particle after animation completes */
         setTimeout(() => {
             heart.remove();
         }, 1500);
