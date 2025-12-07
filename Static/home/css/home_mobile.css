@@ -1,0 +1,148 @@
+/* Mobile Optimization for Streamify */
+
+/* Only for screens smaller than 768px */
+@media screen and (max-width: 768px) {
+
+    /* --- SIDEBAR --- */
+    .sidebar {
+        display: flex !important;
+        /* Override home.css display: none */
+        position: fixed;
+        left: -280px;
+        /* Hide off-screen */
+        top: 0;
+        bottom: 0;
+        z-index: 1000;
+        transition: left 0.3s ease, box-shadow 0.3s ease;
+        width: 250px;
+        background: #000;
+        /* Ensure solid background */
+        box-shadow: none;
+    }
+
+    .sidebar.mobile-active {
+        left: 0;
+        box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
+    }
+
+    /* --- TOP BAR --- */
+    .top-bar {
+        padding: 10px 15px;
+        gap: 10px;
+    }
+
+    #menu-btn {
+        display: block !important;
+        color: #fff;
+    }
+
+    .search-wrapper {
+        flex: 1;
+        /* Take remaining space */
+        min-width: 0;
+        /* Allow shrinking */
+    }
+
+    .search-wrapper input {
+        width: 100%;
+        min-width: 0;
+        font-size: 14px;
+    }
+
+    .user-pill {
+        padding: 4px 10px;
+    }
+
+    .user-pill span {
+        display: none;
+        /* Hide username on mobile to save space */
+    }
+
+    .user-avatar {
+        margin-right: 0;
+    }
+
+    /* --- MAIN CONTENT --- */
+    .main-content {
+        margin-left: 0;
+        /* Remove sidebar offset */
+        width: 100%;
+        padding-bottom: 250px;
+        /* More space for stacked player */
+    }
+
+    .content-container {
+        padding: 15px;
+    }
+
+    /* --- GRIDS --- */
+    .grid-container {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+        gap: 15px !important;
+    }
+
+    /* --- SONG LIST --- */
+    .song-row {
+        grid-template-columns: 20px 1fr 50px !important;
+        /* Index | Info | Duration */
+        gap: 10px;
+    }
+
+    /* Hide Album and Date/Uploader on Mobile */
+    .song-row span:nth-child(3),
+    /* Album */
+    .song-row span:nth-child(4)
+
+    /* Uploader */
+        {
+        display: none;
+    }
+
+    .song-row.header-row span:nth-child(3),
+    .song-row.header-row span:nth-child(4) {
+        display: none;
+    }
+
+    /* --- PLAYER FOOTER --- */
+    .music-player {
+        flex-direction: column;
+        height: auto;
+        padding: 10px;
+        gap: 10px;
+
+        /* Inherit or specific */
+        backdrop-filter: blur(10px);
+        background: rgba(18, 18, 18, 0.95);
+        bottom: 0px;
+        border-top: 1px solid #333;
+    }
+
+    .player-left {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .player-center {
+        width: 100%;
+    }
+
+    .player-controls {
+        margin-bottom: 5px;
+    }
+
+    .progress-container {
+        width: 100%;
+        max-width: none;
+    }
+
+    .player-right {
+        display: none;
+        /* Hide volume on mobile, usually controlled by hard buttons */
+    }
+
+    /* --- MODALS --- */
+    .modal-box {
+        width: 90%;
+        max-width: 350px;
+    }
+}

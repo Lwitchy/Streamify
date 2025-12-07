@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streamify | Home</title>
+    <link rel="stylesheet" href="Static/home/css/home.css">
+    <link rel="stylesheet" href="Static/home/css/home_mobile.css" media="(max-width: 768px)">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#121212">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+</head>
+
+<body>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="logo gradient-text">
+            Streamify
+        </div>
+        <nav class="sidebar-nav">
+            <ul>
+                <li><a href="#" class="active" id="home-link"><i class='bx bxs-home'></i> Home</a></li>
+
+                <li>
+                    <a href="#" id="library-link">
+                        <i class='bx bx-library'></i>
+                        <span>Your Library</span>
+                    </a>
+                </li>
+                <!-- [NEW] People Directory -->
+                <li>
+                    <a href="#" id="people-link">
+                        <i class='bx bx-group'></i>
+                        <span>People</span>
+                    </a>
+                </li>
+            </ul>
+            <div class="sidebar-divider"></div>
+            <ul>
+                <li>
+                    <a href="#" id="upload-link">
+                        <i class='bx bx-upload'></i>
+                        <span>Upload</span>
+                    </a>
+                </li>
+                <li><a href="#" id="thanks-link"><i class='bx bxs-heart'></i> Thanks for using, Streamify!</a></li>
+            </ul>
+        </nav>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+        <!-- Top Tool Bar -->
+        <header class="top-bar">
+            <!-- Hamburger Menu (Mobile Only) -->
+            <i class='bx bx-menu' id="menu-btn"
+                style="font-size: 24px; margin-right: 15px; cursor: pointer; display: none;"></i>
+
+            <div class="search-wrapper">
+                <i class='bx bx-search'></i>
+                <input type="search" id="gsearch" name="gsearch" placeholder="Search Anything on Streamify!">
+            </div>
+            <!-- User Profile & Dropdown Wrapper -->
+            <div class="user-wrapper" style="position: relative; display: flex; align-items: center;">
+                <div class="user-pill">
+                    <div class="user-avatar">U</div>
+                    <span>User</span>
+                    <i class='bx bx-caret-down'></i>
+                </div>
+
+                <!-- Dropdown Menu (Sibling now, unaffected by pill transform) -->
+                <div class="user-menu" id="user-menu">
+
+                    <a href="#" class="settings-btn" id="open-settings-btn">
+                        <i class='bx bx-cog'></i> Settings
+                    </a>
+
+                    <a href="/logout" class="logout-btn">
+                        <i class='bx bx-log-out'></i> Log out
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Content Container -->
+        <div class="content-container">
+
+            <!-- People Section (Hidden by default) -->
+            <section class="people-section hidden" id="people-section">
+                <h2 class="section-title">People</h2>
+                <div class="grid-container" id="people-grid">
+                    <!-- Loaded via API -->
+                </div>
+            </section>
+
+            <!-- Search Section (Hidden by default) -->
+            <section class="search-section hidden" id="search-section">
+                <h2 class="section-title">Search Results</h2>
+
+                <!-- Users Found -->
+                <h3 style="margin-top:20px; margin-bottom:10px; font-size: 1.2rem; color: #fff;">People</h3>
+                <div class="grid-container" id="search-users-grid"
+                    style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px;">
+                    <!-- Users injected here -->
+                    <p style="color:#b3b3b3;">No users found.</p>
+                </div>
+
+                <!-- Songs Found -->
+                <h3 style="margin-top:30px; margin-bottom:10px; font-size: 1.2rem; color: #fff;">Songs</h3>
+                <div class="song-list" id="search-songs-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                    </div>
+                    <!-- Songs injected here -->
+                    <p style="padding:10px; color:#b3b3b3;">No songs found.</p>
+                </div>
+            </section>
+
+            <!-- Trending Section (Visible by default) -->
+            <section class="trending" id="trending-section">
+                <h2>User Songs - Trending now</h2>
+                <div class="song-list" id="trending-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                    </div>
+                    <!-- Loaded via API -->
+                </div>
+            </section>
+
+            <!-- Upload Section -->
+            <!-- Upload Section -->
+            <section class="upload-section hidden" id="upload-section">
+                <h2>Upload Music</h2>
+                <p style="color: #b3b3b3; margin-bottom: 16px;">Share your talent with the world.</p>
+                <form id="upload-form" action="/upload-song" method="POST" enctype="multipart/form-data">
+                    <button type="button" class="btn btn-outline"
+                        onclick="document.getElementById('song_file').click()">
+                        Choose File
+                    </button>
+                    <input type="file" id="song_file" name="song_file" accept="audio/*" style="display: none;"
+                        onchange="handleFileUpload(this)" required>
+                    <button type="submit" class="btn">Upload</button>
+                    <br>
+                    <br>
+                    <span id="file-name" style="color: #fff;"> </span>
+
+                </form>
+            </section>
+        </div>
+    </main>
+
+    <!-- MUSIC PLAYER FOOTER -->
+    <footer class="music-player">
+        <audio id="audio-player"></audio>
+        <div class="player-left">
+            <img src="https://via.placeholder.com/60" alt="Album Art" class="now-playing-img" id="player-img">
+            <div class="track-info">
+                <div class="track-name" id="player-title">Select a Song</div>
+                <div class="track-artist" id="player-artist">...</div>
+            </div>
+        </div>
+        <div class="player-center">
+            <div class="player-controls">
+                <button class="control-btn" id="btn-shuffle"><i class='bx bx-shuffle'></i></button>
+                <button class="control-btn" id="btn-prev"><i class='bx bx-skip-previous'></i></button>
+                <button class="play-pause-btn" id="btn-play">
+                    <i class='bx bx-play' style="margin-left: 2px;"></i>
+                </button>
+                <button class="control-btn" id="btn-next"><i class='bx bx-skip-next'></i></button>
+                <button class="control-btn" id="btn-repeat"><i class='bx bx-repeat'></i></button>
+            </div>
+            <div class="progress-container">
+                <span id="current-time">0:00</span>
+                <div class="progress-bar-wrapper" id="progress-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <span id="duration">0:00</span>
+            </div>
+        </div>
+        <div class="player-right">
+            <div class="volume-wrapper">
+                <i class='bx bx-volume-full' id="vol-icon" style="font-size: 20px; cursor: pointer;"></i>
+                <input type="range" min="0" max="100" value="70" class="volume-slider" id="volume-slider">
+            </div>
+        </div>
+    </footer>
+
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <i class='bx bx-x' id="close-modal-btn"></i>
+            </div>
+
+            <form class="modal-form">
+                <div class="input-group">
+                    <label>Change Your Profile Picture</label>
+
+                    <div class="custom-file-upload">
+                        <input type="file" id="avatar-upload" accept="image/*" style="display: none;">
+
+                        <button type="button" class="btn btn-outline" id="trigger-upload-btn">
+                            <i class='bx bx-upload'></i> Choose Image
+                        </button>
+
+                        <span id="avatar-file-name"></span>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" id="cancel-btn">Cancel</button>
+                    <button type="submit" class="btn">Apply</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <script src="Static/home/js/home-api.js"></script>
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('SW registered!', reg))
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
+</body>
+
+</html>

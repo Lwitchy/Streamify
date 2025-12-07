@@ -1,0 +1,34 @@
+# Streamify Requirements
+# Python 3.8+
+
+# Audio File Processing
+mutagen==1.46.0
+
+# Optional but Recommended for Production
+bcrypt==4.1.0              # For secure password hashing (instead of plaintext)
+python-dotenv==1.0.0       # For environment variable management
+
+# Development and Testing
+pytest==7.4.3              # Testing framework
+pytest-cov==4.1.0          # Code coverage for tests
+
+# Security Scanning (Optional)
+bandit==1.7.5              # Security issue scanner
+safety==2.3.5              # Dependency vulnerability checker
+
+# Note: The core application uses these Python built-in modules:
+# - http.server (HTTP server framework)
+# - ssl (HTTPS/SSL support)
+# - socketserver (Threading support)
+# - json (JSON parsing/serialization)
+# - sqlite3 (Database)
+# - email.parser (Multipart form data parsing)
+# - mimetypes (File type detection)
+# - urllib.parse (URL parsing)
+# - logging (Logging)
+# - threading (Thread management)
+# - time (Time utilities)
+# - uuid (UUID generation for sessions)
+# - collections (Data structures)
+# - ipaddress (IP address validation)
+# - http.cookies (Cookie handling)
