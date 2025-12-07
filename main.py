@@ -5,8 +5,13 @@ import mimetypes
 import http.cookies
 import logging
 import urllib.parse
+import urllib.request
 from email.parser import BytesParser
 from email.policy import default
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Project Imports
 from Security import HandleSafeLogin
@@ -49,6 +54,28 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
         self.wfile.write(msg.encode())
+
+    def verify_turnstile(self, token):
+        secret = os.getenv("TURNSTILE_SECRET_KEY")
+        if not secret:
+            logging.error("Turnstile Secret Key not found in environment variables.")
+            return False
+
+        url = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+        data = urllib.parse.urlencode({
+            'secret': secret,
+            'response': token,
+            'remoteip': self.client_address[0]
+        }).encode('utf-8')
+        
+        try:
+            req = urllib.request.Request(url, data=data)
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                return result.get('success', False)
+        except Exception as e:
+            logging.error(f"Turnstile verification error: {e}")
+            return False
 
     def do_GET(self):
         
@@ -120,6 +147,30 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                     if "failed" not in query:
                         query += f"&failed=false&count={attempts}"
                     self.path = f"/Static/loginpage/login.html?{query}"
+            
+            # Inject Site Key into Login Page
+            try:
+                # Extract the actual file path from the URL path (ignoring query params)
+                file_path = self.path.split('?')[0].lstrip('/')
+                # Fix path separators for Windows
+                file_path = file_path.replace('/', os.sep)
+                
+                if os.path.exists(file_path):
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    site_key = os.getenv("TURNSTILE_SITE_KEY", "")
+                    content = content.replace("{{TURNSTILE_SITE_KEY}}", site_key)
+                    
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.end_headers()
+                    self.wfile.write(content.encode('utf-8'))
+                    return
+            except Exception as e:
+                logging.error(f"Error serving login page with injection: {e}")
+                # Fallback to default serving if injection fails
+                return super().do_GET()
             
             return super().do_GET()
 
@@ -471,14 +522,25 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                  self.end_headers()
                  return
             
+            # Parse data first to get token
+            try:
+                query = urllib.parse.parse_qs(post_data.decode('utf-8'))
+            except:
+                query = {}
+
+            # Verify Turnstile
+            token = query.get('cf-turnstile-response', [None])[0]
+            if not token or not self.verify_turnstile(token):
+                print(f"[SECURITY] Failed Turnstile check for IP {ip}")
+                self.send_response(302)
+                self.send_header("Location", "/login?failed=true&reason=captcha")
+                self.end_headers()
+                return
+
             # Authenticate
             if HandleSafeLogin.checkUser(post_data, db):
                 # Extract username for session
-                try:
-                    query = urllib.parse.parse_qs(post_data.decode('utf-8'))
-                    username = query.get('username', ['User'])[0]
-                except:
-                    username = "User"
+                username = query.get('username', ['User'])[0]
 
                 # Create Session
                 session_id = session_manager.create_session(username)
@@ -577,9 +639,14 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
             email = query.get('email', [None])[0]
             password = query.get('password', [None])[0]
             confirm_password = query.get('confirm_password', [None])[0]
+            token = query.get('cf-turnstile-response', [None])[0]
         except Exception:
             self.send_error_msg("Bad Request")
             return
+
+        if not token or not self.verify_turnstile(token):
+             self.redirect("/login?reg_failed=true&reason=captcha")
+             return
 
         if not username or not email or not password:
             self.redirect("/login?reg_failed=true")

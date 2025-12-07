@@ -6,6 +6,12 @@ __pycache__/
 # C extensions
 *.so
 
+# Other IDK AGHHHH
+Database
+avatars
+covers
+Database/
+
 # Distribution / packaging
 .Python
 build/
@@ -149,3 +155,7 @@ Thumbs.db
 # Environment variables
 .env.local
 .env.*.local
+
+# Specific databases
+Database/Dev/Music/music.db
+Database/Dev/Users/users.db
