@@ -293,3 +293,10 @@
       transform: rotate(360deg);
     }
   }
+
+  /* Turnstile */
+  .cf-turnstile {
+    display: flex;
+    justify-content: center;
+    margin: 20px 0;
+  }
