@@ -15,7 +15,8 @@ pytest-cov==4.1.0          # Code coverage for tests
 # Security Scanning (Optional)
 bandit==1.7.5              # Security issue scanner
 safety==2.3.5              # Dependency vulnerability checker
-
+dotenv
+cryptography
 # Note: The core application uses these Python built-in modules:
 # - http.server (HTTP server framework)
 # - ssl (HTTPS/SSL support)

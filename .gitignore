@@ -1,3 +1,37 @@
+# --- PROJECT SPECIFIC SETTINGS ---
+
+# 1. SSL Security
+SSL/*
+!SSL/.gitkeep
+
+# 2. Database Data
+Database/Dev/Music/*
+!Database/Dev/Music/.gitkeep
+
+Database/Dev/Users/*
+!Database/Dev/Users/.gitkeep
+
+# 3. Static Content
+Static/avatars/*
+!Static/avatars/.gitkeep
+
+Static/covers/*
+!Static/covers/.gitkeep
+
+# 4. Music Library 
+MusicLibrary/*
+!MusicLibrary/.gitkeep
+
+# Catch-all
+*.db
+*.sqlite3
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+.env.local
+.env.*.local
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -5,12 +39,6 @@ __pycache__/
 
 # C extensions
 *.so
-
-# Other IDK AGHHHH
-Database
-avatars
-covers
-Database/
 
 # Distribution / packaging
 .Python
@@ -135,27 +163,3 @@ dmypy.json
 *.swo
 *~
 .DS_Store
-
-# Project specific
-#SSL/*.pem YOU SHOULD KEEP THESE HIDDEN IF YOU'RE GOING TO USE IT FOR PRODUCTION
-#SSL/*.key
-#SSL/*.crt
-#Database/Dev/*
-#Database/Users/*
-#MusicLibrary/*
-*.db
-!.gitkeep
-
-# Temporary files
-*.tmp
-*.temp
-.DS_Store
-Thumbs.db
-
-# Environment variables
-.env.local
-.env.*.local
-
-# Specific databases
-Database/Dev/Music/music.db
-Database/Dev/Users/users.db
