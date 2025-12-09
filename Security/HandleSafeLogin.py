@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs
+import bcrypt
 
 
 def checkUser(data, db):
@@ -9,11 +10,19 @@ def checkUser(data, db):
     username = parsed_data.get("username", [None])[0]
     password = parsed_data.get("password", [None])[0]
 
+    if not isinstance(username, str) or not isinstance(password, str):
+        return False
+
     if not username or not password:
         return False
-    
+
+
     user = db.getUser(username)
-    if user and user[2] == password:
-        return True
+
+    if not user:
+        return False
     
-    return False
+    stored_hash = user[2]
+    password_bytes = password.encode("utf-8")
+
+    return bcrypt.checkpw(password_bytes, stored_hash)

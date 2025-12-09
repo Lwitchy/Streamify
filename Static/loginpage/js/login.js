@@ -46,7 +46,7 @@ function validateRegister() {
   const errorText = document.getElementById('regFailedText');
 
   if (password !== confirm) {
-    errorText.innerText = "Passwords do not match!";
+    errorText.innerText = "check ur pass buddy";
     errorText.style.display = "block";
     return false;
   }

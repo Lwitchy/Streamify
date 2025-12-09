@@ -981,6 +981,26 @@ h2,
     background-color: rgba(255, 255, 255, 0.1);
 }
 
+
+/* Profile button styling */
+
+.profile-btn {
+    display: flex;
+    align-items: center; 
+    gap: 10px;
+    padding: 12px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 14px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.profile-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+
 /* Hidden utility class */
 .hidden {
     display: none !important;
@@ -1078,6 +1098,24 @@ h2,
     border: 1px solid var(--glass-border);
     padding: 30px;
     width: 400px;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+
+    /* OPEN STATE - scale up with pop effect */
+    transform: scale(1) translateY(0);
+    opacity: 1;
+
+    /* "Pop" back-bow effect on open */
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+}
+
+.modal-box-user {
+        background: var(--sidebar-bg);
+    backdrop-filter: blur(50px);
+    -webkit-backdrop-filter: blur(50px);
+    border: 1px solid var(--glass-border);
+    padding: 30px;
+    width: 700px;
     border-radius: 16px;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
 

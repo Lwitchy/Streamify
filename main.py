@@ -28,6 +28,10 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 
+# Password Protection
+import bcrypt
+import string
+
 
 # Logging Setup
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -282,7 +286,10 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
             
             response_data = {
                 "username": current_user,
-                "avatar": avatar_url
+                "avatar": avatar_url,
+                "email": "nothing",  # Email can be added if needed
+                "songs_count": 1,
+                "likes_count": 1
             }
             self.send_json(response_data)
 
@@ -304,7 +311,10 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                     user_list.append({
                         "id": u[0], 
                         "username": uname, 
-                        "avatar": avatar_url
+                        "avatar": avatar_url,
+                        "email": "nothing",  # Email can be added if needed
+                        "songs_count": 1,
+                        "likes_count": 1
                     })
                 self.send_json(user_list)
 
@@ -334,7 +344,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                             if os.path.exists(cand):
                                 avatar_url = "/" + cand
                                 break
-                        matching_users.append({"id": u[0], "username": uname, "avatar": avatar_url})
+                        matching_users.append({"id": u[0], "username": uname, "avatar": avatar_url, "songs_count": 1, "likes_count": 1, 'email': 'nothing'})
 
                 # 2. Songs
                 all_songs = db.getAllSongs()
@@ -586,8 +596,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                  self.send_header("Location", "/login?blocked=true")
                  self.end_headers()
                  return
-            
-            # Parse data first to get token
+
             try:
                 query = urllib.parse.parse_qs(post_data.decode('utf-8'))
             except:
@@ -698,6 +707,9 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
     def handle_register(self, post_data):
+        weak_passwords = {"123456", "password", "qwerty", "letmein", "welcome", "admin", "user", "streamify"}
+        password_specials = set(string.punctuation)
+
         try:
             query = urllib.parse.parse_qs(post_data.decode('utf-8'))
             username = query.get('username', [None])[0]
@@ -708,6 +720,42 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         except Exception:
             self.send_error_msg("Bad Request")
             return
+        
+        if not isinstance(username, str) or not isinstance(email, str) or not isinstance(password, str) or not isinstance(confirm_password, str):
+            self.redirect("/login?reg_failed=true&reason=invalid_input")
+            return
+
+        if len(password) < 6:
+             self.redirect("/login?reg_failed=true&reason=weak_password")
+             return
+        
+        if not any(c in password_specials for c in password):
+            self.redirect("/login?reg_failed=true&reason=no_special_char")
+            return
+        
+        if not any(c.isupper() for c in password):
+            self.redirect("/login?reg_failed=true&reason=no_uppercase")
+            return
+        
+        if not any(c.islower() for c in password):
+            self.redirect("/login?reg_failed=true&reason=no_lowercase")
+            return
+        
+        if not any(c.isdigit() for c in password):
+            self.redirect("/login?reg_failed=true&reason=no_digit")
+            return
+
+        if any(c.isspace() for c in password):
+            self.redirect("/login?reg_failed=true&reason=contains_whitespace")
+            return
+
+        if password.lower() in weak_passwords:
+            self.redirect("/login?reg_failed=true&reason=weak_password")
+            return
+        
+        if username in password:
+             self.redirect("/login?reg_failed=true&reason=weak_password")
+             return
 
         if not token or not self.verify_turnstile(token):
              self.redirect("/login?reg_failed=true&reason=captcha")
@@ -720,15 +768,21 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         if password != confirm_password:
              self.redirect("/login?reg_failed=true")
              return
-
+        
+        # Hash Password
+        bytes = password.encode('utf-8')
+        salt = bcrypt.gensalt()
+        hashed_password = bcrypt.hashpw(bytes, salt)
+        
         with HandleDatabase.HandleDatabase() as db:
             if db.getUser(username):
                  self.redirect("/login?reg_failed=true")
                  return
 
-            db.insertUser(username, password, email)
+            db.insertUser(username, hashed_password, email)
             print(f"[REGISTER] New user registered: {username}")
             self.redirect("/login?registered=true")
+
 
     def handle_upload_avatar(self, post_data):
         current_user = self.get_current_user()

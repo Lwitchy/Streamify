@@ -86,6 +86,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+
+    /* ========== PROFILE MODAL ========== */
+    const profileBtn = document.getElementById('open-profile-btn');
+    const p_modal = document.getElementById('profile-modal');
+    const p_closeModalBtn = document.getElementById('close-profile-modal-btn');
+    const p_cancelBtn = document.getElementById('profile-cancel-btn');
+
+    if (profileBtn) {
+        console.log("Profile button found");
+
+        profileBtn.addEventListener('click', (e) => {
+            e.preventDefault(); // Stop navigation
+            // Close the dropdown menu first so it's not in the way
+            document.getElementById('user-menu').classList.remove('show');
+            // Show modal
+            p_modal.classList.remove('hidden');
+        });
+    }    
+
+    // 2. Close Modal Functions
+    const closeProfileModal = () => {
+        p_modal.classList.add('hidden');
+    }
+
+    if (p_closeModalBtn) p_closeModalBtn.addEventListener('click', closeProfileModal);
+    if (p_cancelBtn) p_cancelBtn.addEventListener('click', closeProfileModal);
+    // 3. Close when clicking outside the box
+    if (p_modal) {
+        p_modal.addEventListener('click', (e) => {
+            if (e.target === p_modal) {
+                closeProfileModal();
+            }
+        });
+    }
+
     /* ========== SETTINGS MODAL ========== */
     /* Handle opening, closing, and submitting the settings/profile modal */
     const settingsBtn = document.getElementById('open-settings-btn');
@@ -129,6 +164,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+
+
+
 
     // Initial Fetches
     fetchTrending(); // Home defaults to Trending
@@ -179,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // [NEW] Search Logic
+    // Search Logic
     const searchInput = document.getElementById('gsearch');
     let searchTimeout = null;
 
@@ -340,7 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // [NEW] Perform Search
+    // Perform Search
     function performSearch(query) {
         if (!query) return;
 
@@ -378,6 +417,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div style="text-align:center; font-weight:bold;">${u.username}</div>
                         `;
                         usersGrid.appendChild(card);
+                        card.style = 'pointer';
+                        card.addEventListener('click', () => {
+                            displayUserProfile(u);
+                            const profileModal = document.getElementById('profile-modal');
+                            if(profileModal) profileModal.classList.remove('hidden');
+                        });
                     });
                 } else {
                     usersGrid.innerHTML = '<p style="color:#b3b3b3;">No users match your search.</p>';
@@ -516,8 +561,10 @@ function fetchCurrentUser() {
     fetch('/api/me')
         .then(response => response.json())
         .then(data => {
+            console.log(data)
             const username = data.username || "User";
             const userPillName = document.querySelector('.user-pill span');
+            displayUserProfile(data);
             if (userPillName) userPillName.textContent = username;
 
             const userAvatar = document.querySelector('.user-avatar');
@@ -529,12 +576,55 @@ function fetchCurrentUser() {
                     userAvatar.style.backgroundSize = "cover";
                     userAvatar.style.backgroundPosition = "center";
                 } else {
+                    userAvatar.style.background = 'linear-gradient(45deg, #1db954, #191414)';
                     userAvatar.textContent = username.charAt(0).toUpperCase();
                     userAvatar.style.backgroundImage = "none";
                 }
             }
         })
         .catch(error => console.error('Error fetching user:', error));
+}
+
+function displayUserProfile(data) {
+    const username = data.username || "User";
+    
+    
+    // === UPDATE PROFILE MODAL ===
+    const profileUsernameEl = document.getElementById('profile-username-display');
+    if (profileUsernameEl) {
+        profileUsernameEl.textContent = username;
+    }
+    
+    const profileAvatarEl = document.getElementById('profile-avatar-display');
+    if (profileAvatarEl) {
+        if (data.avatar) {
+            profileAvatarEl.style.backgroundImage = `url('${data.avatar}')`;
+            profileAvatarEl.style.backgroundSize = 'cover';
+            profileAvatarEl.style.backgroundPosition = 'center';
+            profileAvatarEl.textContent = '';
+        } else {
+            profileAvatarEl.style.backgroundImage = 'none';
+            profileAvatarEl.style.background = 'linear-gradient(45deg, #1db954, #191414)';
+            profileAvatarEl.textContent = username.charAt(0).toUpperCase();
+        }
+    }
+    
+    // Update email
+    const profileEmailEl = document.getElementById('profile-email');
+    if (profileEmailEl && data.email) {
+        profileEmailEl.textContent = data.email;
+    }
+    
+    // Update stats
+    const songsCountEl = document.getElementById('profile-songs-count');
+    if (songsCountEl) {
+        songsCountEl.textContent = data.songs_count;
+    }
+    
+    const likesCountEl = document.getElementById('profile-likes-count');
+    if (likesCountEl) {
+        likesCountEl.textContent = data.likes_count;
+    }
 }
 
 
@@ -704,6 +794,17 @@ function fetchPeople() {
                         <div class="card-desc" style="text-align: center;">Streamify User</div>
                     `;
                 }
+                
+                /* Make card clickable to open user profile modal */
+                card.style.cursor = 'pointer';
+                card.addEventListener('click', () => {
+                    displayUserProfile(user);
+                    const profileModal = document.getElementById('profile-modal');
+                    if(profileModal){
+                        profileModal.classList.remove('hidden');
+                    }
+                });
+                
                 grid.appendChild(card);
             });
         })

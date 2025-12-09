@@ -73,6 +73,11 @@
                 <!-- Dropdown Menu (Sibling now, unaffected by pill transform) -->
                 <div class="user-menu" id="user-menu">
 
+
+                    <a href="#" class="profile-btn" id="open-profile-btn">
+                        <i class='bx bx-user'></i> Profile
+                    </a>
+
                     <a href="#" class="settings-btn" id="open-settings-btn">
                         <i class='bx bx-cog'></i> Settings
                     </a>
@@ -197,6 +202,34 @@
         </div>
     </footer>
 
+    <!-- PROFILE MODAL -->
+    <div id="profile-modal" class="modal-overlay hidden">
+        <div class="modal-box-user">
+            <div class="modal-header">
+                <h3>Your Profile</h3>
+                <i class='bx bx-x' id="close-profile-modal-btn"></i>
+            </div>
+
+            <div class="profile-content">
+                <div class="user-avatar" id="profile-avatar-display" style="width: 120px; height: 120px; font-size: 48px; margin: 0 auto 20px;">U</div>
+                <span id="profile-username-display" style="font-size: 1.5rem; font-weight: bold; display: block; margin-bottom: 10px;">User</span>
+                <p id="profile-email" style="color: #b3b3b3; margin-bottom: 20px;"></p>
+                <div class="profile-stats">
+                    <div>
+                        <strong id="profile-songs-count">0</strong>
+                        <span>Songs Uploaded</span>
+                    </div>
+                    <div>
+                        <strong id="profile-likes-count">0</strong>
+                        <span>Total Likes</span> 
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- SETTINGS MODAL -->
     <div id="settings-modal" class="modal-overlay hidden">
         <div class="modal-box">
             <div class="modal-header">
