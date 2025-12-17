@@ -24,5 +24,7 @@ def checkUser(data, db):
     
     stored_hash = user[2]
     password_bytes = password.encode("utf-8")
-
-    return bcrypt.checkpw(password_bytes, stored_hash)
+    try:
+        return bcrypt.checkpw(password_bytes, stored_hash)
+    except:
+        return False

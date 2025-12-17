@@ -107,33 +107,30 @@ body {
     transition: var(--click-anim);
 }
 
-/* 
- * ANIMATED GRADIENT TEXT
- * Creates a flowing rainbow gradient effect on text elements
- * Used for special emphasis or branded text
- */
+/* * ANIMATED GRADIENT TEXT */
 .gradient-text {
-    background: linear-gradient(90deg, #4169e1, #aa60c8, #e3689c, #e4ac7f, #deb887);
-    background-size: 200%;
-    /* Background is 2x size so gradient can shift */
+
+    background: linear-gradient(
+        10deg,
+        #4169e1, #aa60c8, #e3689c, #e4ac7f, #deb887, /* Sequence 1 */
+        #4169e1, #aa60c8, #e3689c, #e4ac7f, #deb887  /* Sequence 2 */
+    );
+    
+
+    background-size: 200% auto;
+    
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    animation: gradient-anim 4s ease infinite;
+    
+
+    animation: gradient-anim 20s linear infinite;
 }
 
 @keyframes gradient-anim {
-    0% {
-        background-position: 0% 50%;
-    }
-
-    50% {
-        background-position: 100% 50%;
-    }
-
-    100% {
-        background-position: 0% 50%;
-    }
+    0%   { background-position: 100% 50%; }
+    50%  { background-position:   0% 50%; }
+    100% { background-position: -100% 50%; }
 }
 
 /* === SIDEBAR NAVIGATION === */
@@ -141,7 +138,6 @@ body {
 .sidebar {
     width: var(--sidebar-width);
     background: var(--sidebar-bg);
-    /* Glass-morphism effect with blur backdrop */
     backdrop-filter: blur(40px);
     -webkit-backdrop-filter: blur(40px);
     border-right: 1px solid var(--glass-border);
@@ -162,6 +158,113 @@ body {
     gap: 10px;
     letter-spacing: -0.5px;
 }
+
+/* --- LOGO STYLES --- */
+.logo-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 40px;
+    padding-left: 8px;
+}
+
+/* The Glass Circle */
+.logo-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 60%;
+    
+    background: rgba(255, 255, 255, 0.042); 
+    backdrop-filter: blur(50px);
+    -webkit-backdrop-filter: blur(50px);    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease;
+}
+
+/* The Text */
+.logo-text {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+.logo-container {
+    opacity: 1; 
+    perspective: 1000px; /* Adds depth for 3D effects */
+}
+
+.logo-icon {
+    animation: icon-pop-in 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    opacity: 0; /* Start invisible */
+    transform: scale(0.5);
+}
+
+
+.logo-icon svg rect {
+    transform-origin: bottom center; /* Grow from bottom up */
+    transform: scaleY(0); /* Start flat */
+    opacity: 0;
+    animation: bar-grow 0.8s cubic-bezier(0.86, 0, 0.07, 1) forwards;
+}
+
+/* Stagger the bars (Sequential delay) */
+.logo-icon svg rect:nth-child(1) { animation-delay: 0.3s; } /* Blue */
+.logo-icon svg rect:nth-child(2) { animation-delay: 0.45s; } /* Purple */
+.logo-icon svg rect:nth-child(3) { animation-delay: 0.6s; } /* Violet */
+.logo-icon svg rect:nth-child(4) { animation-delay: 0.75s; } /* Pink */
+
+/* 4. The Text - Cinematic Slide & Space */
+.logo-text {
+    opacity: 0;
+    animation: 
+        text-cinematic-in 1.5s cubic-bezier(0.23, 1, 0.32, 1) forwards, 
+        gradient-anim 4s ease infinite; /* Keep the rainbow flow */
+    
+    animation-delay: 0.2s, 0s; 
+}
+
+/* --- KEYFRAMES --- */
+
+@keyframes icon-pop-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.5) rotate(-10deg);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+@keyframes bar-grow {
+    0% {
+        transform: scaleY(0);
+        opacity: 0;
+    }
+    100% {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}
+
+@keyframes text-cinematic-in {
+    0% {
+        opacity: 0;
+        transform: translateX(-20px) scale(1.1);
+        letter-spacing: -2px; /* Start squished */
+        filter: blur(7px); /* Motion blur effect */
+    }
+    100% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        letter-spacing: -0.5px; /* End at your defined spacing */
+        filter: blur(0);
+    }
+}
+
+
 
 /* Navigation list - remove default list styling */
 .sidebar-nav ul {
@@ -289,6 +392,34 @@ body {
 .nav-arrows i:hover {
     background: rgba(255, 255, 255, 0.25);
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+.icon-wrapper {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Notification pill */
+.notif-pill {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 4px 4px 4px 4px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+    border: 1px solid transparent;
+    margin-right: 12px;
+}
+
+.notif-pill:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 /* User profile pill in top-right corner */
@@ -911,6 +1042,24 @@ h2,
 
 /* === DROPDOWN MENU - User menu styling === */
 
+
+.notification-menu {
+    position: absolute;
+    top: 100%;
+    right: 80%;
+    margin-top: 12px;
+    background: rgba(30, 30, 30, 0.8);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 8px;
+    width: 200px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    display: none;
+    z-index: 20;
+    animation: fadeInMenu 0.2s ease forwards;
+}
+
 /* Menu overlay positioning */
 .user-menu {
     position: absolute;
@@ -944,6 +1093,10 @@ h2,
 
 /* Show menu when active */
 .user-menu.show {
+    display: block;
+}
+
+.notification-menu.show {
     display: block;
 }
 
@@ -1097,7 +1250,7 @@ h2,
     -webkit-backdrop-filter: blur(50px);
     border: 1px solid var(--glass-border);
     padding: 30px;
-    width: 400px;
+    width: 500px;
     border-radius: 16px;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
 
@@ -1110,7 +1263,7 @@ h2,
 }
 
 .modal-box-user {
-        background: var(--sidebar-bg);
+    background: var(--sidebar-bg);
     backdrop-filter: blur(50px);
     -webkit-backdrop-filter: blur(50px);
     border: 1px solid var(--glass-border);
@@ -1212,7 +1365,6 @@ h2,
     text-overflow: ellipsis;
     max-width: 200px;
 }
-
 
 /* === SEARCH BAR - Glass morphism style === */
 

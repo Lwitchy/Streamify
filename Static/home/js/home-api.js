@@ -15,6 +15,20 @@ let shuffledPlaylist = [];                // Shuffled order of song indices (for
 let currentIndex = -1;                    // Current position in the playlist
 let isShuffle = false;                    // Shuffle mode toggle
 let repeatMode = 0;                       // 0: Off, 1: Repeat All, 2: Repeat One
+let currentActiveView = 'home';
+
+const appCache = {
+    trending: null,      // Stores the array of trending songs
+    library: null,       // Stores the array of library songs
+    user: null,           // Stores current user data
+    people: null,         // Stores the array of people/users.
+    trendingTime: 0,     // Timestamp of last fetch
+    libraryTime: 0,      // Timestamp of last fetch
+    userTime: 0,        // Timestamp of last fetch
+    peopleTime: 0       // Timestamp of last fetch
+};
+
+const CACHE_DURATION = 120 * 1000; // Timeout for cache validity (2 minutes)
 
 /* Get the hidden audio element that actually plays the music */
 const audio = document.getElementById('audio-player');
@@ -51,6 +65,17 @@ document.addEventListener('DOMContentLoaded', () => {
     /* Handle the user profile pill and dropdown menu */
     const userPill = document.querySelector('.user-pill');
     const userMenu = document.getElementById('user-menu');
+    
+    const notificationPill = document.querySelector('.notif-pill');
+    const notificationMenu = document.getElementById('notification-menu');
+
+    // Toggle notification menu when clicking notification pill
+    if (notificationPill && notificationMenu) {
+        notificationPill.addEventListener('click', (e) => {
+            e.stopPropagation(); // prevent immediate close
+            notificationMenu.classList.toggle('show');
+        });
+    }
 
     // Toggle dropdown menu when user clicks their profile
     if (userPill && userMenu) {
@@ -97,13 +122,19 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Profile button found");
 
         profileBtn.addEventListener('click', (e) => {
+            // Reset profile modal
+            clearUserProfile();
+
+
+            fetchCurrentUser();
+
             e.preventDefault(); // Stop navigation
             // Close the dropdown menu first so it's not in the way
             document.getElementById('user-menu').classList.remove('show');
             // Show modal
             p_modal.classList.remove('hidden');
         });
-    }    
+    }
 
     // 2. Close Modal Functions
     const closeProfileModal = () => {
@@ -163,10 +194,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 userMenu.classList.remove('show');
             }
         }
+
+        if (notificationMenu && notificationMenu.classList.contains('show')) {
+            if (!notificationMenu.contains(e.target) && !notificationPill.contains(e.target)) {
+                notificationMenu.classList.remove('show');
+            }
+        }
     });
-
-
-
 
 
     // Initial Fetches
@@ -179,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         avatarForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const fileInput = document.getElementById('avatar-upload');
-            
+
             /* Submit avatar to server and handle response */
             if (fileInput.files.length === 0) {
                 alert("Please choose a file first.");
@@ -338,11 +372,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (homeLink) {
         homeLink.addEventListener('click', (e) => {
             e.preventDefault();
+            currentActiveView = 'home';
+
             hideAllSections();
             homeLink.classList.add('active');
+
             // update title
             const title = trendingSection.querySelector('h2');
             if (title) title.textContent = "Trending";
+
             showSection(trendingSection);
             fetchTrending();
         });
@@ -351,10 +389,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (libraryLink) {
         libraryLink.addEventListener('click', (e) => {
             e.preventDefault();
+            currentActiveView = 'library';
+
             hideAllSections();
             libraryLink.classList.add('active');
+
             const title = trendingSection.querySelector('h2');
             if (title) title.textContent = "Your Library";
+            
             showSection(trendingSection);
             fetchLibrary();
         });
@@ -421,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         card.addEventListener('click', () => {
                             displayUserProfile(u);
                             const profileModal = document.getElementById('profile-modal');
-                            if(profileModal) profileModal.classList.remove('hidden');
+                            if (profileModal) profileModal.classList.remove('hidden');
                         });
                     });
                 } else {
@@ -488,113 +530,252 @@ document.addEventListener('DOMContentLoaded', () => {
 
 });
 
-// [NEW] Fetch Library (My Uploads)
-function fetchLibrary() {
+// 1. Get Elements
+const uploadForm = document.getElementById('upload-form');
+const fileInput = document.getElementById('song_file');
+
+// Modal Elements
+const confirmModal = document.getElementById('upload-confirmation-modal');
+const confirmBtn = document.getElementById('confirm-upload-btn');
+const cancelBtn = document.getElementById('cancel-upload-btn');
+const fileNameDisplay = document.getElementById('confirm-filename');
+const fileSizeDisplay = document.getElementById('confirm-filesize');
+
+// Progress Elements
+const uploadProgressContainer = document.getElementById('upload-progress-container');
+const uploadProgressBar = document.getElementById('upload-progress-fill');
+const uploadStatusText = document.getElementById('upload-status-text');
+const uploadPercentage = document.getElementById('upload-percentage');
+const mainUploadBtn = document.getElementById('upload-submit-btn');
+
+
+// Helper: Format Bytes to MB
+function formatBytes(bytes, decimals = 2) {
+    if (!+bytes) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
+
+if (uploadForm) {
+    // STEP 1: INTERCEPT FORM SUBMIT -> SHOW MODAL
+    uploadForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        if (fileInput.files.length === 0) {
+            alert("Please select a file first.");
+            return;
+        }
+
+        const file = fileInput.files[0];
+
+        // Fill Modal Data
+        fileNameDisplay.textContent = file.name;
+        fileSizeDisplay.textContent = formatBytes(file.size);
+
+        // Show Modal
+        confirmModal.classList.remove('hidden');
+    });
+}
+
+// STEP 2: HANDLE CANCEL
+if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+        confirmModal.classList.add('hidden');
+    });
+}
+
+// STEP 3: HANDLE CONFIRM -> ACTUAL UPLOAD
+if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => {
+        // Hide Modal
+        confirmModal.classList.add('hidden');
+
+        // Start Upload UI
+        uploadProgressContainer.style.display = 'block';
+        mainUploadBtn.disabled = true;
+        mainUploadBtn.textContent = "Please wait...";
+
+        // Create Request
+        const formData = new FormData(uploadForm);
+        const xhr = new XMLHttpRequest();
+
+        // Get the specific values user selected in the modal
+        const visibilitySelect = document.getElementById('music-visibility');
+        const compressionSelect = document.getElementById('enable-compression');
+
+        // Add them to the data we are sending to Python
+        if (visibilitySelect) {
+            formData.append('visibility', visibilitySelect.value);
+        }
+        
+        if (compressionSelect) {
+            formData.append('compression', compressionSelect.value);
+        }
+
+        // Track Progress
+        xhr.upload.addEventListener('progress', (event) => {
+            if (event.lengthComputable) {
+                const percent = Math.round((event.loaded / event.total) * 100);
+                uploadProgressBar.style.width = percent + '%';
+                uploadPercentage.textContent = percent + '%';
+
+                if (percent >= 100) {
+                    uploadStatusText.textContent = "Compressing audio (this may take a moment)...";
+                    uploadStatusText.style.color = "#1db954";
+                    uploadProgressBar.style.width = '100%';
+                } else {
+                    uploadStatusText.textContent = "Uploading...";
+                }
+            }
+        });
+
+        // Handle Success/Error
+        xhr.addEventListener('load', () => {
+            if (xhr.status === 200 || xhr.status === 302 || xhr.responseURL.includes('/home')) {
+                window.location.href = "/home";
+            } else {
+                alert("Upload failed. Please try again.");
+                resetUploadUI();
+            }
+        });
+
+        xhr.addEventListener('error', () => {
+            alert("An error occurred during upload.");
+            resetUploadUI();
+        });
+
+        // Send
+        xhr.open('POST', '/upload-song');
+        xhr.send(formData);
+    });
+}
+
+function resetUploadUI() {
+    mainUploadBtn.disabled = false;
+    mainUploadBtn.textContent = "Upload";
+    uploadProgressContainer.style.display = 'none';
+    uploadProgressBar.style.width = '0%';
+}
+
+// Fetch Library (My Uploads)
+function fetchLibrary(forceRefresh = false) {
     const list = document.getElementById('trending-list');
-    const header = list.querySelector('.header-row');
 
-    list.innerHTML = '';
-    list.appendChild(header);
+    // 1. CHECK CACHE FIRST
+    const now = Date.now();
+    const isCacheValid = (now - appCache.libraryTime < CACHE_DURATION);
 
-    /* Show loading message while fetching */
-    list.insertAdjacentHTML('beforeend', '<div style="padding:20px; color:#b3b3b3;">Loading your songs...</div>');
+    if (!forceRefresh && appCache.library && isCacheValid) {
+        console.log("Using Cached Library Data");
+        renderSongList(appCache.library, list);
+        return;
+    }
 
+    // 2. NETWORK FETCH
     fetch('/api/library')
         .then(response => response.json())
         .then(songs => {
-            list.innerHTML = '';
-            list.appendChild(header);
+            if (currentActiveView !== 'library') return;
 
-            if (!songs || songs.length === 0) {
-                list.insertAdjacentHTML('beforeend', '<div style="padding:20px; color:#b3b3b3;">You haven\'t uploaded any songs yet.</div>');
-                return;
-            }
+            // SAVE TO CACHE
+            appCache.library = songs;
+            appCache.libraryTime = Date.now();
 
-            // Store playlist globally
-            currentPlaylist = songs.map(s => ({
-                title: s.name || s.title || s,
-                artist: s.artist || "Unknown Artist",
-                album: s.album || "Single",
-                cover: s.cover,
-                uploaded_by: s.uploaded_by || "You",
-                duration: s.duration,
-                url: `/api/play/${encodeURIComponent(s.name || s.title || s)}`
-            }));
-
-            shuffledPlaylist = [...Array(currentPlaylist.length).keys()];
-
-            currentPlaylist.forEach((song, index) => {
-                const duration = song.duration || "--:--";
-                const cover = song.cover || "https://via.placeholder.com/60";
-
-                const row = document.createElement('div');
-                row.className = 'song-row';
-                row.innerHTML = `
-                    <span>${index + 1}</span>
-                    <div class="song-info">
-                        <img src="${cover}" alt="cover">
-                        <div>
-                            <div class="song-title-row">${song.title}</div>
-                            <div style="font-size: 12px;">${song.artist}</div>
-                        </div>
-                    </div>
-                    <span>${song.album}</span>
-                    <span>${song.uploaded_by || "You"}</span>
-                    <span>${duration}</span>
-                `;
-
-                row.onclick = () => playSongAtIndex(index);
-                list.appendChild(row);
-            });
+            renderSongList(songs, list);
         })
-        .catch(error => {
-            console.error('Error fetching library:', error);
-            list.innerHTML = '';
-            list.appendChild(header);
-            list.insertAdjacentHTML('beforeend', '<div style="padding:20px; color:red;">Failed to load library.</div>');
-        });
+        .catch(error => console.error('Error fetching library:', error));
 }
 
-// 3. Fetch Current User
-function fetchCurrentUser() {
-    /* Get current logged-in user data from server */
+// Helper to update the UI (Pill + Profile Modal)
+function renderUserUI(data) {
+    const username = data.username || "User";
+    
+    // 1. Update Pill
+    const userPillName = document.querySelector('.user-pill span');
+    if (userPillName) userPillName.textContent = username;
+
+    const userAvatar = document.querySelector('.user-avatar');
+    if (userAvatar) {
+        if (data.avatar) {
+            userAvatar.textContent = "";
+            userAvatar.style.backgroundImage = `url('${data.avatar}')`;
+            userAvatar.style.backgroundSize = "cover";
+            userAvatar.style.backgroundPosition = "center";
+        } else {
+            userAvatar.style.background = 'linear-gradient(45deg, #1db954, #191414)';
+            userAvatar.textContent = username.charAt(0).toUpperCase();
+            userAvatar.style.backgroundImage = "none";
+        }
+    }
+
+    // 2. Update Profile Modal (Re-use your existing function)
+    displayUserProfile(data);
+}
+
+// Optimized Fetch Function
+function fetchCurrentUser(forceRefresh = false) {
+    // 1. CHECK CACHE
+    const now = Date.now();
+    const isCacheValid = (now - appCache.userTime < CACHE_DURATION);
+
+    if (!forceRefresh && appCache.user && isCacheValid) {
+        console.log("Using Cached User Data");
+        renderUserUI(appCache.user);
+        return;
+    }
+
+    // 2. NETWORK FETCH
+    console.log("Fetching current user from server...");
     fetch('/api/me')
         .then(response => response.json())
         .then(data => {
-            console.log(data)
-            const username = data.username || "User";
-            const userPillName = document.querySelector('.user-pill span');
-            displayUserProfile(data);
-            if (userPillName) userPillName.textContent = username;
-
-            const userAvatar = document.querySelector('.user-avatar');
-            if (userAvatar) {
-                if (data.avatar) {
-                    // It's a div, so set background image
-                    userAvatar.textContent = "";
-                    userAvatar.style.backgroundImage = `url('${data.avatar}')`;
-                    userAvatar.style.backgroundSize = "cover";
-                    userAvatar.style.backgroundPosition = "center";
-                } else {
-                    userAvatar.style.background = 'linear-gradient(45deg, #1db954, #191414)';
-                    userAvatar.textContent = username.charAt(0).toUpperCase();
-                    userAvatar.style.backgroundImage = "none";
-                }
-            }
+            // Update Cache
+            appCache.user = data;
+            appCache.userTime = Date.now();
+            
+            renderUserUI(data);
         })
         .catch(error => console.error('Error fetching user:', error));
 }
 
+function clearUserProfile() {
+    const profileUsernameEl = document.getElementById('profile-username-display');
+    const profileAvatarEl = document.getElementById('profile-avatar-display');
+    const profileEmailEl = document.getElementById('profile-email');
+    const songsCountEl = document.getElementById('profile-songs-count');
+    const likesCountEl = document.getElementById('profile-likes-count');
+    if (profileUsernameEl) {
+        profileUsernameEl.textContent = "Loading...";
+    }
+    if (profileAvatarEl) {
+        profileAvatarEl.style.backgroundImage = 'none';
+        profileAvatarEl.style.background = 'linear-gradient(45deg, #1db954, #191414)';
+        profileAvatarEl.textContent = 'L';
+    }
+    if (profileEmailEl) {
+        profileEmailEl.textContent = "Loading...";
+    }
+    if (songsCountEl) {
+        songsCountEl.textContent = "0";
+    }
+    if (likesCountEl) {
+        likesCountEl.textContent = "0";
+    }
+}
+
 function displayUserProfile(data) {
     const username = data.username || "User";
-    
-    
+
+
     // === UPDATE PROFILE MODAL ===
     const profileUsernameEl = document.getElementById('profile-username-display');
     if (profileUsernameEl) {
         profileUsernameEl.textContent = username;
     }
-    
+
     const profileAvatarEl = document.getElementById('profile-avatar-display');
     if (profileAvatarEl) {
         if (data.avatar) {
@@ -608,19 +789,19 @@ function displayUserProfile(data) {
             profileAvatarEl.textContent = username.charAt(0).toUpperCase();
         }
     }
-    
+
     // Update email
     const profileEmailEl = document.getElementById('profile-email');
     if (profileEmailEl && data.email) {
         profileEmailEl.textContent = data.email;
     }
-    
+
     // Update stats
     const songsCountEl = document.getElementById('profile-songs-count');
     if (songsCountEl) {
         songsCountEl.textContent = data.songs_count;
     }
-    
+
     const likesCountEl = document.getElementById('profile-likes-count');
     if (likesCountEl) {
         likesCountEl.textContent = data.likes_count;
@@ -628,185 +809,206 @@ function displayUserProfile(data) {
 }
 
 
-
 // 2. Fetch Trending Songs
-function fetchTrending() {
+function fetchTrending(forceRefresh = false) {
     const list = document.getElementById('trending-list');
+    
+    // 1. CHECK CACHE FIRST
+    const now = Date.now();
+    const isCacheValid = (now - appCache.trendingTime < CACHE_DURATION);
 
-    /* Fetch trending songs from the backend API */
+    if (!forceRefresh && appCache.trending && isCacheValid) {
+        console.log("Using Cached Trending Data");
+        // Pass the cached data directly to a render function
+        renderSongList(appCache.trending, list);
+        return;
+    }
+
+    // 2. NETWORK FETCH (Only if cache is empty or old)
     fetch('/api/trending')
         .then(response => response.json())
         .then(songs => {
-            // Keep the header, remove old items
-            const header = list.querySelector('.header-row');
-            list.innerHTML = '';
-            list.appendChild(header);
+            if (currentActiveView !== 'home') return; // Race condition check
 
-            // [NEW CODE] Store playlist globally
-            currentPlaylist = songs.map(s => ({
-                title: s.name || s.title || s,
-                artist: s.artist || "Unknown Artist",
-                album: s.album || "Single",
-                cover: s.cover, // might be null
-                uploaded_by: s.uploaded_by || "Unknown",
-                duration: s.duration,
-                url: `/api/play/${encodeURIComponent(s.name || s.title || s)}` // Construct URL upfront
-            }));
+            // SAVE TO CACHE
+            appCache.trending = songs;
+            appCache.trendingTime = Date.now();
 
-            // Generate valid indices for shuffle
-            shuffledPlaylist = [...Array(currentPlaylist.length).keys()];
+            renderSongList(songs, list);
+        })
+        .catch(error => console.error('Error fetching trending:', error));
+}
 
-            currentPlaylist.forEach((song, index) => {
-                const duration = song.duration || "--:--";
-                // Default to placeholder if backend cover is missing
-                const hasBackendCover = !!song.cover;
-                const cover = song.cover || "https://via.placeholder.com/60";
 
-                const row = document.createElement('div');
-                row.className = 'song-row';
-                row.innerHTML = `
-                            <span>${index + 1}</span>
-                            <div class="song-info">
-                                <img src="${cover}" alt="cover" id="trend-img-${index}">
-                                <div>
-                                    <div class="song-title-row">${song.title}</div>
-                                    <div style="font-size: 12px;">${song.artist}</div>
-                                </div>
-                            </div>
-                            <span>${song.album}</span>
-                            <span>${song.uploaded_by || "Unknown"}</span>
-                            <span>${duration}</span>
-                        `;
+function renderSongList(songs, listContainer) {
 
-                /* Distinguish between scrolling and clicking on touch devices */
-                let isScrolling = false;
-                let startX = 0;
-                let startY = 0;
+    const header = listContainer.querySelector('.header-row');
+    listContainer.innerHTML = '';
+    if(header) listContainer.appendChild(header);
 
-                row.addEventListener('touchstart', (e) => {
-                    isScrolling = false;
-                    startX = e.touches[0].clientX;
-                    startY = e.touches[0].clientY;
-                }, { passive: true });
+    // Update Global Playlist
+    currentPlaylist = songs.map(s => ({
+        title: s.name || s.title || s,
+        artist: s.artist || "Unknown Artist",
+        album: s.album || "Single",
+        cover: s.cover, 
+        uploaded_by: s.uploaded_by || "Unknown",
+        duration: s.duration,
+        url: `/api/play/${encodeURIComponent(s.name || s.title || s)}`
+    }));
 
-                row.addEventListener('touchmove', (e) => {
-                    const moveX = Math.abs(e.touches[0].clientX - startX);
-                    const moveY = Math.abs(e.touches[0].clientY - startY);
-                    if (moveY > 10 || moveX > 10) {
-                        isScrolling = true;
-                    }
-                }, { passive: true });
+    shuffledPlaylist = [...Array(currentPlaylist.length).keys()];
 
-                row.addEventListener('touchend', (e) => {
-                    if (!isScrolling) {
-                        if (e.cancelable) e.preventDefault();
-                        playSongAtIndex(index);
-                    }
-                });
+    currentPlaylist.forEach((song, index) => {
+        const duration = song.duration || "--:--";
+        const cover = song.cover || "https://via.placeholder.com/60";
 
-                row.addEventListener('click', (e) => {
-                    // Touchend prevents default, so this only runs if touch didn't happen (Desktop/Mouse)
+        const row = document.createElement('div');
+        row.className = 'song-row';
+        row.innerHTML = `
+            <span>${index + 1}</span>
+            <div class="song-info">
+                <img src="${cover}" alt="cover">
+                <div>
+                    <div class="song-title-row">${song.title}</div>
+                    <div style="font-size: 12px;">${song.artist}</div>
+                </div>
+            </div>
+            <span>${song.album}</span>
+            <span>${song.uploaded_by || "Unknown"}</span>
+            <span>${duration}</span>
+        `;
+        
+        row.onclick = () => playSongAtIndex(index);
+        {
+            let isScrolling = false;
+            let startX = 0;
+            let startY = 0;
+
+            row.addEventListener('touchstart', (e) => {
+                isScrolling = false;
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            }, { passive: true });
+
+            row.addEventListener('touchmove', (e) => {
+                const moveX = Math.abs(e.touches[0].clientX - startX);
+                const moveY = Math.abs(e.touches[0].clientY - startY);
+                if (moveY > 10 || moveX > 10) {
+                    isScrolling = true;
+                }
+            }, { passive: true });
+
+            row.addEventListener('touchend', (e) => {
+                if (!isScrolling) {
+                    if (e.cancelable) e.preventDefault();
                     playSongAtIndex(index);
-                });
-
-
-                // [NEW CODE] Hover effect to scroll long titles
-                row.addEventListener('mouseenter', () => {
-                    const titleEl = row.querySelector('.song-title-row');
-                    /* Check if title overflows and needs scrolling animation */
-                    if (titleEl.scrollWidth > titleEl.clientWidth) {
-                        // Calculate how much to scroll (difference + some padding)
-                        const difference = titleEl.scrollWidth - titleEl.clientWidth;
-                        titleEl.style.setProperty('--scroll-amount', `-${difference + 10}px`);
-                        titleEl.classList.add('scrolling');
-                    }
-                });
-                row.addEventListener('mouseleave', () => {
-                    const titleEl = row.querySelector('.song-title-row');
-                    titleEl.classList.remove('scrolling');
-                    titleEl.style.removeProperty('--scroll-amount');
-                });
-
-                list.appendChild(row);
-
-                // [NEW CODE] If no backend cover, try to fetch from web
-                if (!hasBackendCover) {
-                    /* Try to fetch album artwork from iTunes API */
-                    fetchWebCover(song.artist, song.title).then(newUrl => {
-                        if (newUrl) {
-                            const img = document.getElementById(`trend-img-${index}`);
-                            if (img) img.src = newUrl;
-                            // Update playlist data too so player uses it
-                            currentPlaylist[index].cover = newUrl;
-                        }
-                    });
                 }
             });
-        })
-        .catch(error => console.error('Error fetching trending songs:', error));
+
+            row.addEventListener('click', (e) => {
+                // Touchend prevents default, so this only runs if touch didn't happen (Desktop/Mouse)
+                playSongAtIndex(index);
+            });
+
+
+            // [NEW CODE] Hover effect to scroll long titles
+            row.addEventListener('mouseenter', () => {
+                const titleEl = row.querySelector('.song-title-row');
+                /* Check if title overflows and needs scrolling animation */
+                if (titleEl.scrollWidth > titleEl.clientWidth) {
+                    // Calculate how much to scroll (difference + some padding)
+                    const difference = titleEl.scrollWidth - titleEl.clientWidth;
+                    titleEl.style.setProperty('--scroll-amount', `-${difference + 10}px`);
+                    titleEl.classList.add('scrolling');
+                }
+            });
+            row.addEventListener('mouseleave', () => {
+                const titleEl = row.querySelector('.song-title-row');
+                titleEl.classList.remove('scrolling');
+                titleEl.style.removeProperty('--scroll-amount');
+            });       
+        }
+
+        listContainer.appendChild(row);
+    });
 }
+
 
 /* --- PLAYER CONTROLLER --- */
 
-// [NEW] Fetch People Directory
-function fetchPeople() {
+// Helper to render the grid
+function renderPeopleGrid(users) {
     const grid = document.getElementById('people-grid');
-    /* Show loading state while fetching users */
+    grid.innerHTML = '';
+
+    if (!users || users.length === 0) {
+        grid.innerHTML = '<p style="color:#b3b3b3; padding: 20px;">No users found.</p>';
+        return;
+    }
+
+    users.forEach(user => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        
+        // Avatar Logic
+        let avatarHtml = '';
+        if (user.avatar) {
+            avatarHtml = `<div style="width: 120px; height: 120px; border-radius: 50%; background: url('${user.avatar}') center/cover; margin: 0 auto 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"></div>`;
+        } else {
+            const initial = user.username ? user.username.charAt(0).toUpperCase() : '?';
+            avatarHtml = `<div style="width: 120px; height: 120px; background: linear-gradient(45deg, #1db954, #191414); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: bold; margin: 0 auto 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">${initial}</div>`;
+        }
+
+        const role = (user.username === "lwitchy") ? "Streamify Admin" : "Streamify User";
+
+        card.innerHTML = `
+            ${avatarHtml}
+            <div class="card-title" style="text-align: center; font-size: 1.1em;">${user.username}</div>
+            <div class="card-desc" style="text-align: center;">${role}</div>
+        `;
+
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => {
+            displayUserProfile(user); // Reuse existing modal logic
+            const profileModal = document.getElementById('profile-modal');
+            if (profileModal) profileModal.classList.remove('hidden');
+        });
+
+        grid.appendChild(card);
+    });
+}
+
+// Optimized Fetch Function
+function fetchPeople(forceRefresh = false) {
+    const grid = document.getElementById('people-grid');
+
+    // 1. CHECK CACHE
+    const now = Date.now();
+    const isCacheValid = (now - appCache.peopleTime < CACHE_DURATION);
+
+    if (!forceRefresh && appCache.people && isCacheValid) {
+        console.log("Using Cached People Data");
+        renderPeopleGrid(appCache.people);
+        // Ensure section is visible handled by navigation click, but grid must be ready
+        return;
+    }
+
+    // 2. NETWORK FETCH
+    // Show loading only if we are actually fetching
     grid.innerHTML = '<p style="color:#b3b3b3; padding: 20px;">Loading...</p>';
 
     fetch('/api/users')
         .then(response => response.json())
         .then(users => {
-            grid.innerHTML = '';
-            if (!users || users.length === 0) {
-                grid.innerHTML = '<p style="color:#b3b3b3; padding: 20px;">No users found.</p>';
-                return;
-            }
+            // Race condition check (optional but good practice)
+            // if (currentActiveView !== 'people') return; 
 
-            users.forEach(user => {
-                const card = document.createElement('div');
-                card.className = 'card';
-                // Avatar handling
-                let avatarHtml = '';
-                if (user.avatar) {
-                    avatarHtml = `
-                        <div style="width: 120px; height: 120px; border-radius: 50%; background: url('${user.avatar}') center/cover; margin: 0 auto 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"></div>
-                    `;
-                } else {
-                    const initial = user.username ? user.username.charAt(0).toUpperCase() : '?';
-                    avatarHtml = `
-                        <div style="width: 120px; height: 120px; background: linear-gradient(45deg, #1db954, #191414); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: bold; margin: 0 auto 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
-                            ${initial}
-                        </div>
-                     `;
-                }
+            // Update Cache
+            appCache.people = users;
+            appCache.peopleTime = Date.now();
 
-                if (user.username === "lwitchy") {
-                    card.innerHTML = `
-                        ${avatarHtml}
-                        <div class="card-title" style="text-align: center; font-size: 1.1em;">${user.username}</div>
-                        <div class="card-desc" style="text-align: center;">Streamify Admin</div>
-                    `;
-                } else {
-                    card.innerHTML = `
-                        ${avatarHtml}
-                        <div class="card-title" style="text-align: center; font-size: 1.1em;">${user.username}</div>
-                        <div class="card-desc" style="text-align: center;">Streamify User</div>
-                    `;
-                }
-                
-                /* Make card clickable to open user profile modal */
-                card.style.cursor = 'pointer';
-                card.addEventListener('click', () => {
-                    displayUserProfile(user);
-                    const profileModal = document.getElementById('profile-modal');
-                    if(profileModal){
-                        profileModal.classList.remove('hidden');
-                    }
-                });
-                
-                grid.appendChild(card);
-            });
+            renderPeopleGrid(users);
         })
         .catch(error => {
             console.error('Error fetching people:', error);
@@ -1260,16 +1462,14 @@ function triggerHeartConfetti(element) {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
-    /* Create 30 floating heart particles */
     for (let i = 0; i < 30; i++) {
         const heart = document.createElement('div');
         heart.className = 'particle';
         heart.innerHTML = "<i class='bx bxs-heart'></i>";
-        heart.style.color = `hsl(${330 + Math.random() * 20}, 100%, 70%)`; // Pink variations
+        heart.style.color = `hsl(${330 + Math.random() * 20}, 100%, 70%)`; 
 
         document.body.appendChild(heart);
 
-        /* Random spread values for particle animation */
         const tx = (Math.random() - 0.5) * 200 + 'px';
         const rot = (Math.random() - 0.5) * 360 + 'deg';
 
@@ -1279,7 +1479,7 @@ function triggerHeartConfetti(element) {
         heart.style.left = `${centerX}px`;
         heart.style.top = `${centerY}px`;
 
-        /* Remove particle after animation completes */
+
         setTimeout(() => {
             heart.remove();
         }, 1500);

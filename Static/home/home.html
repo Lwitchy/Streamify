@@ -7,7 +7,6 @@
     <title>Streamify | Home</title>
     <link rel="stylesheet" href="Static/home/css/home.css">
     <link rel="stylesheet" href="Static/home/css/home_mobile.css" media="(max-width: 768px)">
-    <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#121212">
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 </head>
@@ -16,8 +15,19 @@
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
-        <div class="logo gradient-text">
-            Streamify
+        <div class="logo-container">
+            <div class="logo-icon">
+                <svg width="28" height="28" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="6" y="12" width="3" height="12" rx="1.5" fill="#6366f1" />
+                    <rect x="12" y="8" width="3" height="20" rx="1.5" fill="#8b5cf6" />
+                    <rect x="18" y="4" width="3" height="28" rx="1.5" fill="#a855f7" />
+                    <rect x="24" y="10" width="3" height="16" rx="1.5" fill="#ec4899" />
+                </svg>
+            </div>
+
+            <div class="logo-text gradient-text">
+                Streamify
+            </div>
         </div>
         <nav class="sidebar-nav">
             <ul>
@@ -29,7 +39,6 @@
                         <span>Your Library</span>
                     </a>
                 </li>
-                <!-- [NEW] People Directory -->
                 <li>
                     <a href="#" id="people-link">
                         <i class='bx bx-group'></i>
@@ -62,18 +71,24 @@
                 <i class='bx bx-search'></i>
                 <input type="search" id="gsearch" name="gsearch" placeholder="Search Anything on Streamify!">
             </div>
+
             <!-- User Profile & Dropdown Wrapper -->
             <div class="user-wrapper" style="position: relative; display: flex; align-items: center;">
+
+                <div class="notif-pill">
+                    <div class="icon-wrapper">
+                        <i class='bx bx-bell'></i>
+                    </div>
+                </div>
+
                 <div class="user-pill">
                     <div class="user-avatar">U</div>
-                    <span>User</span>
+                    <span>Loading...</span>
                     <i class='bx bx-caret-down'></i>
                 </div>
 
                 <!-- Dropdown Menu (Sibling now, unaffected by pill transform) -->
                 <div class="user-menu" id="user-menu">
-
-
                     <a href="#" class="profile-btn" id="open-profile-btn">
                         <i class='bx bx-user'></i> Profile
                     </a>
@@ -86,6 +101,13 @@
                         <i class='bx bx-log-out'></i> Log out
                     </a>
                 </div>
+
+                <div class="notification-menu" id="notification-menu">
+                    <h4>Notifications</h4>
+                    <p style="color:#b3b3b3; padding:10px;">No new notifications.</p>
+                </div>
+
+
             </div>
         </header>
 
@@ -139,6 +161,8 @@
                         <span>Album</span>
                         <span>Uploaded By</span>
                         <span><i class='bx bx-time'></i></span>
+                        <!-- Delete button -->
+                        
                     </div>
                     <!-- Loaded via API -->
                 </div>
@@ -148,18 +172,32 @@
             <!-- Upload Section -->
             <section class="upload-section hidden" id="upload-section">
                 <h2>Upload Music</h2>
-                <p style="color: #b3b3b3; margin-bottom: 16px;">Share your talent with the world.</p>
+                <p style="color: #b3b3b3; margin-bottom: 16px;">Upload your Songs to the Streamify!</p>
+                
                 <form id="upload-form" action="/upload-song" method="POST" enctype="multipart/form-data">
                     <button type="button" class="btn btn-outline"
                         onclick="document.getElementById('song_file').click()">
                         Choose File
                     </button>
+                    
                     <input type="file" id="song_file" name="song_file" accept="audio/*" style="display: none;"
                         onchange="handleFileUpload(this)" required>
-                    <button type="submit" class="btn">Upload</button>
-                    <br>
-                    <br>
-                    <span id="file-name" style="color: #fff;"> </span>
+                        
+                    <button type="submit" class="btn" id="upload-submit-btn">Upload</button>
+                    
+                    <br><br>
+                    <span id="file-name" style="color: #fff; font-style: italic;"></span>
+
+                    <div id="upload-progress-container" style="display: none; margin-top: 20px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; color: #ccc;">
+                            <span id="upload-status-text">Uploading...</span>
+                            <span id="upload-percentage">0%</span>
+                        </div>
+                        
+                        <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
+                            <div id="upload-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--gradient-1), var(--gradient-2)); transition: width 0.2s;"></div>
+                        </div>
+                    </div>
 
                 </form>
             </section>
@@ -211,8 +249,10 @@
             </div>
 
             <div class="profile-content">
-                <div class="user-avatar" id="profile-avatar-display" style="width: 120px; height: 120px; font-size: 48px; margin: 0 auto 20px;">U</div>
-                <span id="profile-username-display" style="font-size: 1.5rem; font-weight: bold; display: block; margin-bottom: 10px;">User</span>
+                <div class="user-avatar" id="profile-avatar-display"
+                    style="width: 120px; height: 120px; font-size: 48px; margin: 0 auto 20px;">U</div>
+                <span id="profile-username-display"
+                    style="font-size: 1.5rem; font-weight: bold; display: block; margin-bottom: 10px;">User</span>
                 <p id="profile-email" style="color: #b3b3b3; margin-bottom: 20px;"></p>
                 <div class="profile-stats">
                     <div>
@@ -221,7 +261,7 @@
                     </div>
                     <div>
                         <strong id="profile-likes-count">0</strong>
-                        <span>Total Likes</span> 
+                        <span>Total Likes</span>
                     </div>
                 </div>
             </div>
@@ -260,18 +300,51 @@
         </div>
     </div>
 
+    <!-- UPLOAD CONFIRMATION MODAL -->
+    <div id="upload-confirmation-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="width: 400px; text-align: center;">
+            <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
+                <h3>Confirm Upload</h3>
+            </div>
+
+            <div style="padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <i class='bx bx-music' style="font-size: 48px; color: var(--accent); margin-bottom: 10px;"></i>
+                <h4 id="confirm-filename" style="margin-bottom: 5px; word-break: break-all;">song.mp3</h4>
+                <p id="confirm-filesize" style="color: #b3b3b3; font-size: 13px;">0 MB</p>
+            </div>
+
+            <p style="color: #ccc; font-size: 14px; margin-bottom: 25px;">
+                Are you sure you want to upload this track to Streamify?
+            </p>
+
+            <!-- Change music visibility -->
+            <div class="input-group" style="text-align: left; margin-bottom: 20px;">
+                <label for="music-visibility">Music Visibility:</label>
+                <select id="music-visibility" style="width: 100%; padding: 8px; border-radius: 6px; background: #1e1e1e; color: #fff; border: 1px solid #333;">
+                    <option value="public" selected>Public (Visible to everyone)</option>
+                    <option value="private">Private (Only you can see it)</option>
+                </select>
+            </div>
+
+            <!-- Enable Compression -->
+            <div class="input-group" style="text-align: left; margin-bottom: 20px;">
+                <label for="enable-compression">Enable Compression:</label>
+                <select id="enable-compression" style="width: 100%; padding: 8px; border-radius: 6px; background: #1e1e1e; color: #fff; border: 1px solid #333;">
+                    <option value="true" selected>Yes (Your song will be compressed for faster streaming & save on storage)</option>
+                    <option value="false">No (Your song will be uploaded as-is)</option>
+                </select>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="modal-actions" style="justify-content: center;">
+                <button type="button" class="btn btn-outline" id="cancel-upload-btn">Cancel</button>
+                <button type="button" class="btn" id="confirm-upload-btn">Yes, Upload</button>
+            </div>
+        </div>
+    </div>
 
     <script src="Static/home/js/home-api.js"></script>
-    <script>
-        // Register Service Worker
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('SW registered!', reg))
-                    .catch(err => console.log('SW registration failed:', err));
-            });
-        }
-    </script>
+
 </body>
 
 </html>

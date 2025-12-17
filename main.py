@@ -16,7 +16,7 @@ load_dotenv()
 # Project Imports
 from Security import HandleSafeLogin
 from Security.SessionManager import session_manager
-from Security.RateLimiter import login_limiter
+from Security.RateLimiter import login_limiter, api_limiter
 from Logic import HandleDatabase, Media
 from save_song import save_song
 
@@ -31,6 +31,10 @@ from cryptography.hazmat.primitives import serialization
 # Password Protection
 import bcrypt
 import string
+
+# Image Compression
+from PIL import Image
+import io
 
 
 # Logging Setup
@@ -93,6 +97,8 @@ def ensure_ssl_certificates(cert_path="SSL/cert.pem", key_path="SSL/key.pem"):
 
 
 class HTTPSServer(http.server.SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    
     def get_database(self):
         return HandleDatabase.HandleDatabase()
 
@@ -150,7 +156,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         
 
         self.path = os.path.normpath(self.path).replace('\\', '/')
-        
+
         # ---------------------------------------------------------
         # Authorization Check
         # ---------------------------------------------------------
@@ -184,6 +190,13 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 self.send_response(302)
                 self.send_header("Location", "/login")
                 self.end_headers()
+                return
+
+        if self.path.startswith("/api/"):
+            ip = self.client_address[0]
+            if not api_limiter.is_allowed(ip):
+                print(f"[SECURITY] Rate limit exceeded for IP: {ip}")
+                self.send_error_msg("Too Many Requests. Slow down!", 429)
                 return
 
         # ---------------------------------------------------------
@@ -274,24 +287,48 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
             
             self.serve_file_range(file_path)
 
+        # Serving Music Files
+        elif self.path.startswith("/MusicLibrary/"):
+            requested = urllib.parse.unquote(self.path.lstrip('/'))
+            file_path = os.path.abspath(requested)
+
+            allowed_base = os.path.abspath("MusicLibrary")
+
+            try:
+                if os.path.commonpath([allowed_base, file_path]) != allowed_base:
+                    self.send_error_msg("Forbidden", 403)
+                    return
+            except:
+                self.send_error_msg("Forbidden", 403)
+                return
+
+            if not os.path.isfile(file_path):
+                self.send_error_msg("File not found.", 404)
+                return
+
+            return self.serve_file_range(file_path)
+
         # --- API: Current User ---
         elif self.path == "/api/me":
-            avatar_url = Media.resolve_cover(current_user) 
-            avatar_url = None
-            for ext in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
-                cand = f"Static/avatars/{current_user}{ext}"
-                if os.path.exists(cand):
-                    avatar_url = "/" + cand
-                    break
-            
-            response_data = {
-                "username": current_user,
-                "avatar": avatar_url,
-                "email": "nothing",  # Email can be added if needed
-                "songs_count": 1,
-                "likes_count": 1
-            }
-            self.send_json(response_data)
+            with HandleDatabase.HandleDatabase() as db:
+                avatar_url = Media.resolve_cover(current_user) 
+                user = db.getUser(current_user)
+                avatar_url = None
+                for ext in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
+                    cand = f"Static/avatars/{current_user}{ext}"
+                    if os.path.exists(cand):
+                        avatar_url = "/" + cand
+                        break
+                
+                response_data = {
+                    "username": current_user,
+                    "avatar": avatar_url,
+                    "email": "nothing",  # Email can be added if needed
+                    "songs_count": user[10] if user else 0,
+                    "likes_count": user[12] if user else 0
+                }
+
+                self.send_json(response_data)
 
         # --- API: Users List ---
         elif self.path == "/api/users":
@@ -300,6 +337,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 user_list = []
                 for u in users:
                     # u: (id, username)
+                    
                     uname = u[1]
                     avatar_url = None
                     for ext in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
@@ -312,9 +350,9 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                         "id": u[0], 
                         "username": uname, 
                         "avatar": avatar_url,
-                        "email": "nothing",  # Email can be added if needed
-                        "songs_count": 1,
-                        "likes_count": 1
+                        "email": "nothing", # can be replaced with is_admin in future for admin panel
+                        "songs_count": u[2],
+                        "likes_count": u[3]
                     })
                 self.send_json(user_list)
 
@@ -350,16 +388,17 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 all_songs = db.getAllSongs()
                 matching_songs = []
                 for song in all_songs:
-                    if len(song) >= 9:
-                        song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by = song[:9]
-                    else:
-                        song_id, name, artist, album, genre, duration, file_path, timestamp = song[:8]
-                        uploaded_by = "Unknown"
+                    if len(song) >= 10:
+                        song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by, visibility = song[:10]
+
 
                     if (query_str in name.lower()) or (query_str in artist.lower()) or (query_str in album.lower()):
                         base_name = os.path.basename(file_path).rsplit('.', 1)[0]
                         cover_url = Media.resolve_cover(base_name)
-                        
+
+                        if(visibility == "private" and uploaded_by != current_user):
+                            continue
+
                         matching_songs.append({
                             "id": song_id,
                             "name": name,
@@ -368,7 +407,10 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                             "duration": Media.format_duration(duration),
                             "cover": cover_url,
                             "uploaded_by": uploaded_by
-                        })
+                        })                        
+
+ 
+
                 
                 self.send_json({"users": matching_users, "songs": matching_songs})
 
@@ -378,11 +420,9 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 allSongs = db.getAllSongs()
                 library_list = []
                 for song in allSongs:
-                    if len(song) >= 9:
-                        song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by = song[:9]
-                    else:
-                        song_id, name, artist, album, genre, duration, file_path, timestamp = song[:8]
-                        uploaded_by = "Unknown"
+                    if len(song) >= 10:
+                        song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by, visibility = song[:10]
+
 
                     if uploaded_by == current_user:
                         base_name = os.path.basename(file_path).rsplit('.', 1)[0]
@@ -395,6 +435,8 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                             "cover": Media.resolve_cover(base_name),
                             "uploaded_by": uploaded_by
                         })
+                        print("LIBRARY COVER CHECK:", base_name, Media.resolve_cover(base_name))
+
                 self.send_json(library_list)
 
         # --- API: Trending ---
@@ -402,23 +444,24 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
             with HandleDatabase.HandleDatabase() as db:
                 allSongs = db.getAllSongs()
                 trending_list = []
+
                 for song in allSongs:
-                    if len(song) >= 9:
-                        song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by = song[:9]
-                    else:
-                        song_id, name, artist, album, genre, duration, file_path, timestamp = song[:8]
-                        uploaded_by = "Unknown"
+                    if len(song) >= 10:
+                         song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by, visibility = song[:10]
                     
-                    base_name = os.path.basename(file_path).rsplit('.', 1)[0]
-                    trending_list.append({
-                        "id": song_id,
-                        "name": name,
-                        "artist": artist,
-                        "album": album,
-                        "duration": Media.format_duration(duration),
-                        "cover": Media.resolve_cover(base_name),
-                        "uploaded_by": uploaded_by
-                    })
+
+                    if(visibility != "private"):
+                        base_name = os.path.basename(file_path).rsplit('.', 1)[0]
+                        trending_list.append({
+                            "id": song_id,
+                            "name": name,
+                            "artist": artist,
+                            "album": album,
+                            "duration": Media.format_duration(duration),
+                            "cover": Media.resolve_cover(base_name),
+                            "uploaded_by": uploaded_by
+                        })
+
                 self.send_json(trending_list)
 
         # --- Logout ---
@@ -453,26 +496,32 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 song_data = db.getSong(song_name)
                 
                 if song_data:
-                    if len(song_data) >= 9:
-                        song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by = song_data[:9]
-                    else:
-                        song_id, name, artist, album, genre, duration, file_path, timestamp = song_data[:8]
-                        uploaded_by = "Unknown"
+                    if len(song_data) >= 10:
+                        song_id, name, artist, album, genre, duration, file_path, timestamp, uploaded_by, visibility = song_data[:10]
 
                     # Security Check: file_path should be in Database/Dev/Music
                     abs_path = os.path.abspath(file_path)
-                    allowed_base = os.path.abspath("Database")
+                    allowed_base = os.path.abspath("MusicLibrary")
+                    print(abs_path, allowed_base)
                     try:
                         if os.path.commonpath([allowed_base, abs_path]) != allowed_base:
                             print(f"[SECURITY] Blocked playback of song outside DB: {abs_path}")
                             self.send_error_msg("Access Denied", 403)
                             return
-                    except ValueError:
+                    except:
                          self.send_error_msg("Access Denied", 403)
                          return
+                    
+                    # Check if Song is Private and playing by owner
+                    if visibility == "private" and uploaded_by != current_user:
+                        print(f"[SECURITY] Blocked playback of private song by non-owner: {name} by {current_user}")
+                        self.send_error_msg("Access Denied", 403)
+                        return
 
                     # Normalize for URL
                     normalized_path = file_path.replace("\\", "/")
+
+                    print("Normalized path: ",normalized_path)
                     if not normalized_path.startswith('/'):
                         normalized_path = '/' + normalized_path
                     
@@ -487,31 +536,10 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                         "url": normalized_path, 
                         "cover": Media.resolve_cover(base_name)
                     }
+                    print("Serving song data: ", song)
                     self.send_json(song)
                 else:
                     self.send_error_msg("Song not found.", 404)
-
-        # --- PWA Files ---
-        elif self.path == "/manifest.json":
-            self.serve_file_range("Static/pwa/manifest.json")
-        
-        elif self.path == "/sw.js":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/javascript")
-            self.end_headers()
-            with open("Static/pwa/sw.js", 'rb') as f:
-                self.wfile.write(f.read())
-
-        
-        else:
-            # 404
-            if self.path.startswith("/api"):
-                 self.send_error_msg("Not Found", 404)
-            else:
-                self.send_response(404)
-                self.send_header("Content-Type", "text/html")
-                self.end_headers()
-                self.wfile.write(b"<h1>404 Not Found</h1>")
 
     def serve_file_range(self, file_path):
         file_size = os.path.getsize(file_path)
@@ -660,20 +688,46 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         uploaded_file = None
         file_name = None
 
+        visibility = "private"  # Default
+        should_compress = True  # Default
+
+
+        # Loop through ALL parts of the form data
         for part in msg.iter_parts():
             disposition = part.get("Content-Disposition", "")
+            
+            # 1. Check for the File
             if "form-data" in disposition and 'name="song_file"' in disposition:
                 uploaded_file = part.get_payload(decode=True)
                 file_name = part.get_filename()
+            
+            # 2. Check for Visibility Setting
+            elif 'name="visibility"' in disposition:
+                # Read bytes, decode to string, strip whitespace
+                val = part.get_payload(decode=True).decode('utf-8').strip()
+                if val: visibility = val
+
+            # 3. Check for Compression Setting
+            elif 'name="compression"' in disposition:
+                val = part.get_payload(decode=True).decode('utf-8').strip()
+                # Frontend sends "true" or "false" string
+                should_compress = (val.lower() == 'true')
+
+                
+        print(f"[UPLOAD] Visibility: {visibility}, Compress: {should_compress}")
 
         if not uploaded_file or not file_name:
             self.send_error_msg("No valid file uploaded.")
             return
+        
+        print("10%")
 
         mp3_full_path = f"MusicLibrary/{file_name}"
         if os.path.exists(mp3_full_path):
              self.send_error_msg("Song already exists.")
              return
+
+        print("20%")
 
         with open(mp3_full_path, "wb") as f:
             f.write(uploaded_file)
@@ -682,9 +736,14 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
             try: os.makedirs("Static/covers")
             except: pass
 
+        print("50%")
+
         current_username = self.get_current_user() or "Unknown User"
 
-        saved_song_path = save_song(mp3_full_path, uploaded_by=current_username)
+        print(f"[UPLOAD] User '{current_username}' uploaded file '{file_name}'")
+        print("Now saving song...")
+
+        saved_song_path = save_song(mp3_full_path, uploaded_by=current_username, compress=should_compress, visibility=visibility)        
         
         try:
             if os.path.exists(mp3_full_path): os.remove(mp3_full_path)
@@ -698,6 +757,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         try:
             final_base = os.path.basename(saved_song_path).rsplit('.', 1)[0]
             cover_output_base = f"Static/covers/{final_base}"
+            print("Extracting cover to:", cover_output_base)
             Media.extract_cover_art(saved_song_path, cover_output_base)
         except Exception as e:
             print(f"Error extracting cover: {e}")
@@ -729,7 +789,8 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
              self.redirect("/login?reg_failed=true&reason=weak_password")
              return
         
-        if not any(c in password_specials for c in password):
+        # Basic Password Complexity Checks, Disabled for now
+        """if not any(c in password_specials for c in password):
             self.redirect("/login?reg_failed=true&reason=no_special_char")
             return
         
@@ -743,7 +804,7 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         
         if not any(c.isdigit() for c in password):
             self.redirect("/login?reg_failed=true&reason=no_digit")
-            return
+            return"""
 
         if any(c.isspace() for c in password):
             self.redirect("/login?reg_failed=true&reason=contains_whitespace")
@@ -814,6 +875,14 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
         if not uploaded_file:
              self.send_error_msg("No file.")
              return
+        
+        if len(uploaded_file) > 2 * 2048 * 2048:
+            self.send_error_msg("Uploaded file too large. Max 2MB.")
+            return
+        
+        if uploaded_file[0:2] != b'\xff\xd8' and uploaded_file[0:8] != b'\x89PNG\r\n\x1a\n':
+            self.send_error_msg("Unsupported file type. Only JPG and PNG allowed.")
+            return
 
         if not os.path.exists("Static/avatars"):
             try: os.makedirs("Static/avatars")
@@ -825,14 +894,17 @@ class HTTPSServer(http.server.SimpleHTTPRequestHandler):
                 if os.path.exists(p): os.remove(p)
             except: pass
 
-        save_path = f"Static/avatars/{current_user}{file_ext}"
         try:
-            with open(save_path, "wb") as f:
-                f.write(uploaded_file)
+            image = Image.open(io.BytesIO(uploaded_file))
+            
+            image.thumbnail((512, 512)) # 512x512 best I believe for avatars, not blurry not too large
+            save_path = f"Static/avatars/{current_user}.webp"
+            image.save(save_path, format="WEBP", optimize=True, quality=80)
             self.redirect("/home")
+
         except Exception as e:
-            print(f"Error saving avatar: {e}")
-            self.send_error_msg("Internal Server Error", 500)
+            print(f"Error processing avatar upload: {e}")
+            self.send_error_msg("Failed to process image.")
 
     def redirect(self, location):
         self.send_response(302)

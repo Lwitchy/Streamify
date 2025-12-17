@@ -9,14 +9,13 @@ A modern, secure music streaming application built with Python. Streamify provid
 - **Search & Discovery**: Search for music and discover trending tracks
 - **User Profiles**: Custom avatars and user information
 - **Streaming**: HTTP Range request support for smooth music playback
-- **PWA Support**: Progressive Web App manifest and service worker for offline access
 - **HTTPS**: Secure SSL/TLS encrypted connections
 - **Rate Limiting**: Protection against brute force login attacks
 - **Responsive Design**: Mobile-friendly user interface
 
 ##  Requirements
 
-- Python 3.8+
+- Python 3.14+
 - SSL certificates (cert.pem and key.pem)
 
 ##  Installation
@@ -27,31 +26,11 @@ git clone https://github.com/yourusername/Streamify.git
 cd Streamify
 ```
 
-### 2. Set Up Python Environment
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-```
-
-### 3. Install Dependencies
+### 2. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Generate SSL Certificates (Development)
-```bash
-# Create SSL directory if it doesn't exist
-mkdir SSL
-
-# Generate self-signed certificate (valid for 365 days)
-openssl req -x509 -newkey rsa:4096 -nodes -out SSL/cert.pem -keyout SSL/key.pem -days 365
-```
 
 For production, use proper certificates from a Certificate Authority (Let's Encrypt, etc.).
 
@@ -97,7 +76,6 @@ Streamify/
 ├── Static/                # Frontend Assets
 │   ├── loginpage/         # Login interface
 │   ├── home/              # Main application UI
-│   ├── pwa/               # Progressive Web App files
 │   ├── avatars/           # User avatars
 │   └── covers/            # Album covers
 │
@@ -133,11 +111,6 @@ Streamify/
 ### User Profile
 - `POST /api/upload-avatar` - Upload user avatar
 
-### Web
-- `GET /manifest.json` - PWA manifest
-- `GET /sw.js` - Service worker
-
-
 ## ⚠️ Security Considerations
 ### Important Security Notes
 
@@ -151,20 +124,6 @@ This application includes several security features but is designed for self-hos
 6. **Rate Limiting**: Adjust rate limits based on your needs
 7. **Logging & Monitoring**: Enable comprehensive logging for security events
 8. **Regular Updates**: Keep Python and dependencies updated
-
-See `SECURITY.md` for detailed security recommendations.
-
-##  Testing
-
-Run the test suite:
-```bash
-python -m pytest test_backend.py -v
-```
-
-Or test the backend directly:
-```bash
-python test_backend.py
-```
 
 
 ##  Configuration

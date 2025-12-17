@@ -11,8 +11,7 @@ def resolve_cover(song_base_name):
     Checks for existing cover art for a given song base name.
     Returns relative web path (e.g. '/Static/covers/song.jpg') or None.
     """
-    # Common extensions to check
-    # Note: We assume the server is running from the root where Static/ is located.
+
     base_path = "Static/covers/"
     if not os.path.exists(base_path):
         return None

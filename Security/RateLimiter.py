@@ -11,10 +11,6 @@ class RateLimiter:
         self._lock = threading.Lock()
 
     def _get_client_identifier(self, ip):
-        """
-        Normalize IP address. 
-        Collapses IPv6 addresses to their /64 subnet to prevent rotation attacks.
-        """
         try:
             addr = ipaddress.ip_address(ip)
             if isinstance(addr, ipaddress.IPv6Address):
@@ -26,11 +22,9 @@ class RateLimiter:
         return ip
 
     def is_blocked(self, ip):
-        """Checks if the IP is currently blocked."""
         key = self._get_client_identifier(ip)
         now = time.time()
         with self._lock:
-            # Filter out old attempts
             self._attempts[key] = [t for t in self._attempts[key] if now - t < self.window_seconds]
             
             if len(self._attempts[key]) >= self.max_attempts:
@@ -38,20 +32,16 @@ class RateLimiter:
         return False
 
     def add_attempt(self, ip):
-        """Records a failed attempt. Returns True if now blocked."""
         key = self._get_client_identifier(ip)
         now = time.time()
         with self._lock:
-            # Clean first
             self._attempts[key] = [t for t in self._attempts[key] if now - t < self.window_seconds]
             
-            # Add new failure
             self._attempts[key].append(now)
             
             return len(self._attempts[key]) >= self.max_attempts
 
     def reset(self, ip):
-        """Resets the counter for an IP (e.g. on successful login)."""
         key = self._get_client_identifier(ip)
         with self._lock:
             if key in self._attempts:
@@ -64,5 +54,26 @@ class RateLimiter:
              self._attempts[key] = [t for t in self._attempts[key] if now - t < self.window_seconds]
              return len(self._attempts[key])
 
-# Global Instance
-login_limiter = RateLimiter(max_attempts=5, window_seconds=300) # 5 attempts in 5 minutes
+
+class ApiRateLimiter:
+    def __init__(self, limit=100, window=60):
+        self.limit = limit          
+        self.window = window        
+        self.clients = defaultdict(list)
+
+    def is_allowed(self, ip):
+        current_time = time.time()
+        request_times = self.clients[ip]
+        
+
+        request_times = [t for t in request_times if current_time - t < self.window]
+        self.clients[ip] = request_times
+        
+        if len(request_times) >= self.limit:
+            return False 
+
+        self.clients[ip].append(current_time)
+        return True
+
+api_limiter = ApiRateLimiter(limit=60, window=60)
+login_limiter = RateLimiter(max_attempts=5, window_seconds=300)

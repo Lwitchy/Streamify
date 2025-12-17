@@ -18,6 +18,7 @@ safety==2.3.5              # Dependency vulnerability checker
 dotenv
 cryptography
 bcrypt
+pillow
 # Note: The core application uses these Python built-in modules:
 # - http.server (HTTP server framework)
 # - ssl (HTTPS/SSL support)
