@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streamify - Maintenance</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@900&family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #000;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.65);
+            --accent: #1db954;
+            --gradient-1: #4169e1;
+            --gradient-2: #8164d7;
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(30, 30, 35, 0.9), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(20, 20, 25, 0.9), transparent 25%);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            text-align: center;
+        }
+
+        .maintenance-card {
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid var(--glass-border);
+            padding: 60px 40px;
+            border-radius: 24px;
+            box-shadow: var(--glass-shadow);
+            max-width: 500px;
+            width: 90%;
+            animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        .gradient-text {
+            background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899, #6366f1);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: gradient-anim 5s linear infinite;
+        }
+
+        @keyframes gradient-anim {
+            to { background-position: 200% 50%; }
+        }
+
+        .morph-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 42px;
+            font-weight: 900;
+            letter-spacing: -1px;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 32px;
+            font-size: 16px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(29, 185, 84, 0.1);
+            border: 1px solid rgba(29, 185, 84, 0.3);
+            color: var(--accent);
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent);
+            animation: pulse-anim 1.5s infinite;
+        }
+
+        @keyframes pulse-anim {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        .reload-btn {
+            background: linear-gradient(90deg, #6366f1, #a855f7);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+            margin-top: 10px;
+        }
+
+        .reload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+            filter: brightness(1.1);
+        }
+
+        .reload-btn:active {
+            transform: translateY(0);
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="maintenance-card">
+        <div class="morph-text gradient-text">Streamify</div>
+        <h1 id="maintenance-title">Under Maintenance</h1>
+        <p id="maintenance-msg">Streamify is undergoing scheduled maintenance to bring you the best audio experience. Check back soon!</p>
+        <button class="reload-btn" onclick="location.reload()">Try Again</button>
+    </div>
+
+    <script>
+        // Fetch custom maintenance message from server
+        async function loadMaintenanceInfo() {
+            try {
+                const response = await fetch('/api/config/public');
+                if (response.ok) {
+                    const config = await response.json();
+                    if (config.maintenance_message) {
+                        document.getElementById('maintenance-msg').textContent = config.maintenance_message;
+                    }
+                }
+            } catch (err) {
+                console.warn("Could not fetch maintenance message, using default.");
+            }
+        }
+
+        // Automatically check if maintenance is over every 5 seconds
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/me');
+                // If we get a 200 OK, it means we are authorized and maintenance is off (or we are admin)
+                if (response.ok) {
+                    window.location.href = '/home';
+                }
+            } catch (err) {
+                // Ignore errors (server might be completely down)
+            }
+        }, 5000);
+
+        // Run on load
+        loadMaintenanceInfo();
+    </script>
+</body>
+</html>

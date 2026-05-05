@@ -1,0 +1,838 @@
+
+/* === MODAL DIALOG STYLING === */
+
+/* Semi-transparent overlay behind modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    /* VISIBLE STATE */
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+
+    /* Smooth fade transition */
+    transition: opacity 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s linear 0s;
+}
+
+/* HIDDEN STATE - modal is still in DOM but invisible and non-interactive */
+.modal-overlay.hidden {
+    display: flex !important;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+
+    /* Delay visibility hidden until opacity finishes fading */
+    transition: opacity 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s linear 0.3s;
+}
+
+/* Modal dialog box */
+.modal-box {
+    background: var(--sidebar-bg);
+    backdrop-filter: blur(50px);
+    -webkit-backdrop-filter: blur(50px);
+    border: 1px solid var(--glass-border);
+    padding: 30px;
+    width: 500px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+
+    /* OPEN STATE - scale up with pop effect */
+    transform: scale(1) translateY(0);
+    opacity: 1;
+
+    /* "Pop" back-bow effect on open */
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+}
+
+.modal-box-user {
+    background: var(--sidebar-bg);
+    backdrop-filter: blur(50px);
+    -webkit-backdrop-filter: blur(50px);
+    border: 1px solid var(--glass-border);
+    padding: 30px;
+    width: 700px;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+
+    /* OPEN STATE - scale up with pop effect */
+    transform: scale(1) translateY(0);
+    opacity: 1;
+
+    /* "Pop" back-bow effect on open */
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+}
+
+/* CLOSED STATE - scale down when hidden */
+.modal-overlay.hidden .modal-box {
+    transform: scale(0.9) translateY(10px);
+    opacity: 0;
+}
+
+/* Modal header with close button */
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    color: #fff;
+}
+
+.modal-header i {
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: 0.2s;
+}
+
+
+/* FORM ELEMENTS IN MODAL */
+
+/* Input field container */
+.input-group {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.input-group label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+/* Input and select styling */
+.input-group input,
+.input-group select {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    padding: 12px;
+    border-radius: 8px;
+    color: #fff;
+    outline: none;
+    font-family: inherit;
+}
+
+/* Focus state for inputs */
+.input-group input:focus {
+    border-color: var(--accent);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Modal action buttons container */
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 30px;
+}
+
+/* ============================================================
+ * MANAGE PERMISSIONS PANEL (inside Profile modal)
+ * Matches the site's glassmorphism + gradient design language.
+ * ============================================================ */
+
+.perm-panel {
+    margin-top: 24px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    animation: fadeInUp 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+}
+
+/* --- Panel header with icon + title --- */
+.perm-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.perm-panel-header i {
+    font-size: 20px;
+    background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.perm-panel-header span {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.2px;
+}
+
+/* --- Role selector row --- */
+.perm-role-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#role-select {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    outline: none;
+    transition: var(--transition);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='rgba(255,255,255,0.5)' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 34px;
+}
+
+#role-select:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+#role-select:focus {
+    border-color: var(--gradient-1);
+    box-shadow: 0 0 0 2px rgba(65, 105, 225, 0.15);
+}
+
+#role-select option {
+    background: #1a1a1e;
+    color: #fff;
+    padding: 8px;
+}
+
+/* --- Update role button --- */
+.perm-update-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+    color: #fff;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: 0 4px 14px rgba(65, 105, 225, 0.3);
+    white-space: nowrap;
+}
+
+.perm-update-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(65, 105, 225, 0.5);
+    filter: brightness(1.1);
+}
+
+.perm-update-btn:active {
+    transform: scale(0.96) !important;
+}
+
+/* --- Divider between sections --- */
+.perm-divider {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 16px 0;
+}
+
+/* --- Moderation actions label --- */
+.perm-mod-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+}
+
+/* --- Moderation action buttons grid --- */
+.perm-actions-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* Base action button (shared) */
+.perm-action-btn {
+    flex: 1;
+    min-width: 110px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+}
+
+.perm-action-btn i {
+    font-size: 16px;
+}
+
+.perm-action-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+.perm-action-btn:active {
+    transform: scale(0.96) !important;
+}
+
+/* Danger variant — ban / delete */
+.perm-action-btn--danger {
+    border-color: rgba(255, 80, 80, 0.15);
+    color: rgba(255, 128, 128, 0.75);
+}
+
+.perm-action-btn--danger:hover {
+    border-color: rgba(255, 80, 80, 0.4);
+    background: rgba(255, 60, 60, 0.1);
+    color: #ff6b6b;
+    box-shadow: 0 4px 16px rgba(255, 60, 60, 0.12);
+}
+
+/* Critical variant — delete profile (full-width) */
+.perm-action-btn--critical {
+    flex: unset;
+    width: 100%;
+    margin-top: 4px;
+    border-color: rgba(255, 0, 0, 0.2);
+    color: rgba(255, 77, 77, 0.7);
+}
+
+.perm-action-btn--critical:hover {
+    border-color: rgba(255, 0, 0, 0.45);
+    background: rgba(255, 0, 0, 0.08);
+    color: #ff4d4d;
+    box-shadow: 0 4px 20px rgba(255, 0, 0, 0.12);
+}
+
+/* --- Profile modal needs scroll for long content --- */
+.modal-box-user {
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.profile-content {
+    text-align: center;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+#profile-bio-display {
+    white-space: pre-wrap;
+    margin-top: 10px;
+}
+
+/* --- Profile stats layout --- */
+.profile-stats {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 16px;
+}
+
+.profile-stats div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.profile-stats strong {
+    font-size: 1.3rem;
+    color: #fff;
+}
+
+.profile-stats span {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* --- DELETE ANIMATION --- */
+@keyframes fadeOutAndCollapse {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(0.8);
+        height: 0;
+        margin-bottom: 0;
+        padding: 0;
+        border: 0;
+    }
+}
+
+.deleting-anim {
+    animation: fadeOutAndCollapse 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+    overflow: hidden;
+}
+
+.comment-delete-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    height: 28px;
+    min-width: 28px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    overflow: hidden;
+}
+
+.comment-delete-btn:hover {
+    color: #ff4d4d;
+    transform: scale(1.1);
+}
+
+.comment-delete-btn.confirm-mode {
+    background: #ff4d4d;
+    color: white;
+    padding: 0 10px;
+    transform: scale(1);
+    box-shadow: 0 4px 12px rgba(255, 77, 77, 0.3);
+}
+
+.comment-delete-btn.confirm-mode:hover {
+    color: white;
+    transform: scale(1.05);
+    background: #ff3333;
+}
+
+.comment-delete-btn .btn-text {
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.comment-delete-btn.confirm-mode .btn-text {
+    max-width: 60px;
+    opacity: 1;
+    margin-left: 4px;
+}
+
+@keyframes pulseAnim {
+    0% {
+        transform: scale(1);
+        color: inherit;
+    }
+
+    50% {
+        transform: scale(1.4);
+        color: #4169e1;
+    }
+
+    100% {
+        transform: scale(1);
+        color: inherit;
+    }
+}
+
+/* ============================================================
+ * SETTINGS MODAL REDESIGN
+ * ============================================================ */
+
+.settings-modal-box {
+    width: min(90vw, 750px) !important;
+    padding: 0 !important;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-modal-box .modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--glass-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0 !important;
+}
+
+.settings-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+#settings-menu-toggle {
+    font-size: 24px;
+    cursor: pointer;
+    display: none;
+    /* Hidden on desktop */
+}
+
+.settings-container {
+    display: flex;
+    height: 500px;
+    position: relative;
+}
+
+.settings-sidebar-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 99;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.settings-sidebar-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.settings-sidebar {
+    width: 200px;
+    background: rgba(255, 255, 255, 0.02);
+    border-right: 1px solid var(--glass-border);
+    padding: 16px 8px;
+    z-index: 100;
+}
+
+.settings-tab {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+    margin-bottom: 4px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.settings-tab i {
+    font-size: 20px;
+}
+
+.settings-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+
+.settings-tab.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.settings-content {
+    flex: 1;
+    padding: 24px 32px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.settings-pane {
+    display: none;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.settings-pane.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Profile Tab Specifics */
+.profile-avatar-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+}
+
+.avatar-preview-wrap {
+    position: relative;
+    width: 120px;
+    height: 120px;
+}
+
+.avatar-big-preview {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    font-weight: 800;
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    background-size: cover;
+    background-position: center;
+}
+
+.avatar-edit-btn {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 3px solid #1a1a1a;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.avatar-edit-btn:hover {
+    transform: scale(1.1);
+    background: var(--accent-hover);
+}
+
+/* Form refinement */
+.settings-pane .input-group {
+    margin-bottom: 20px;
+}
+
+.settings-pane label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.settings-pane input,
+.settings-pane textarea {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 15px;
+    transition: var(--transition);
+}
+
+.settings-pane input:focus,
+.settings-pane textarea:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05);
+}
+
+.settings-pane textarea {
+    height: 100px;
+    resize: none;
+}
+
+/* Cropper Modal */
+.crop-container {
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--glass-border);
+}
+
+/* Micro animations for settings tabs */
+.settings-tab:active {
+    transform: scale(0.97);
+}
+
+/* === DEVICES LIST === */
+.devices-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.device-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: var(--transition);
+}
+
+.device-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.device-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.device-icon-container {
+    width: 44px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.device-icon-container i {
+    font-size: 24px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.device-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.device-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.device-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.device-logout-btn {
+    background: rgba(244, 63, 94, 0.1);
+    color: #f43f5e;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.device-logout-btn:hover {
+    background: #f43f5e;
+    color: #fff;
+    transform: scale(1.05);
+}
+
+.device-logout-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.device-item.fade-out {
+    opacity: 0;
+    transform: translateX(20px);
+    pointer-events: none;
+}
+
+/**
+ * ============================================================================
+/* === ANIMATED PROGRESS BAR === */
+.animated-progress {
+    position: relative;
+    overflow: hidden;
+}
+
+.animated-progress::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background-image: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.2) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.2) 50%,
+        rgba(255, 255, 255, 0.2) 75%,
+        transparent 75%,
+        transparent
+    );
+    background-size: 30px 30px;
+    animation: progress-bar-stripes 1.5s linear infinite;
+    opacity: 0.3;
+}
+
+@keyframes progress-bar-stripes {
+    from { background-position: 0 0; }
+    to { background-position: 30px 0; }
+}

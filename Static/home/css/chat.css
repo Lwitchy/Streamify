@@ -1,0 +1,719 @@
+
+/* ============================================================
+ * DM (Direct Messages) Section
+ * ============================================================ */
+
+.dm-btn {
+    position: relative;
+}
+
+.dm-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 10px;
+    height: 10px;
+    background: #ff4d4d;
+    border-radius: 50%;
+    border: 2px solid #1a1a1a;
+    box-shadow: 0 0 5px rgba(255, 77, 77, 0.5);
+}
+
+.dm-req-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 10px;
+    height: 10px;
+    background: #ff4d4d;
+    border-radius: 50%;
+    border: 2px solid rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 5px rgba(255, 77, 77, 0.5);
+}
+
+.dm-section {
+    animation: fadeInUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.dm-layout {
+    display: flex;
+    height: calc(100vh - var(--player-height) - 130px);
+    min-height: 400px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(40px);
+}
+
+.dm-contacts {
+    width: 320px;
+    min-width: 320px;
+    border-right: 1px solid var(--glass-border);
+    background: rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.dm-contacts-header {
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.dm-contacts-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.dm-contacts-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.dm-action-btn {
+    position: relative;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 18px;
+}
+
+.dm-action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.dm-contacts-search {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.dm-contacts-search input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #fff;
+    font-size: 13px;
+    outline: none;
+    transition: var(--transition);
+}
+
+.dm-contacts-search input:focus {
+    border-color: var(--accent);
+}
+
+.dm-contacts-search input::placeholder {
+    color: var(--text-secondary);
+}
+
+.dm-contacts-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.dm-contact-item {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    transition: background 0.2s ease;
+}
+
+.dm-contact-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.dm-contact-item.active {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.dm-contact-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    color: #fff;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #4169e1, #8b5cf6);
+    overflow: hidden;
+}
+
+.dm-contact-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.dm-contact-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.dm-contact-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dm-contact-preview {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dm-contact-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.dm-contact-time {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.dm-contact-unread {
+    min-width: 18px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+}
+
+.dm-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.15);
+    min-width: 0;
+}
+
+.dm-chat-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--text-secondary);
+}
+
+.dm-chat-empty i {
+    font-size: 64px;
+    opacity: 0.3;
+}
+
+.dm-chat-empty p {
+    font-size: 15px;
+}
+
+.dm-chat-active {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.dm-chat-header {
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--glass-border);
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(40px);
+    flex-shrink: 0;
+}
+
+.dm-back-contacts-btn {
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+}
+
+.dm-back-contacts-btn:hover {
+    color: var(--text-primary);
+}
+
+.dm-chat-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.dm-chat-user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: #fff;
+    background: linear-gradient(135deg, #4169e1, #8b5cf6);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.dm-chat-user-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.dm-chat-user-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text-primary);
+}
+
+.dm-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+}
+
+.dm-message-bubble {
+    max-width: 70%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.dm-message-bubble.sent {
+    align-self: flex-end;
+    background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+
+.dm-message-bubble.received {
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    border-bottom-left-radius: 4px;
+}
+
+.dm-message-time {
+    font-size: 11px;
+    opacity: 0.5;
+    margin-top: 4px;
+}
+
+.dm-message-bubble.sent .dm-message-time {
+    text-align: right;
+}
+
+.dm-typing-indicator {
+    padding: 4px 16px 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.dm-input-area {
+    padding: 16px 20px;
+    border-top: 1px solid var(--glass-border);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(40px);
+    flex-shrink: 0;
+}
+
+#dm-message-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 10px 16px;
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+    transition: var(--transition);
+}
+
+#dm-message-input:focus {
+    border-color: var(--accent);
+}
+
+#dm-message-input::placeholder {
+    color: var(--text-secondary);
+}
+
+.dm-send-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+
+.dm-send-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.05);
+}
+
+/* DM Request items in modal */
+.dm-request-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.dm-request-item:last-child {
+    border-bottom: none;
+}
+
+.dm-request-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.dm-request-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.dm-request-time {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.dm-request-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.dm-request-actions .btn {
+    padding: 6px 14px;
+    font-size: 12px;
+    border-radius: 6px;
+}
+
+/* DM Requests Tabs */
+.dm-requests-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.dm-req-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    border-bottom: 2px solid transparent;
+}
+
+.dm-req-tab:hover {
+    color: var(--text-primary);
+}
+
+.dm-req-tab.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent);
+}
+
+/* DM Load More */
+.dm-load-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: none;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: var(--transition);
+    flex-shrink: 0;
+    animation: dmLoadMoreFadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.dm-load-more.hidden {
+    display: none;
+}
+
+@keyframes dmLoadMoreFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dm-load-more:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.dm-load-more i {
+    font-size: 16px;
+}
+
+/* --- Mobile DM --- */
+@media (max-width: 768px) {
+    .dm-layout {
+        height: calc(100dvh - 140px);
+    }
+
+    .dm-contacts {
+        width: 100%;
+        min-width: 100%;
+    }
+
+    .dm-chat {
+        display: none;
+    }
+
+    .dm-section.dm-chat-open .dm-contacts {
+        display: none;
+    }
+
+    .dm-section.dm-chat-open .dm-chat {
+        display: flex;
+    }
+
+    .dm-back-contacts-btn {
+        display: flex;
+    }
+
+    .dm-section .dm-chat-active {
+        padding-bottom: 0;
+    }
+
+    body.dm-open .music-player {
+        display: none !important;
+    }
+}
+
+/* --- DM Animations --- */
+
+/* Staggered contact list entrance */
+.dm-contact-item {
+    opacity: 0;
+    animation: dmContactFadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.dm-contact-item:nth-child(1) { animation-delay: 30ms; }
+.dm-contact-item:nth-child(2) { animation-delay: 60ms; }
+.dm-contact-item:nth-child(3) { animation-delay: 90ms; }
+.dm-contact-item:nth-child(4) { animation-delay: 120ms; }
+.dm-contact-item:nth-child(5) { animation-delay: 150ms; }
+.dm-contact-item:nth-child(6) { animation-delay: 180ms; }
+.dm-contact-item:nth-child(7) { animation-delay: 210ms; }
+.dm-contact-item:nth-child(8) { animation-delay: 240ms; }
+.dm-contact-item:nth-child(n+9) { animation-delay: 270ms; }
+
+@keyframes dmContactFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Message bubble entrance */
+.dm-message-bubble {
+    opacity: 0;
+    animation: dmBubbleIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes dmBubbleIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Action button press feedback */
+.dm-action-btn:active {
+    transform: scale(0.92);
+    transition: var(--click-anim);
+}
+
+/* Send button press feedback */
+.dm-send-btn:active {
+    transform: scale(0.9);
+    transition: var(--click-anim);
+}
+
+/* Contact item press feedback */
+.dm-contact-item:active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Badge pulse animation */
+.dm-badge,
+.dm-req-badge {
+    animation: dmBadgePulse 2s ease-in-out infinite;
+}
+
+@keyframes dmBadgePulse {
+    0%, 100% { box-shadow: 0 0 5px rgba(255, 77, 77, 0.5); }
+    50% { box-shadow: 0 0 12px rgba(255, 77, 77, 0.8); }
+}
+
+/* Typing indicator dots */
+.dm-typing-indicator {
+    animation: dmTypingFade 1.5s ease-in-out infinite;
+}
+
+@keyframes dmTypingFade {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+/* Chat header subtle slide down */
+.dm-chat-header {
+    animation: dmHeaderSlide 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes dmHeaderSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Smooth input focus glow */
+#dm-message-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.15);
+}
+
+/* Unread count badge pop */
+.dm-contact-unread {
+    animation: dmUnreadPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes dmUnreadPop {
+    from {
+        transform: scale(0);
+    }
+    to {
+        transform: scale(1);
+    }
+}
+
+/* Message fade-in for incoming/real-time messages */
+.dm-bubble-pop {
+    animation: dmBubbleFadeIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+}
+
+@keyframes dmBubbleFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Contact subtle fade when reordered to top */
+@keyframes dmContactBump {
+    from {
+        opacity: 0.5;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* DM username suggestion items */
+.dm-suggest-item {
+    transition: background 0.15s ease;
+}
+.dm-suggest-item:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+}

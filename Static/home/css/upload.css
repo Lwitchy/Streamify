@@ -1,0 +1,197 @@
+
+/* UPLOAD SECTION - File upload area styling */
+.upload-section {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 40px;
+    border-radius: 20px;
+    margin-top: 40px;
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(40px);
+}
+
+/* --- UPLOAD SECTION STYLING --- */
+.upload-section h2 {
+    margin-bottom: 8px;
+}
+
+.upload-section>p {
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+}
+
+/* Unified Upload Card */
+.upload-card {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 20px;
+    padding: 24px 32px;
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    /* Slightly more subtle dash */
+    transition: var(--transition);
+    text-align: left;
+    position: relative;
+    /* overflow: hidden; */
+    /* Removed to allow potential child glows/shadows */
+    margin-bottom: 24px;
+    backdrop-filter: blur(10px);
+}
+
+.upload-card:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.upload-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.upload-card-header i {
+    font-size: 28px;
+    color: var(--accent);
+}
+
+.upload-card h3 {
+    font-size: 1.15rem;
+    margin-bottom: 0;
+    color: var(--text-primary);
+}
+
+.upload-card p {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+}
+
+/* Locked Modifier */
+.upload-card--locked {
+    cursor: not-allowed;
+    user-select: none;
+}
+
+.upload-card--locked .upload-card-header i {
+    color: #f59e0b;
+}
+
+.upload-card--locked .upload-bar-dummy {
+    opacity: 0.5;
+    filter: blur(0.5px);
+    pointer-events: none;
+}
+
+/* Progress bar inside card */
+#upload-progress-container {
+    max-width: 600px;
+    margin-top: 15px;
+}
+
+/* --- UPLOAD BAR (HORIZONTAL) --- */
+.upload-bar,
+.upload-bar-dummy {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.03);
+    /* Lighter, more premium background */
+    padding: 10px 10px 10px 24px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    margin: 0;
+    max-width: 720px;
+    /* Increased to accommodate longer file names and buttons */
+    transition: var(--transition);
+    min-height: 56px;
+    /* Removed overflow: hidden to allow button shadows/glows to breathe */
+}
+
+.upload-bar:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(29, 185, 84, 0.1);
+}
+
+.upload-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+    min-width: 0;
+    /* CRITICAL: Allows flex container to shrink and trigger ellipsis */
+    /* overflow: hidden; */
+    /* Removed to allow button shadows to breathe */
+}
+
+.file-name-placeholder {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+
+.file-name-placeholder.active {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.upload-bar-right {
+    display: flex;
+    align-items: center;
+    /* overflow: hidden; */
+    /* Removed to allow upload button shadows to breathe */
+}
+
+.btn-sm {
+    padding: 8px 16px;
+    font-size: 13px;
+    border-radius: 10px;
+}
+
+/* --- ANIMATED UPLOAD BUTTON --- */
+.hidden-upload-btn {
+    width: 0;
+    max-width: 0;
+    opacity: 0;
+    padding: 8px 0;
+    margin-left: 0;
+    pointer-events: none;
+    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Center icon and text */
+    gap: 8px;
+    /* Increased gap as requested */
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.hidden-upload-btn.button-appear {
+    width: 120px;
+    max-width: 150px;
+    opacity: 1;
+    padding: 8px 20px;
+    margin-left: 10px;
+    pointer-events: all;
+    background: linear-gradient(90deg, #1db954, #1ed760);
+    box-shadow: 0 6px 15px rgba(29, 185, 84, 0.3);
+}
+
+/* --- LOCKED BADGE --- */
+.locked-badge {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+}

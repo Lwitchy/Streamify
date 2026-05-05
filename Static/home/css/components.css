@@ -1,0 +1,470 @@
+
+/* --- CUSTOM CHECKBOX / TOGGLE --- */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(255,255,255,0.1);
+    transition: .4s;
+    border-radius: 34px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 12px; width: 12px;
+    left: 2px; bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--accent);
+}
+
+input:checked + .slider:before {
+    transform: translateX(14px);
+}
+
+/* GRID LAYOUT FOR CARDS */
+/* Responsive grid that adapts to different screen sizes */
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 24px;
+    margin-bottom: 40px;
+}
+
+/* Individual card styling with glass-morphism effect */
+.card {
+    background: var(--card-bg);
+    padding: 16px;
+    border-radius: var(--border-radius);
+    transition: var(--transition);
+    cursor: pointer;
+    position: relative;
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+}
+
+/* Card hover state - lift up and brighten */
+.card:hover {
+    background: var(--card-hover);
+    transform: translateY(-8px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Card image container with aspect ratio */
+.card-img-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #222;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Card image styling with zoom on hover */
+.card-img-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.card:hover .card-img-wrapper img {
+    transform: scale(1.1);
+}
+
+/* GRADIENT PLAY BUTTON OVERLAY */
+/* Appears on card hover with smooth animations */
+.play-btn-overlay {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.play-btn-overlay i {
+    color: white;
+    font-size: 24px;
+    margin-left: 4px;
+}
+
+.card:hover .play-btn-overlay {
+    opacity: 1;
+    transform: translateY(-4px);
+}
+
+.play-btn-overlay:hover {
+    transform: scale(1.15) translateY(-4px) !important;
+    filter: brightness(1.2);
+}
+
+/* Card text content */
+.card-title {
+    font-weight: 700;
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 16px;
+}
+
+.card-desc {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* SONG LIST ROW - Individual song entries in playlists */
+.song-row {
+    display: grid;
+    grid-template-columns: 40px 4fr 3fr 2fr 100px 80px;
+    gap: 16px;
+    align-items: center;
+    padding: 12px 16px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+    user-select: none;
+    border: 1px solid transparent;
+}
+
+.song-row:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Highlight the currently playing song */
+.song-row.playing {
+    color: #fff;
+    background: linear-gradient(90deg, rgba(65, 105, 225, 0.2), rgba(129, 100, 215, 0.1));
+    border: 1px solid rgba(65, 105, 225, 0.3);
+}
+
+.edit-btn-container {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Song thumbnail image */
+.song-row img {
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    margin-right: 16px;
+    object-fit: cover;
+}
+
+/* Song metadata container */
+.song-info {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.song-info>div {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    flex: 1;
+}
+
+/* Song title styling with truncation */
+.song-title-row {
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 15px;
+}
+
+/* Scrolling animation for long song titles */
+.song-title-row.scrolling {
+    text-overflow: unset;
+    overflow: visible;
+    width: max-content;
+    padding-right: 20px;
+    animation: scrollText 8s linear infinite;
+}
+
+@keyframes scrollText {
+
+    0%,
+    15% {
+        transform: translateX(0);
+    }
+
+    50%,
+    65% {
+        transform: translateX(var(--scroll-amount, -100%));
+    }
+
+    100% {
+        transform: translateX(0);
+    }
+}
+
+
+/* === BUTTONS === */
+
+/* Primary button with gradient background */
+.btn {
+    background: linear-gradient(90deg, #4169e1, #8164d7);
+    color: white;
+    border: none;
+    padding: 12px 32px;
+    border-radius: 50px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: 0 4px 15px rgba(65, 105, 225, 0.4);
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(65, 105, 225, 0.6);
+}
+
+/* Outline button variant - transparent with border */
+.btn-outline {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    box-shadow: none;
+    backdrop-filter: blur(5px);
+}
+
+.btn-outline:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(255, 255, 255, 0.05);
+    /* Subtle white glow instead of harsh blue */
+}
+
+/* === SPECIAL EFFECTS - Thanks/Like button animation === */
+
+/* Active glow state for thank button */
+.glow-active {
+    color: #ff4d6d !important;
+    text-shadow: 0 0 10px #ff4d6d, 0 0 20px #ff4d6d !important;
+    background: rgba(255, 77, 109, 0.1) !important;
+    border-color: rgba(255, 77, 109, 0.3) !important;
+    animation: thanksPulse 1.5s infinite alternate;
+}
+
+.glow-active i {
+    color: #ff4d6d !important;
+}
+
+/* Pulsing animation for thanks button */
+@keyframes thanksPulse {
+    from {
+        box-shadow: 0 0 5px rgba(255, 77, 109, 0.2);
+    }
+
+    to {
+        box-shadow: 0 0 20px rgba(255, 77, 109, 0.6);
+    }
+}
+
+/* Floating particle effect (hearts/icons) */
+.particle {
+    position: fixed;
+    pointer-events: none;
+    z-index: 3;
+    font-size: 24px;
+    animation: floatHeart 1.5s ease-out forwards;
+}
+
+/* Animation that makes particles float up and fade */
+@keyframes floatHeart {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0.5) rotate(0deg);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(var(--tx), -150px) scale(1.5) rotate(var(--rot));
+    }
+}
+
+.shake-anim {
+    animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    25% {
+        transform: translateX(-5px);
+    }
+
+    50% {
+        transform: translateX(5px);
+    }
+
+    75% {
+        transform: translateX(-5px);
+    }
+}
+
+/* CUSTOM FILE UPLOAD */
+
+/* File upload button and text container */
+.custom-file-upload {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+/* Filename display */
+#avatar-file-name {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+}
+
+/* --- ROLE BADGES --- */
+.role-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-block;
+}
+
+.badge-owner {
+    background: #9b59b6;
+    color: #fff;
+    box-shadow: 0 0 10px rgba(155, 89, 182, 0.4);
+}
+
+.badge-admin {
+    background: #f1c40f;
+    color: #000;
+    box-shadow: 0 0 10px rgba(241, 196, 15, 0.4);
+}
+
+.badge-mod {
+    background: #3498db;
+    color: #fff;
+    box-shadow: 0 0 10px rgba(52, 152, 219, 0.4);
+}
+
+.post-card--owner {
+    border-color: rgba(155, 89, 182, 0.4) !important;
+    box-shadow: 0 0 20px rgba(155, 89, 182, 0.1);
+}
+
+/* --- PREMIUM QUALITY BADGE --- */
+.quality-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 7px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    position: relative;
+    overflow: hidden;
+    margin-left: 4px;
+    vertical-align: baseline;
+    line-height: 1.2;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+    transform: translateY(-1px);
+}
+
+.quality-badge::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.4),
+        transparent
+    );
+    animation: premium-glow 4s infinite linear;
+}
+
+@keyframes premium-glow {
+    0% {
+        left: -150%;
+    }
+    30%, 100% {
+        left: 150%;
+    }
+}
+
+.artist-separator {
+    display: inline-block;
+    width: 3px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    margin: 0 6px;
+    vertical-align: middle;
+}

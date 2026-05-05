@@ -1,0 +1,1486 @@
+/* === MUSIC PLAYER - Fixed bottom player bar === */
+
+/* Main player container - always visible at bottom */
+.music-player {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: var(--player-height);
+    background: rgba(20, 20, 25, 0.65);
+    backdrop-filter: blur(50px);
+    -webkit-backdrop-filter: blur(50px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 24px;
+    z-index: 100;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.3);
+    transition: var(--transition);
+}
+
+/* LEFT SECTION - Current playing song info */
+.player-left {
+    display: flex;
+    align-items: center;
+    width: 30%;
+    min-width: 180px;
+}
+
+/* Album artwork in player */
+.now-playing-img {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    margin-right: 16px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    object-fit: cover;
+    transition: var(--transition);
+    cursor: pointer;
+    /* Explicit pointer for mobile */
+    position: relative;
+    /* Fix z-index stacking issues */
+    z-index: 10;
+}
+
+.now-playing-img:hover {
+    transform: scale(1.05);
+}
+
+/* Spinning animation when music is playing */
+.now-playing-img.spinning {
+    animation: spin 6s linear infinite;
+    border-radius: 50%;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Song name and artist information */
+.track-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.track-name {
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    letter-spacing: 0.3px;
+}
+
+.track-name:hover {
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.track-artist {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.track-artist:hover {
+    text-decoration: underline;
+    cursor: pointer;
+    color: #fff;
+}
+
+/* CENTER SECTION - Playback controls */
+.player-center {
+    width: 40%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Control buttons row (previous, play/pause, next) */
+.player-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 10px;
+}
+
+/* Standard control button styling */
+.control-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 20px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.control-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.1);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+}
+
+.control-btn:active {
+    transform: scale(0.9);
+}
+
+#btn-eq {
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), background 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    will-change: transform;
+}
+
+#btn-eq:hover {
+    transform: scale(1.1);
+}
+
+#btn-eq:active {
+    transform: scale(0.95);
+}
+
+/* Play/Pause button - modern white */
+.play-pause-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #fff;
+    color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    border: none;
+    margin: 0 8px;
+    cursor: pointer;
+}
+
+.play-pause-btn:hover {
+    transform: scale(1.05);
+    background: #f0f0f0;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.play-pause-btn:active {
+    transform: scale(0.95);
+}
+
+/* PROGRESS BAR - Shows song playback progress */
+.progress-container {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: 'Segoe UI', monospace;
+}
+
+.progress-bar-wrapper {
+    flex: 1;
+    height: 4px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.progress-bar-wrapper:hover {
+    height: 6px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: #fff;
+    border-radius: 4px;
+    width: 0%;
+    position: relative;
+    transition: width 0.1s linear;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+/* Draggable handle for progress bar */
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%) scale(0);
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.progress-bar-wrapper:hover .progress-bar::after {
+    transform: translateY(-50%) scale(1);
+}
+
+/* RIGHT SECTION - Volume control */
+.player-right {
+    width: 30%;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-right: 20px;
+}
+
+/* Volume control wrapper */
+.volume-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 8px 16px;
+    border-radius: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.2s ease;
+}
+
+.volume-wrapper:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Volume slider input */
+.volume-slider {
+    width: 100px;
+    appearance: none;
+    -webkit-appearance: none;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    outline: none;
+    transition: height 0.2s;
+}
+
+.volume-slider:hover {
+    height: 6px;
+}
+
+/* Volume slider thumb/handle */
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+/* EQ Popup */
+.eq-popup {
+    position: absolute;
+    bottom: 90px;
+    right: 130px;
+    background: rgba(25, 25, 25, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 16px;
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    z-index: 1000;
+    width: 220px;
+
+    /* Open state - fully visible, scale 1 */
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
+    visibility: visible;
+    pointer-events: auto;
+
+    /* Ultra-fluid Apple-style spring entrance (Slower & Smoother) */
+    transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+        filter 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+        visibility 0s linear 0s;
+    transform-origin: bottom right;
+}
+
+.eq-popup.hidden {
+    opacity: 0;
+    /* Start further down and smaller for a more pronounced spring */
+    transform: scale(0.80) translateY(12px);
+    filter: blur(8px);
+    visibility: hidden;
+    pointer-events: none;
+
+    /* Smooth, slightly faster exit */
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        filter 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0s linear 0.4s;
+    display: block !important;
+}
+
+.eq-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 10px;
+}
+
+.eq-sliders {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 10px;
+}
+
+.eq-band {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.eq-band span {
+    font-size: 11px;
+    color: #b3b3b3;
+    font-weight: 500;
+}
+
+.eq-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 80px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    outline: none;
+    transform: rotate(-90deg);
+    margin: 38px -38px;
+}
+
+.eq-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s;
+}
+
+.eq-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.eq-slider.disabled::-webkit-slider-thumb {
+    background: #666;
+}
+
+/* === RESPONSIVE DESIGN - Mobile adjustments === */
+@media (max-width: 768px) {
+
+    /* Hide sidebar on mobile */
+    .sidebar {
+        display: none;
+    }
+
+    /* Increase padding to account for stacked mobile player */
+    .main-content {
+        padding-bottom: 180px;
+    }
+
+    /* Stack player vertically on mobile */
+    .music-player {
+        flex-direction: column;
+        height: auto;
+        padding: 16px;
+        background: rgba(10, 10, 10, 0.95);
+    }
+
+    /* Make player sections full width on mobile */
+    .player-left,
+    .player-center,
+    .player-right {
+        width: 100%;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+
+    .player-left {
+        /* Ensure the left section elements don't get blocked */
+        pointer-events: auto;
+    }
+
+    /* Hide volume control on mobile */
+    .player-right {
+        display: none;
+    }
+}
+
+
+/* ============================================================
+ * COVER EXPAND OVERLAY (Deprecated/Commented Out)
+ * ============================================================ */
+
+/* 
+#cover-expand-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.84);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    cursor: zoom-out;
+
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s ease;
+}
+
+#cover-expand-overlay.show {
+    opacity: 1;
+    pointer-events: all;
+}
+
+#cover-expand-img {
+    width: min(78vw, 480px);
+    height: min(78vw, 480px);
+    object-fit: cover;
+    border-radius: 22px;
+    box-shadow:
+        0 48px 100px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(255, 255, 255, 0.06);
+
+    transform: scale(0.8);
+    transition: transform 0.4s cubic-bezier(0.34, 1.45, 0.64, 1);
+    cursor: zoom-out;
+}
+
+#cover-expand-overlay.show #cover-expand-img {
+    transform: scale(1);
+}
+
+.cover-expand-info {
+    text-align: center;
+    opacity: 0;
+    transform: translateY(12px);
+    transition:
+        opacity 0.3s ease 0.12s,
+        transform 0.3s ease 0.12s;
+    pointer-events: none;
+}
+
+#cover-expand-overlay.show .cover-expand-info {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.cover-expand-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 5px;
+}
+
+.cover-expand-artist {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+*/
+
+/* ============================================================
+ * DEDICATED PLAYER VIEW (Big Mode Page)
+ * ============================================================ */
+
+/* Remove the fixed overlay styles */
+.player-section {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 32px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+.dedicated-player-view {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: transparent;
+    padding: 30px 40px;
+    overflow: hidden;
+}
+
+.dedicated-player-backdrop {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 150%;
+    height: 150%;
+    transform: translate(-50%, -50%);
+    background-size: cover;
+    background-position: center;
+    filter: blur(80px) brightness(0.6) saturate(1.5);
+    border-radius: 50%;
+    z-index: 0;
+    transition: background-image 0.5s ease;
+    opacity: 0.85;
+    pointer-events: none;
+}
+
+.dedicated-art-wrapper {
+    position: relative;
+    flex-shrink: 0;
+    width: 100%;
+    max-width: 350px;
+}
+
+.dedicated-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 20px;
+    position: relative;
+    z-index: 2;
+}
+
+.dedicated-header-text {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.7);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.dedicated-player-content {
+    width: 100%;
+    max-width: 900px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    /* Two equal stable columns */
+    align-items: center;
+    gap: 40px;
+    padding: 20px 40px;
+    box-sizing: border-box;
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    min-height: 0;
+}
+
+.dedicated-art-container {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
+    border-radius: 28px;
+    overflow: hidden;
+    position: relative;
+    z-index: 2;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+#dedicated-player-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+}
+
+.dedicated-right-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    /* Crucial for internal marquee to not expand the grid column */
+    height: 380px;
+    /* Fixed height to prevent box expansion when switching to lyrics */
+}
+
+.dedicated-info-container {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+}
+
+.dedicated-track-info {
+    overflow: hidden;
+    width: 100%;
+}
+
+#dedicated-player-title {
+    font-size: 32px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0 0 8px 0;
+    white-space: nowrap;
+    display: inline-block;
+    min-width: 100%;
+}
+
+#dedicated-player-artist {
+    font-size: 18px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0;
+    white-space: nowrap;
+    display: inline-block;
+    min-width: 100%;
+}
+
+.scroll-marquee {
+    animation: scroll-text-x 25s linear infinite;
+}
+
+@keyframes scroll-text-x {
+
+    0%,
+    15% {
+        transform: translateX(0);
+    }
+
+    45%,
+    55% {
+        transform: translateX(var(--scroll-dist));
+    }
+
+    85%,
+    100% {
+        transform: translateX(0);
+    }
+}
+
+.dedicated-progress-container {
+    margin-bottom: 20px;
+}
+
+.dedicated-progress-bar-wrapper {
+    width: 100%;
+    height: 6px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    cursor: pointer;
+    position: relative;
+    margin-bottom: 12px;
+}
+
+.dedicated-progress-bar {
+    height: 100%;
+    background-color: #fff;
+    border-radius: 3px;
+    width: 0%;
+    position: relative;
+}
+
+.dedicated-progress-bar::after {
+    content: '';
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    background-color: #fff;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.dedicated-progress-bar-wrapper:hover .dedicated-progress-bar::after {
+    opacity: 1;
+}
+
+.dedicated-time-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 500;
+}
+
+.dedicated-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+/* =========================================================================
+   Dedicated Player Lyrics Feature
+========================================================================= */
+
+#dedicated-lyrics-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    /* Same max height roughly as the normal controls to prevent shifting */
+    max-height: 380px;
+    overflow: hidden;
+    /* Important to keep the scrolling inside the scroll area */
+    padding-top: 20px;
+}
+
+#dedicated-lyrics-container:not(.hidden),
+#dedicated-standard-container:not(.hidden),
+.song-change-fade-in {
+    animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes dedicatedViewFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+        filter: blur(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+    }
+}
+
+#dedicated-standard-container {
+    width: 100%;
+}
+
+.lyrics-header {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+    position: relative;
+    z-index: 10;
+}
+
+.lyrics-scroll-area {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    /* Hide scrollbar for clean look */
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    /* Add a smooth mask at top and bottom for fading effect */
+    mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+    padding: 10px 0;
+    scroll-behavior: smooth;
+}
+
+.lyrics-scroll-area::-webkit-scrollbar {
+    display: none;
+}
+
+.lyrics-content {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    text-align: left;
+    /* Left align lyrics */
+    padding-bottom: 100px;
+    /* Allows last line to scroll to center */
+    padding-top: 40px;
+    /* Allows first line to start near center but not too far down */
+}
+
+.lyric-line {
+    font-size: 18px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    transition: color 0.3s ease, transform 0.3s ease, text-shadow 0.3s ease;
+    transform-origin: left center;
+    line-height: 1.4;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+.lyric-line:hover {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* On touch screens :hover gets stuck after tap — reset it */
+@media (hover: none) {
+    .lyric-line:hover {
+        color: rgba(255, 255, 255, 0.4);
+    }
+
+    .lyric-line.active:hover {
+        color: #fff;
+    }
+}
+
+.lyric-line.active {
+    color: #fff;
+    transform: scale(1.05);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.lyric-line.instrumental {
+    font-style: italic;
+    font-size: 20px;
+}
+
+.lyrics-loading {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 18px;
+    text-align: center;
+    padding: 20px;
+}
+
+.dedicated-controls .control-btn {
+    font-size: 28px;
+    width: 48px;
+    height: 48px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.dedicated-controls .control-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dedicated-play-pause-btn {
+    width: 68px;
+    height: 68px;
+    font-size: 34px;
+    background: #fff;
+    color: #000;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.dedicated-play-pause-btn:hover {
+    transform: scale(1.05);
+    background: #f0f0f0;
+}
+
+.dedicated-bottom-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    position: relative;
+    width: 100%;
+}
+
+#dedicated-btn-lyrics,
+#dedicated-btn-find-lyrics {
+    position: absolute;
+    left: -40px;
+    /* Start completely out of view */
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(0.9);
+    transition: left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.4s ease, transform 0.4s ease, visibility 0.4s;
+    font-size: 24px;
+    margin-right: 0;
+    z-index: 5;
+}
+
+#dedicated-btn-lyrics.show-lyrics-btn,
+#dedicated-btn-find-lyrics.show-lyrics-btn {
+    left: 0;
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1);
+}
+
+.dedicated-volume-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    /* Start taking full width so it sits on the left */
+    max-width: 250px;
+    color: rgba(255, 255, 255, 0.7);
+    transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    transform: translateX(0);
+}
+
+/* When lyrics button is shown, push volume to the right */
+.dedicated-bottom-actions.has-lyrics .dedicated-volume-wrapper {
+    transform: translateX(50px);
+}
+
+.dedicated-volume-wrapper i {
+    font-size: 22px;
+}
+
+.dedicated-volume-wrapper .volume-slider {
+    flex-grow: 1;
+    height: 4px;
+}
+
+/* Hide Bottom Player when Player Section is shown */
+body.player-section-active .music-player {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+
+    /* Remove padding and transform from parent container to allow full-screen feel and fixed positioning */
+    body.player-section-active .content-container {
+        padding: 0 !important;
+        transform: none !important;
+        animation: none !important;
+    }
+
+    body.player-section-active .main-content {
+        padding-bottom: 0 !important;
+    }
+
+    .player-section {
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .dedicated-player-view {
+        padding: 0;
+        overflow: hidden;
+        /* nothing scrolls except the lyrics-scroll-area */
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+    }
+
+    /* Make backdrop full-screen on mobile/tablet — use dvh so it covers dynamic chrome on iOS */
+    .dedicated-player-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        transform: none;
+        border-radius: 0;
+        z-index: -2;
+        /* Even further back */
+        filter: blur(100px) brightness(0.4) saturate(1.8);
+        background-size: cover;
+        background-position: center;
+        pointer-events: none;
+    }
+
+    .dedicated-player-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+        padding: 24px;
+        box-sizing: border-box;
+        align-self: stretch;
+        margin: 0 auto;
+        justify-content: center;
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Force extreme visibility for controls on mobile to prevent graying out */
+    .dedicated-controls .control-btn {
+        color: #ffffff !important;
+        opacity: 1 !important;
+        filter: none !important;
+    }
+
+    .dedicated-play-pause-btn {
+        background: #ffffff !important;
+        color: #000000 !important;
+        opacity: 1 !important;
+        filter: none !important;
+    }
+
+    .dedicated-controls .control-btn i,
+    .dedicated-play-pause-btn i {
+        opacity: 1 !important;
+        filter: none !important;
+    }
+
+    .dedicated-play-pause-btn i {
+        color: #000000 !important;
+    }
+
+    /* Staggered entry animations for mobile/tablet only */
+    .dedicated-art-container {
+        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .dedicated-info-container {
+        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: 0.1s;
+    }
+
+    .dedicated-progress-container {
+        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: 0.15s;
+    }
+
+    .dedicated-controls {
+        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: 0.2s;
+    }
+
+    .dedicated-bottom-actions {
+        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: 0.25s;
+    }
+
+    .lyric-line {
+        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .lyric-line:nth-child(1) {
+        animation-delay: 0.05s;
+    }
+
+    .lyric-line:nth-child(2) {
+        animation-delay: 0.1s;
+    }
+
+    .lyric-line:nth-child(3) {
+        animation-delay: 0.15s;
+    }
+
+    .lyric-line:nth-child(4) {
+        animation-delay: 0.2s;
+    }
+
+    .lyric-line:nth-child(5) {
+        animation-delay: 0.25s;
+    }
+
+    .lyric-line:nth-child(6) {
+        animation-delay: 0.3s;
+    }
+
+    .lyric-line:nth-child(7) {
+        animation-delay: 0.35s;
+    }
+
+    .lyric-line:nth-child(8) {
+        animation-delay: 0.4s;
+    }
+
+    .lyric-line:nth-child(9) {
+        animation-delay: 0.45s;
+    }
+
+    .lyric-line:nth-child(10) {
+        animation-delay: 0.5s;
+    }
+
+    .lyric-line:nth-child(11) {
+        animation-delay: 0.55s;
+    }
+
+    .lyric-line:nth-child(12) {
+        animation-delay: 0.6s;
+    }
+
+    .lyric-line:nth-child(13) {
+        animation-delay: 0.65s;
+    }
+
+    .lyric-line:nth-child(14) {
+        animation-delay: 0.7s;
+    }
+
+    .lyric-line:nth-child(15) {
+        animation-delay: 0.75s;
+    }
+
+    .lyric-line:nth-child(16) {
+        animation-delay: 0.8s;
+    }
+
+    .lyric-line:nth-child(17) {
+        animation-delay: 0.85s;
+    }
+
+    .lyric-line:nth-child(18) {
+        animation-delay: 0.9s;
+    }
+
+    .lyric-line:nth-child(19) {
+        animation-delay: 0.95s;
+    }
+
+    .lyric-line:nth-child(20) {
+        animation-delay: 1s;
+    }
+
+    /* Lyrics active: desktop-style flex chain — only the scroll area scrolls */
+    .dedicated-player-content.lyrics-active-view {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        gap: 0;
+        justify-content: flex-start;
+    }
+
+    .dedicated-player-content.lyrics-active-view .dedicated-art-wrapper {
+        max-height: 0;
+        margin: 0;
+        overflow: hidden;
+        visibility: hidden;
+    }
+
+    /* Backdrop stays visible even when art wrapper is collapsed */
+    .dedicated-player-content.lyrics-active-view .dedicated-player-backdrop {
+        visibility: visible;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        transform: none;
+        background-size: cover;
+        border-radius: 0;
+        filter: blur(80px) brightness(0.4) saturate(1.5);
+    }
+
+    .dedicated-player-content.lyrics-active-view .dedicated-right-panel {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        max-width: 100%;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        z-index: 10;
+    }
+
+    .dedicated-player-content.lyrics-active-view #dedicated-lyrics-container {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        max-height: none;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        padding-top: 5px;
+    }
+
+    /* THE only element that scrolls — same as desktop */
+    .dedicated-player-content.lyrics-active-view .lyrics-scroll-area {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        height: auto;
+        mask-image: linear-gradient(to bottom, transparent, black 8%, black 90%, transparent);
+        -webkit-mask-image: linear-gradient(to bottom, transparent, black 8%, black 90%, transparent);
+    }
+
+    /* Lyrics header: transparent background, sits at top of the flex container */
+    body.lyrics-view-active .lyrics-header {
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .dedicated-art-wrapper {
+        max-width: 380px;
+        margin-bottom: 0;
+    }
+
+    .dedicated-info-container {
+        text-align: center;
+        justify-content: center;
+    }
+
+    .dedicated-bottom-actions {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0;
+        margin-top: 25px;
+        width: 100%;
+        min-height: 48px;
+        position: relative;
+        overflow: visible;
+    }
+
+    /* Absolute positioning for lyrics button to allow volume bar to use full width */
+    #dedicated-btn-lyrics,
+    #dedicated-btn-find-lyrics {
+        position: absolute !important;
+        left: -60px !important;
+        /* Start off-screen */
+        opacity: 0;
+        visibility: hidden;
+        transform: scale(0.8);
+        transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        z-index: 10;
+        color: #ffffff !important;
+    }
+
+    #dedicated-btn-lyrics.show-lyrics-btn,
+    #dedicated-btn-find-lyrics.show-lyrics-btn {
+        opacity: 1;
+        visibility: visible;
+        transform: scale(1);
+        left: 0 !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .dedicated-player-view {
+        padding: 0;
+    }
+
+    .dedicated-player-content {
+        padding: 16px;
+        gap: 20px;
+        justify-content: center;
+    }
+
+    .dedicated-header {
+        margin-bottom: 0px;
+        width: calc(100% - 32px);
+        margin-left: auto;
+        margin-right: auto;
+        margin-top: max(env(safe-area-inset-top, 0px), 60px);
+    }
+
+
+    /* Same as 900px, ensure full height for lyrics on mobile */
+    .dedicated-player-content.lyrics-active-view {
+        justify-content: flex-start;
+        height: auto;
+        min-height: 100%;
+        gap: 15px;
+    }
+
+    .dedicated-art-wrapper {
+        max-width: 320px;
+    }
+
+    .dedicated-art-container {
+        border-radius: 0;
+    }
+
+    #dedicated-player-title {
+        font-size: 24px;
+    }
+
+    #dedicated-player-artist {
+        font-size: 16px;
+    }
+
+    .dedicated-play-pause-btn {
+        width: 60px;
+        height: 60px;
+        font-size: 30px;
+    }
+
+    .dedicated-controls {
+        margin-bottom: 24px;
+    }
+
+    .dedicated-volume-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: none;
+        margin-top: 0;
+        transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        transform: translateX(0);
+    }
+
+    /* Shrink and shift volume when lyrics button appears */
+    .dedicated-bottom-actions.has-lyrics .dedicated-volume-wrapper {
+        width: calc(100% - 60px);
+        transform: translateX(60px);
+    }
+
+    .dedicated-volume-wrapper .volume-slider {
+        width: 100%;
+    }
+}
+
+/* Player album art — clickable */
+.now-playing-img {
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    border-radius: 6px;
+}
+
+.now-playing-img:hover {
+    transform: scale(1.08);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+}
+
+/* =========================================================================
+   Lyric Editor Styles
+========================================================================= */
+
+.lyric-line.editing {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    transition: background 0.2s ease;
+    cursor: default;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+}
+
+.lyric-line.editing:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.lyric-line.editing.active-edit {
+    background: rgba(29, 185, 84, 0.1);
+    border: 1px solid rgba(29, 185, 84, 0.3);
+}
+
+.lyric-edit-time {
+    font-family: 'Segoe UI', monospace;
+    font-size: 13px;
+    color: var(--accent);
+    min-width: 50px;
+    text-align: center;
+}
+
+.lyric-edit-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 600;
+    outline: none;
+    padding: 4px 0;
+}
+
+.lyric-edit-input:focus {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.lyric-sync-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #fff;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.lyric-sync-btn:hover {
+    background: var(--accent);
+    color: #000;
+    transform: scale(1.1);
+}
+
+.lyric-sync-btn i {
+    font-size: 18px;
+}
+
+#edit-lyrics-btn.active {
+    color: var(--accent);
+    background: rgba(29, 185, 84, 0.1);
+    border-color: var(--accent);
+}
+
+.lyric-editor-footer {
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.offset-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #b3b3b3;
+    font-size: 13px;
+}
+
+.offset-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.offset-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Instrumental indicator in editor */
+.lyric-line.editing.instrumental .lyric-edit-input {
+    font-style: italic;
+    color: #666;
+}

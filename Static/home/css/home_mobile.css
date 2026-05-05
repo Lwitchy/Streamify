@@ -1,0 +1,639 @@
+/* Mobile Optimization for Streamify */
+
+/* Only for screens smaller than 768px */
+@media screen and (max-width: 768px) {
+
+    /* --- PREVENT HORIZONTAL SWIPE --- */
+    html,
+    body {
+        overflow-x: clip;
+        width: 100%;
+    }
+
+    .main-content {
+        overflow-x: clip;
+    }
+
+    /* --- SIDEBAR --- */
+    .sidebar {
+        display: flex !important;
+        position: fixed;
+        left: -280px;
+        top: 0;
+        bottom: 0;
+        z-index: 1000;
+        transition: left 0.3s ease, box-shadow 0.3s ease;
+        width: 250px;
+        background: rgba(0, 0, 0, 0.92);
+        backdrop-filter: blur(40px);
+        -webkit-backdrop-filter: blur(40px);
+        box-shadow: none;
+    }
+
+    .sidebar-scroll-area {
+        padding: 0 16px 16px;
+        padding-bottom: calc(var(--player-height) + 16px);
+    }
+
+    .sidebar.mobile-active {
+        left: 0;
+        box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Overlay to close sidebar on tap */
+    .settings-sidebar-overlay {
+        display: none;
+    }
+
+    /* --- TOP BAR --- */
+    .top-bar {
+        padding: 10px 15px;
+        gap: 10px;
+        position: relative;
+    }
+
+    #menu-btn {
+        display: block !important;
+        color: #fff;
+    }
+
+    .search-wrapper {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .search-wrapper input {
+        width: 100%;
+        min-width: 0;
+        font-size: 14px;
+    }
+
+    .user-pill {
+        padding: 4px 10px;
+    }
+
+    .user-pill span {
+        display: none;
+    }
+
+    .user-avatar {
+        margin-right: 0;
+    }
+
+    /* Notification menu wider on mobile */
+    .notification-menu {
+        right: -40px !important;
+        width: calc(100vw - 30px) !important;
+        max-width: 420px !important;
+        max-height: 60vh;
+    }
+
+    .user-menu {
+        right: 0 !important;
+        min-width: 180px !important;
+    }
+
+    /* --- MAIN CONTENT --- */
+    .main-content {
+        margin-left: 0;
+        width: 100%;
+        padding-bottom: 260px;
+    }
+
+    .content-container {
+        padding: 12px;
+        padding-bottom: 40px;
+    }
+
+    body.player-section-active .content-container {
+        padding: 0 !important;
+    }
+
+    /* Hide top bar for true full-screen player experience on mobile */
+    body.player-section-active .top-bar {
+        display: none !important;
+    }
+
+    /* Fill the entire viewport — no black gap at the bottom */
+    body.player-section-active .main-content {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding-bottom: 0 !important;
+    }
+
+    body.player-section-active .content-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    body.player-section-active #player-section {
+        flex: 1;
+        min-height: 0;
+    }
+
+    /* --- GRIDS --- */
+    .grid-container {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 12px !important;
+    }
+
+    .card {
+        overflow: hidden;
+    }
+
+    /* --- COMPOSE BAR --- */
+    .compose-bar {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .compose-bar-avatar {
+        width: 32px;
+        height: 32px;
+        font-size: 13px;
+    }
+
+    .compose-input-wrap textarea {
+        font-size: 14px;
+    }
+
+    /* --- SONG LIST --- */
+    .song-row {
+        grid-template-columns: 24px 1fr auto 64px !important;
+        gap: 8px !important;
+        padding: 10px 8px !important;
+        align-items: center !important;
+    }
+
+    /* Hide Album and Uploaded By columns on mobile */
+    .song-row>span:nth-child(3),
+    .song-row>span:nth-child(4) {
+        display: none;
+    }
+
+    .song-row.header-row {
+        grid-template-columns: 24px 1fr auto 64px !important;
+    }
+
+    .song-row.header-row>span:nth-child(3),
+    .song-row.header-row>span:nth-child(4) {
+        display: none;
+    }
+
+    /* Duration column */
+    .song-row>span:nth-child(5) {
+        font-size: 12px;
+        text-align: right;
+        min-width: 32px;
+        color: var(--text-secondary);
+    }
+
+    /* Actions container — allow both buttons */
+    .edit-btn-container {
+        display: flex !important;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        width: auto;
+        height: 28px;
+    }
+
+    /* On mobile, show the edit button only in edit mode */
+    .song-row:not(.edit-mode) .row-edit-btn {
+        display: none !important;
+    }
+
+    .song-row:not(.edit-mode) .row-download-btn {
+        display: flex !important;
+        /* Always show download button */
+        opacity: 1;
+        /* Make it always visible on mobile since no hover */
+    }
+
+    .song-row.edit-mode .row-download-btn {
+        display: flex !important;
+    }
+}
+
+.song-row.edit-mode .row-edit-btn {
+    display: flex !important;
+    opacity: 1 !important;
+    width: 28px !important;
+    height: 28px !important;
+    flex-shrink: 0 !important;
+}
+
+/* Context menu handled by JS — remove from grid */
+.song-context-menu {
+    display: none !important;
+}
+
+/* Always show menu dots on mobile unless in edit mode */
+.song-row:not(.edit-mode) .row-menu-btn {
+    opacity: 1 !important;
+    font-size: 16px;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+}
+
+.song-row.edit-mode .row-menu-btn {
+    display: none !important;
+}
+
+/* Song cover smaller on mobile */
+.song-cover-img {
+    width: 36px !important;
+    height: 36px !important;
+}
+
+.song-title-row {
+    font-size: 13px;
+}
+
+/* --- PLAYER FOOTER --- */
+.music-player {
+    flex-direction: column;
+    height: auto;
+    padding: 10px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    gap: 10px;
+    backdrop-filter: blur(40px) saturate(1.8);
+    -webkit-backdrop-filter: blur(40px) saturate(1.8);
+    background: rgba(10, 10, 12, 0.92);
+    bottom: 0px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.player-left {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.player-center {
+    width: 100%;
+}
+
+.player-controls {
+    margin-bottom: 5px;
+}
+
+.progress-container {
+    width: 100%;
+    max-width: none;
+}
+
+.player-right {
+    display: none;
+}
+
+/* --- PROFILE DETAIL --- */
+.profile-banner-wrap {
+    height: 140px;
+}
+
+.profile-avatar-large-wrap {
+    width: 80px !important;
+    height: 80px !important;
+    padding: 4px !important;
+    margin-bottom: 12px !important;
+}
+
+.profile-avatar-large {
+    width: 100% !important;
+    height: 100% !important;
+    font-size: 28px !important;
+    background-size: cover !important;
+    background-position: center !important;
+}
+
+.profile-display-name {
+    font-size: 22px !important;
+}
+
+.profile-stats-row {
+    gap: 16px;
+}
+
+.stat-value {
+    font-size: 18px;
+}
+
+.stat-label {
+    font-size: 11px;
+}
+
+/* --- MODALS --- */
+.modal-box {
+    width: 95%;
+    max-width: 450px;
+}
+
+/* Settings Modal Specific Mobile Layout */
+.settings-modal-box {
+    width: 95% !important;
+    max-width: none !important;
+    height: 85vh !important;
+    border-radius: 20px !important;
+}
+
+#settings-menu-toggle {
+    display: block !important;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px;
+    border-radius: 12px;
+    margin-right: 4px;
+    transition: background 0.2s;
+}
+
+#settings-menu-toggle:active {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.settings-sidebar {
+    position: absolute;
+    left: -100%;
+    top: 0 !important;
+    bottom: 0;
+    z-index: 100;
+    width: 260px;
+    background: rgba(0, 0, 0, 0.95) !important;
+    backdrop-filter: blur(40px) !important;
+    -webkit-backdrop-filter: blur(40px) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    transition: left 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: block !important;
+    padding-top: 0;
+    box-shadow: 20px 0 50px rgba(0, 0, 0, 0.3);
+}
+
+.settings-sidebar.mobile-active {
+    left: 0;
+}
+
+.settings-container {
+    flex-direction: column;
+    height: calc(100% - 70px) !important;
+    position: relative;
+    margin-top: 0 !important;
+}
+
+.settings-content {
+    padding: 30px 20px;
+    width: 100%;
+    overflow-y: auto;
+}
+
+.settings-tab {
+    padding: 18px 24px !important;
+    border-radius: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+    margin-bottom: 0 !important;
+    position: relative;
+    background: transparent !important;
+    font-size: 15px !important;
+}
+
+.settings-tab.active {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: #fff !important;
+}
+
+.settings-tab.active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(to bottom, var(--gradient-1), var(--gradient-2));
+}
+
+/* Make buttons full width on mobile settings */
+.settings-pane .modal-actions {
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 32px;
+}
+
+.settings-pane .modal-actions .btn {
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* --- UPLOAD SECTION MOBILE --- */
+.upload-section {
+    padding: 20px 16px;
+    margin-top: 16px;
+    border-radius: 16px;
+}
+
+.upload-section h2 {
+    font-size: 1.4rem;
+    margin-bottom: 4px;
+}
+
+.upload-section>p {
+    font-size: 13px;
+    margin-bottom: 20px;
+}
+
+.upload-card {
+    padding: 20px 16px;
+    border-radius: 16px;
+}
+
+.upload-card-header {
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.upload-card-header i {
+    font-size: 22px;
+}
+
+.upload-card h3 {
+    font-size: 1rem;
+}
+
+.upload-card>p {
+    display: none;
+}
+
+.upload-bar,
+.upload-bar-dummy {
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    align-items: stretch;
+    min-height: auto;
+    border-radius: 12px;
+}
+
+.upload-bar-left {
+    width: 100%;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.upload-bar-left .btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.file-name-placeholder {
+    font-size: 13px;
+    flex: 1;
+    min-width: 0;
+}
+
+.hidden-upload-btn.button-appear {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    justify-content: center;
+    padding: 12px 16px;
+    font-size: 14px;
+    border-radius: 12px;
+}
+
+.upload-bar-dummy span {
+    font-size: 0.75rem;
+    word-break: break-all;
+}
+
+.locked-badge {
+    top: 12px;
+    right: 12px;
+    padding: 3px 10px;
+    font-size: 9px;
+}
+
+/* Locked card simplified on mobile */
+.upload-card--locked {
+    padding: 16px;
+    opacity: 0.7;
+}
+
+.upload-card--locked .upload-card-header h3 {
+    font-size: 0.9rem;
+}
+
+.upload-card--locked p {
+    display: none;
+}
+
+/* --- PLAYLIST MOBILE OVERRIDES --- */
+.playlist-detail-info {
+    flex-direction: column;
+    text-align: center;
+    padding: 16px;
+    gap: 16px;
+    align-items: center;
+}
+
+.playlist-detail-meta {
+    align-items: center;
+}
+
+.playlist-detail-cover {
+    width: 80px;
+    height: 80px;
+}
+
+.playlist-detail-cover i {
+    font-size: 32px;
+}
+
+.playlist-detail-name {
+    font-size: 22px;
+    justify-content: center !important;
+}
+
+.playlist-detail-bio {
+    text-align: center;
+}
+
+/* Center Playlist Card Info */
+.playlist-info {
+    align-items: center;
+    text-align: center;
+}
+
+.playlist-detail-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.playlist-detail-actions {
+    width: 100%;
+    overflow-x: auto;
+    display: flex;
+    gap: 8px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.playlist-detail-actions::-webkit-scrollbar {
+    display: none;
+}
+
+.playlist-detail-actions .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+#playlist-batch-bar {
+    margin: 12px 0;
+    padding: 10px 12px;
+}
+
+#playlist-batch-bar .batch-btns {
+    gap: 8px;
+}
+
+#playlist-batch-bar .batch-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.sidebar-playlist-list {
+    max-height: 150px;
+}
+
+/* Add-to-playlist modal items */
+.add-to-playlist-item {
+    padding: 12px;
+    font-size: 13px;
+}
+
+/* --- POST CARDS --- */
+.post-image-container {
+    margin: 0 -12px;
+}
+
+.post-image {
+    border-radius: 0;
+}
+
+.batch-bar {
+    position: sticky !important;
+    top: 60px !important;
+    z-index: 9999 !important;
+}

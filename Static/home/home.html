@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streamify | Home</title>
+    <!-- Main CSS Split Modules -->
+    <link rel="stylesheet" href="/Static/home/css/base.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/layout.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/components.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/upload.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/player.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/modals.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/feed.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/library.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/profile.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/chat.css?v=3.9">
+    <link rel="stylesheet" href="/Static/home/css/toasts.css?v=3.9">
+
+    <!-- Mobile Overrides (Must be last) -->
+    <link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=3.9" media="(max-width: 768px)">
+    <meta name="theme-color" content="#121212">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+</head>
+
+<body>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="morph-logo">
+            <span class="morph-text gradient-text" aria-label="Streamify">Streamify</span>
+        </div>
+        <div class="sidebar-scroll-area">
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a href="#" class="active" id="home-link"><i class='bx bx-news'></i> Feed</a></li>
+
+                    <li>
+                        <a href="#" id="library-link">
+                            <i class='bx bx-library'></i>
+                            <span>Your Library</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" id="people-link">
+                            <i class='bx bx-group'></i>
+                            <span>People</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" id="about-link">
+                            <i class='bx bx-info-circle'></i>
+                            <span>Beta Info</span>
+                        </a>
+                    </li>
+                </ul>
+                <div class="sidebar-divider"></div>
+                <ul>
+                    <li>
+                        <a href="#" id="upload-link">
+                            <i class='bx bx-upload'></i>
+                            <span>Upload</span>
+                        </a>
+                    </li>
+                    <li><a href="#" id="thanks-link"><i class='bx bxs-heart'></i> Thanks for using, Streamify!</a></li>
+                </ul>
+                <div class="sidebar-divider"></div>
+                <div class="sidebar-playlists-header">
+                    <span class="sidebar-playlists-title">Playlists</span>
+                    <button class="create-playlist-btn" id="create-playlist-btn" title="Create Playlist">
+                        <i class='bx bx-plus'></i>
+                    </button>
+                </div>
+                <ul class="sidebar-playlist-list" id="sidebar-playlist-list">
+                    <!-- Playlist items dynamically loaded -->
+                </ul>
+            </nav>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+        <!-- Top Tool Bar -->
+        <header class="top-bar">
+            <!-- Hamburger Menu (Mobile Only) -->
+            <i class='bx bx-menu' id="menu-btn"
+                style="font-size: 24px; margin-right: 15px; cursor: pointer; display: none;"></i>
+
+            <div class="search-wrapper">
+                <i class='bx bx-search'></i>
+                <input type="search" id="gsearch" name="gsearch" placeholder="Search Anything on Streamify!">
+            </div>
+
+            <!-- User Profile & Dropdown Wrapper -->
+            <div class="user-wrapper" style="position: relative; display: flex; align-items: center;">
+
+                <div class="notif-pill">
+                    <div class="icon-wrapper">
+                        <i class='bx bx-bell'></i>
+                        <span class="notif-badge hidden" id="notif-badge"></span>
+                    </div>
+                </div>
+                <!--style="background:linear-gradient(135deg,#4169e1,#ec4899);"-->
+                <div class="user-pill">
+                    <div class="user-avatar" ">U</div>
+                    <span>Loading...</span>
+                    <i class='bx bx-caret-down'></i>
+                </div>
+
+                <!-- Dropdown Menu (Sibling now, unaffected by pill transform) -->
+                <div class=" user-menu" id="user-menu">
+                        <a href="#" class="profile-btn" id="open-profile-btn">
+                            <i class='bx bx-user'></i> Profile
+                        </a>
+
+                        <a href="#" class="dm-btn" id="open-dm-btn">
+                            <i class='bx bx-message-rounded'></i> DMs
+                            <span class="dm-badge hidden" id="dm-badge"></span>
+                        </a>
+
+                        <a href="#" class="settings-btn" id="open-settings-btn">
+                            <i class='bx bx-cog'></i> Settings
+                        </a>
+
+                        <a href="#" id="logout-btn" class="logout-btn">
+                            <i class='bx bx-log-out'></i> Log out
+                        </a>
+                    </div>
+
+                    <div class="notification-menu" id="notification-menu">
+                        <h4>Notifications</h4>
+                        <p style="color:#b3b3b3; padding:10px;">No new notifications.</p>
+                    </div>
+
+
+                </div>
+        </header>
+
+        <!-- Content Container -->
+        <div class="content-container">
+
+            <!-- People Section (Hidden by default) -->
+            <section class="people-section hidden" id="people-section">
+                <h2 class="section-title">People</h2>
+                <div class="grid-container" id="people-grid">
+                    <!-- Loaded via API -->
+                </div>
+            </section>
+
+            <!-- Beta Info Section (Hidden by default) -->
+            <section class="about-section hidden" id="about-section" style="padding: 20px;">
+                <div class="beta-status-card"
+                    style="background: linear-gradient(145deg, #1e1e1e, #121212); border: 1px solid #333; border-radius: 12px; padding: 40px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                    <div
+                        style="width: 80px; height: 80px; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
+                        <i class='bx bx-error-alt' style="font-size: 40px; color: #fff;"></i>
+                    </div>
+                    <h2 style="font-size: 2rem; color: #fff; margin-bottom: 16px;">Developer Beta Phase</h2>
+                    <p
+                        style="color: #b3b3b3; font-size: 1.1rem; max-width: 600px; margin: 0 auto 24px; line-height: 1.6;">
+                        Streamify is currently under active development. You are accessing the <strong>Developer
+                            Beta</strong> version.
+                        Please be aware that certain features may be experimental, and you may encounter bugs,
+                        performance issues, or intermittent downtime.
+                    </p>
+                    <div
+                        style="background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; padding: 16px; display: inline-block; text-align: left; max-width: 500px; border-radius: 4px;">
+                        <span
+                            style="color: #f59e0b; font-weight: bold; display: block; margin-bottom: 4px;">Warning</span>
+                        <span style="color: #b3b3b3; font-size: 0.95rem;">Always keep backups of your music library. We
+                            recommend caution when interacting with experimental social features.</span>
+                    </div>
+                    <div style="margin-top: 32px; color: #666; font-size: 0.9rem;">
+                        Version: 0.2.0 - Alpha
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search Section (Hidden by default) -->
+            <section class="search-section hidden" id="search-section">
+                <h2 class="section-title">Search Results</h2>
+
+                <!-- Users Found -->
+                <h3 style="margin-top:20px; margin-bottom:10px; font-size: 1.2rem; color: #fff;">People</h3>
+                <div class="grid-container" id="search-users-grid"
+                    style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px;">
+                    <!-- Users injected here -->
+                    <p style="color:#b3b3b3;">No users found.</p>
+                </div>
+
+                <!-- Songs Found -->
+                <h3 style="margin-top:30px; margin-bottom:10px; font-size: 1.2rem; color: #fff;">Songs</h3>
+                <div class="song-list" id="search-songs-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                        <span></span>
+                    </div>
+                    <!-- Songs injected here -->
+                    <p style="padding:10px; color:#b3b3b3;">No songs found.</p>
+                </div>
+            </section>
+
+            <!-- Feed Section (Social — visible by default) -->
+            <section class="feed-section" id="feed-section">
+                <div class="feed-header">
+                    <h2 class="section-title">Feed</h2>
+                    <div class="feed-filters">
+                        <button class="filter-dropdown-btn" id="filter-dropdown-btn">
+                            <i class='bx bx-filter-alt'></i>
+                            <span id="current-filter">Newest</span>
+                            <i class='bx bx-chevron-down'></i>
+                        </button>
+                        <div class="filter-dropdown-menu hidden" id="filter-dropdown-menu">
+                            <button class="filter-option active" data-sort="newest">Newest</button>
+                            <button class="filter-option" data-sort="oldest">Oldest</button>
+                            <button class="filter-option" data-sort="most_liked">Most Liked</button>
+                            <button class="filter-option" data-sort="most_commented">Most Commented</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Compose Bar -->
+                <div class="compose-bar">
+                    <div class="compose-bar-avatar" id="compose-avatar">U</div>
+                    <div class="compose-input-wrap">
+                        <textarea id="compose-textarea" placeholder="What's on your mind?"></textarea>
+
+                        <!-- Photo Preview Container -->
+                        <div id="compose-photo-preview" class="compose-photo-preview hidden">
+                            <img src="" id="compose-photo-img">
+                            <button class="remove-photo-btn" id="remove-photo-btn"><i class='bx bx-x'></i></button>
+                        </div>
+
+                        <div class="compose-actions">
+                            <div class="compose-actions-left">
+                                <!-- Place for future quick actions on left -->
+                            </div>
+                            <div class="compose-actions-right">
+                                <button class="action-btn-feed hidden" id="add-photo-btn" title="Add Photo">
+                                    <i class='bx bx-image-add'></i>
+                                </button>
+                                <button class="btn btn-post" id="post-btn">Post</button>
+                            </div>
+                            <input type="file" id="feed-photo-upload" accept="image/*" style="display: none;">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="posts-container">
+                    <!-- Posts dynamically loaded via api.js -->
+                    <p style="color:#b3b3b3; padding: 20px; text-align: center;">Loading feed...</p>
+                </div>
+
+                <div class="load-more-container" id="load-more-container">
+                    <button id="load-more-btn" class="btn btn-outline load-more-btn hidden">
+                        <span>Load More</span>
+                        <i class='bx bx-chevron-down'></i>
+                    </button>
+                    <div id="feed-end-message" class="feed-end-message hidden">
+                        No more posts to load.
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Library Section (Song list — hidden by default) -->
+            <section class="trending hidden" id="trending-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h2 class="section-title" style="margin-bottom: 0;">Your Library</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="download-library-btn" class="manage-btn" title="Download All Offline">
+                            <i class='bx bx-cloud-download'></i>
+                        </button>
+                        <button id="manage-library-btn" class="manage-btn" title="Manage Library">
+                            <i class='bx bx-pencil'></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Batch Actions Bar -->
+                <div id="batch-actions-bar" class="batch-bar hidden">
+                    <div class="batch-info">
+                        <span id="selected-count">0</span> items selected
+                    </div>
+                    <div class="batch-btns">
+                        <button class="batch-btn batch-btn--accent" id="batch-add-to-playlist-btn">
+                            <i class='bx bx-list-plus'></i> Add to Playlist
+                        </button>
+                        <button class="batch-btn batch-btn--danger" id="batch-delete-btn">
+                            <i class='bx bx-trash'></i> Delete
+                        </button>
+                        <button class="batch-btn" id="batch-cancel-btn">Cancel</button>
+                    </div>
+                </div>
+                <div class="song-list" id="trending-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                        <span></span>
+                    </div>
+                    <!-- Loaded via API -->
+                </div>
+            </section>
+
+            <!-- Upload Section -->
+            <section class="upload-section hidden" id="upload-section">
+                <h2>Upload Music</h2>
+                <p>Upload your Songs to the Streamify!</p>
+
+                <!-- Spotify Import Section (Owner Only) -->
+                <div id="spotify-import-card" class="upload-card hidden" style="margin-bottom: 20px;">
+                    <div class="upload-card-header">
+                        <i class='bx bxl-spotify'></i>
+                        <h3>Spotify Import</h3>
+                        <span class="role-badge badge-admin" style="margin-left:auto; font-size: 10px;">Owner</span>
+                    </div>
+                    <p>Import a Spotify playlist directly into Streamify. We'll find high-quality versions
+                        automatically.</p>
+                    <form id="spotify-import-form">
+                        <div class="input-group" style="margin-top: 15px;">
+                            <input type="text" id="spotify-url-input" class="modern-input"
+                                placeholder="Paste Spotify Playlist URL here..." required>
+                        </div>
+                        <div class="input-group">
+                            <input type="text" id="spotify-playlist-name" class="modern-input"
+                                placeholder="Name for this playlist (optional)">
+                        </div>
+                        <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="spotify-use-soulseek" checked
+                                style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-color);">
+                            <label for="spotify-use-soulseek"
+                                style="font-size: 13px; color: #b3b3b3; cursor: pointer;">Prefer High Quality
+                                (Soulseek)</label>
+                        </div>
+                        <div class="form-group"
+                            style="display: flex; align-items: center; gap: 10px; margin-top: 20px;">
+                            <button type="button" class="btn btn-primary" id="spotify-import-btn"
+                                style="outline: none !important; box-shadow: none !important;">
+                                <i class='bx bx-import'></i> Start Import
+                            </button>
+                            <button type="button" class="btn btn-primary hidden" id="spotify-skip-btn"
+                                style="background: #333; outline: none !important; box-shadow: none !important; border: none;">
+                                <i class='bx bx-fast-forward'></i> Skip Current
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Progress Bar for Spotify Import -->
+                    <div id="spotify-progress-container" class="hidden"
+                        style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span id="spotify-progress-text"
+                                style="font-size: 14px; font-weight: bold;">Importing...</span>
+                            <span id="spotify-progress-count" style="font-size: 14px; color: #b3b3b3;">0/0</span>
+                        </div>
+                        <div style="width: 100%; background: #333; height: 8px; border-radius: 4px;">
+                            <div id="spotify-progress-bar" class="animated-progress"
+                                style="width: 0%; background: var(--primary-color); height: 100%; border-radius: 4px; transition: width 0.3s ease;">
+                            </div>
+                        </div>
+
+                        <div id="spotify-progress-log"
+                            style="margin-top: 15px; font-size: 12px; color: #888; max-height: 200px; overflow-y: auto;">
+                            <!-- Logs will append here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Local Files Section (Active) -->
+                <div class="upload-card">
+                    <div class="upload-card-header">
+                        <i class='bx bx-cloud-upload'></i>
+                        <h3>Import from local files</h3>
+                    </div>
+                    <p>Choose files from your device to upload securely to your vault.</p>
+
+                    <form id="upload-form" action="/upload-song" method="POST" enctype="multipart/form-data">
+                        <div class="upload-bar">
+                            <div class="upload-bar-left">
+                                <button type="button" class="btn btn-outline btn-sm"
+                                    onclick="document.getElementById('song_file').click()">
+                                    <i class='bx bx-plus-circle'></i> Choose
+                                </button>
+                                <span id="file-name" class="file-name-placeholder">No files chosen...</span>
+                                <input type="file" id="song_file" name="song_file"
+                                    accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg" style="display: none;"
+                                    onchange="handleFileUpload(this)" multiple required>
+                            </div>
+
+                            <div class="upload-bar-right">
+                                <button type="submit" class="btn hidden-upload-btn" id="upload-submit-btn">
+                                    <i class='bx bx-upload'></i> Upload
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="upload-progress-container" style="display: none; margin-top: 20px;">
+                            <div
+                                style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; color: #ccc;">
+                                <span id="upload-status-text">Uploading...</span>
+                                <span id="upload-percentage">0%</span>
+                            </div>
+
+                            <div
+                                style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
+                                <div id="upload-progress-fill"
+                                    style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--gradient-1), var(--gradient-2)); transition: width 0.2s;">
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- YouTube Section (Locked) -->
+                <!-- YouTube Section (Unlocked) -->
+                <div class="upload-card" id="youtube-upload-card">
+                    <div class="upload-card-header">
+                        <i class='bx bxl-youtube'></i>
+                        <h3>Add songs via YouTube or Link</h3>
+                    </div>
+                    <p>Import your favorite tracks directly from YouTube or web links securely.</p>
+                    <div class="youtube-controls"
+                        style="display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; margin-top: 15px; align-items: stretch;">
+                        <div class="upload-bar"
+                            style="display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 16px; width: 100%; box-sizing: border-box;">
+                            <div class="upload-bar-left" style="flex: 1;">
+                                <input type="text" id="youtube-url" placeholder="Paste YouTube link here..."
+                                    style="width: 100%; background: transparent; border: none; color: #fff; padding: 0; outline: none; font-size: 14px;">
+                            </div>
+                            <div class="upload-bar-right">
+                                <button type="button" class="btn btn-outline btn-sm" id="youtube-import-btn"
+                                    style="white-space: nowrap; padding: 8px 18px;">
+                                    <i class='bx bx-link-external'></i> Import
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="youtube-options" class="expand-show"
+                            style="border: 1px dashed rgba(255,255,255,0.15); border-radius: 12px; padding: 12px 16px; background: rgba(255,255,255,0.01); display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 720px; box-sizing: border-box;">
+                            <span style="font-size: 13px; color: #b3b3b3;">Audio Optimization (Slow but
+                                compatible)</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="switch">
+                                    <input type="checkbox" id="youtube-compress">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="youtube-preview" class="shrink-hide"
+                        style="border: 1px dashed rgba(255,255,255,0.2); border-radius: 8px; padding: 12px; margin-top: 15px; background: rgba(255,255,255,0.02);">
+                        <div style="display: flex; gap: 12px; align-items: flex-start;">
+                            <div id="youtube-preview-img"
+                                style="width: 60px; height: 60px; flex-shrink: 0; background: #333; border-radius: 4px; background-size: cover; background-position: center;">
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <div id="youtube-preview-title"
+                                    style="font-weight: 600; color: #fff; font-size: 14px; margin-bottom: 4px; line-height: 1.4; white-space: normal; overflow-wrap: break-word;">
+                                    Song Title</div>
+                                <div id="youtube-preview-artist"
+                                    style="color: #b3b3b3; font-size: 12px; margin-bottom: 4px;">Artist Name</div>
+                                <div id="youtube-preview-duration"
+                                    style="color: #1db954; font-size: 11px; font-weight: 600;">0:00</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="youtube-progress-container" style="display: none; margin-top: 20px;">
+                        <div
+                            style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; color: #ccc;">
+                            <span id="youtube-status-text">Processing...</span>
+                            <span id="youtube-percentage">0%</span>
+                        </div>
+                        <div
+                            style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
+                            <div id="youtube-progress-fill"
+                                style="width: 0%; height: 100%; background: linear-gradient(90deg, #ff0000, #ff4d4d); transition: width 0.3s;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="youtube-ratelimit-info"
+                        style="display: block; margin-top: 15px; font-size: 12px; color: rgba(255,255,255,0.5); text-align: center; font-style: italic; min-height: 20px;">
+                        Checking availability...
+                    </div>
+
+
+                </div>
+            </section>
+
+
+
+
+            <!-- Dedicated Profile Detail Section (SPA View — hidden by default) -->
+            <section class="profile-detail-section hidden" id="profile-detail-section">
+                <!-- Profile Detail View from profile.html -->
+                <div class="profile-container">
+                    <div class="profile-header-nav"
+                        style="margin-bottom: 12px; position: absolute; top: 12px; left: 12px; z-index: 100;">
+                        <button class="btn btn-outline btn-sm" id="back-from-profile-btn"
+                            style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 8px 16px;">
+                            <i class='bx bx-arrow-back'></i> Back
+                        </button>
+                    </div>
+                    <!-- Hero Banner Section -->
+                    <div class="profile-banner-wrap">
+                        <div class="profile-banner-backdrop" id="profile-banner-backdrop"></div>
+                        <div class="profile-banner" id="profile-banner">
+                            <!-- Banner Image or Gradient background -->
+                        </div>
+                        <div class="banner-overlay"></div>
+
+                        <button class="edit-banner-btn hidden" id="edit-banner-btn">
+                            <i class='bx bx-camera'></i> Edit Cover
+                        </button>
+                    </div>
+
+                    <div class="profile-info-wrap">
+                        <div class="profile-main-meta">
+                            <div class="profile-avatar-large-wrap">
+                                <div class="profile-avatar-large" id="profile-avatar">U</div>
+                                <button class="avatar-edit-overlay hidden" id="edit-avatar-btn">
+                                    <i class='bx bx-camera'></i>
+                                </button>
+                            </div>
+
+                            <div class="profile-text-meta">
+                                <h1 class="profile-display-name" id="profile-name">Loading...</h1>
+                                <p class="profile-handle" id="profile-handle">@user</p>
+                                <p class="profile-bio" id="profile-bio"></p>
+                            </div>
+
+                            <div class="profile-stats-row" style="display:none">
+                                <div class="stat-item">
+                                    <span class="stat-value" id="stat-posts">0</span>
+                                    <span class="stat-label">Posts</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value" id="stat-songs">0</span>
+                                    <span class="stat-label">Songs</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value" id="stat-likes">0</span>
+                                    <span class="stat-label">Likes</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="profile-tabs">
+                            <button class="tab-btn active" data-tab="posts">Posts</button>
+                            <button class="tab-btn" data-tab="playlists">Playlists</button>
+                        </div>
+
+                        <div class="tab-content-area">
+                            <div class="profile-pane active" id="pane-posts">
+                                <div id="profile-posts-container" class="posts-feed">
+                                    <p class="loading-text">Fetching posts...</p>
+                                </div>
+                            </div>
+
+                            <div class="profile-pane" id="pane-playlists">
+                                <div class="grid-container" id="profile-playlists-container"
+                                    style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px;">
+                                    <p class="loading-text">Fetching playlists...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Post Detail Section (Focused view — hidden by default) -->
+            <section class="post-detail-section hidden" id="post-detail-section">
+                <div class="post-detail-header" style="margin-bottom: 24px;">
+                    <button class="btn btn-outline btn-sm" id="back-to-feed-btn"
+                        style="display: flex; align-items: center; gap: 8px;">
+                        <i class='bx bx-arrow-back'></i> Back
+                    </button>
+                </div>
+                <div id="single-post-container">
+                    <!-- Targeted post card injected here -->
+                </div>
+            </section>
+
+            <!-- DM Section (hidden by default) -->
+            <section class="dm-section hidden" id="dm-section">
+                <h2 class="section-title">Messages</h2>
+                <div class="dm-layout">
+                    <div class="dm-contacts">
+                        <div class="dm-contacts-header">
+                            <h3>Chats</h3>
+                            <div class="dm-contacts-actions">
+                                <button class="dm-action-btn" id="dm-requests-btn" title="Message Requests"><i
+                                        class='bx bx-envelope'></i><span class="dm-req-badge hidden"
+                                        id="dm-req-badge"></span></button>
+                                <button class="dm-action-btn" id="dm-new-btn" title="New Message"><i
+                                        class='bx bx-plus'></i></button>
+                            </div>
+                        </div>
+                        <div class="dm-contacts-search">
+                            <input type="text" placeholder="Search conversations..." id="dm-contacts-search">
+                        </div>
+                        <div class="dm-contacts-list" id="dm-contacts-list">
+                            <p class="loading-text">No conversations yet</p>
+                        </div>
+                    </div>
+                    <div class="dm-chat" id="dm-chat">
+                        <div class="dm-chat-empty" id="dm-chat-empty">
+                            <i class='bx bx-message-rounded-detail'></i>
+                            <p>Select a conversation or start a new one</p>
+                        </div>
+                        <div class="dm-chat-active hidden" id="dm-chat-active">
+                            <div class="dm-chat-header">
+                                <button class="dm-back-contacts-btn" id="dm-back-contacts-btn"><i
+                                        class='bx bx-arrow-back'></i></button>
+                                <div class="dm-chat-user" id="dm-chat-user-info"></div>
+                            </div>
+                            <div class="dm-messages" id="dm-messages"></div>
+                            <div class="dm-typing-indicator hidden" id="dm-typing-indicator"></div>
+                            <div class="dm-input-area">
+                                <input type="text" placeholder="Type a message..." id="dm-message-input">
+                                <button class="dm-send-btn" id="dm-send-btn"><i class='bx bx-send'></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Playlist Detail Section (hidden by default) -->
+            <section class="playlist-detail-section hidden" id="playlist-detail-section">
+                <div class="playlist-detail-header">
+                    <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-playlist-btn">
+                        <i class='bx bx-arrow-back'></i> Back
+                    </button>
+                    <div class="playlist-detail-actions">
+                        <button class="btn btn-outline btn-sm hidden" id="clone-playlist-btn"
+                            title="Add to your library">
+                            <i class='bx bx-plus'></i> Add to library
+                        </button>
+                        <button class="btn btn-outline btn-sm" id="share-playlist-btn" title="Share Playlist">
+                            <i class='bx bx-share-alt'></i> Share
+                        </button>
+                        <button class="btn btn-outline btn-sm" id="download-playlist-btn"
+                            title="Download Playlist Offline"><i class='bx bx-cloud-download'></i> Download</button>
+                        <button class="btn btn-outline btn-sm" id="manage-playlist-btn"><i class='bx bx-pencil'></i>
+                            Edit
+                            songs</button>
+                        <button class="btn btn-outline btn-sm" id="rename-playlist-btn"><i class='bx bx-edit-alt'></i>
+                            Edit playlist</button>
+                        <button class="btn btn-outline btn-sm btn-danger-outline" id="delete-playlist-btn"><i
+                                class='bx bx-trash'></i> Delete</button>
+                    </div>
+                </div>
+                <div class="batch-actions-bar hidden" id="playlist-batch-bar">
+                    <span><span id="playlist-selected-count">0</span> selected</span>
+                    <div class="batch-btns">
+                        <button class="batch-btn batch-btn--danger" onclick="removeSelectedPlaylistSongs()"><i
+                                class='bx bx-x'></i> Remove from Playlist</button>
+                        <button class="batch-btn" onclick="togglePlaylistEditMode()">Cancel</button>
+                    </div>
+                </div>
+                <div class="playlist-detail-info">
+                    <div class="playlist-detail-cover" id="playlist-detail-cover" title="Click to change cover"
+                        style="cursor: pointer; background-size: cover; background-position: center;">
+                        <i class='bx bx-music' id="playlist-detail-cover-icon"></i>
+                        <input type="file" id="playlist-cover-upload" accept="image/*" style="display: none;">
+                        <div class="cover-overlay hidden">
+                            <i class='bx bx-camera'></i>
+                        </div>
+                    </div>
+                    <div class="playlist-detail-meta">
+                        <h2 class="playlist-detail-name" id="playlist-detail-name"
+                            style="display: flex; align-items: center; gap: 10px;">
+                            Playlist
+                            <i class='bx bx-lock-alt hidden' id="playlist-lock-icon"
+                                style="font-size: 0.8em; opacity: 0.7;"></i>
+                        </h2>
+                        <p class="playlist-detail-owner" id="playlist-detail-owner"
+                            style="color: var(--text-secondary); margin-bottom: 4px; font-size: 0.9rem; font-weight: 500;">
+                        </p>
+                        <p class="playlist-detail-bio" id="playlist-detail-bio"
+                            style="color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem; max-width: 600px; line-height: 1.4; display: none;">
+                        </p>
+                        <p class="playlist-detail-count" id="playlist-detail-count">0 songs</p>
+                    </div>
+                </div>
+                <div class="song-list" id="playlist-songs-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                        <span></span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DEDICATED PLAYER VIEW (Big Mode Page) -->
+            <section class="player-section hidden" id="player-section">
+                <div class="dedicated-player-view" id="dedicated-player-view">
+
+                    <div class="dedicated-header">
+                        <button class="btn btn-outline btn-sm" id="close-dedicated-player"
+                            style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 8px 16px; margin-right: auto; z-index: 10;">
+                            <i class='bx bx-arrow-back'></i> Back
+                        </button>
+                        <div class="dedicated-header-text">Now Playing</div>
+                        <div style="width: 80px;"></div> <!-- spacer -->
+                    </div>
+
+                    <div class="dedicated-player-content">
+                        <div class="dedicated-art-wrapper">
+                            <div class="dedicated-player-backdrop" id="dedicated-player-backdrop"></div>
+                            <div class="dedicated-art-container">
+                                <img id="dedicated-player-img" src="https://via.placeholder.com/500" alt="Album Art">
+                            </div>
+                        </div>
+
+                        <div class="dedicated-right-panel">
+                            <!-- Standard Info & Controls Container -->
+                            <div id="dedicated-standard-container">
+                                <div class="dedicated-info-container">
+                                    <div class="dedicated-track-info">
+                                        <h2 id="dedicated-player-title">Select a Song</h2>
+                                        <h3 id="dedicated-player-artist">...</h3>
+                                    </div>
+                                </div>
+
+                                <div class="dedicated-progress-container">
+                                    <div class="dedicated-progress-bar-wrapper" id="dedicated-progress-container">
+                                        <div class="dedicated-progress-bar" id="dedicated-progress-bar"></div>
+                                    </div>
+                                    <div class="dedicated-time-info">
+                                        <span id="dedicated-current-time">0:00</span>
+                                        <span id="dedicated-duration">0:00</span>
+                                    </div>
+                                </div>
+
+                                <div class="dedicated-controls">
+                                    <button class="control-btn" id="dedicated-btn-shuffle"><i
+                                            class='bx bx-shuffle'></i></button>
+                                    <button class="control-btn" id="dedicated-btn-prev"><i
+                                            class='bx bx-skip-previous'></i></button>
+                                    <button class="play-pause-btn dedicated-play-pause-btn" id="dedicated-btn-play">
+                                        <i class='bx bx-play' style="margin-left: 4px;"></i>
+                                    </button>
+                                    <button class="control-btn" id="dedicated-btn-next"><i
+                                            class='bx bx-skip-next'></i></button>
+                                    <button class="control-btn" id="dedicated-btn-repeat"><i
+                                            class='bx bx-repeat'></i></button>
+                                </div>
+
+                                <div class="dedicated-bottom-actions">
+                                    <button class="control-btn" id="dedicated-btn-lyrics" title="Lyrics"
+                                        style="font-size: 24px;">
+                                        <i class='bx bx-microphone'></i>
+                                    </button>
+                                    <button class="control-btn" id="dedicated-btn-find-lyrics" title="Find Lyrics"
+                                        style="font-size: 24px;">
+                                        <i class='bx bx-search'></i>
+                                    </button>
+                                    <div class="dedicated-volume-wrapper">
+                                        <i class='bx bx-volume-full' id="dedicated-vol-icon"></i>
+                                        <input type="range" min="0" max="100" value="70" class="volume-slider"
+                                            id="dedicated-volume-slider">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="dedicated-lyrics-container" class="hidden">
+                                <div class="lyrics-header"
+                                    style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 20px;">
+                                    <button class="btn btn-outline btn-sm" id="close-lyrics-btn"
+                                        style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
+                                        <i class='bx bx-x'></i> Close
+                                    </button>
+
+                                    <div id="lyric-editor-controls" class="hidden" style="display: flex; gap: 8px;">
+                                        <button class="btn btn-sm" id="save-lyrics-btn"
+                                            style="background: var(--accent); color: #000; border-radius: 30px; padding: 4px 16px; font-weight: 600;">
+                                            <i class='bx bx-check'></i> Save
+                                        </button>
+                                        <button class="btn btn-outline btn-sm" id="clear-lyrics-btn"
+                                            style="border-radius: 30px; padding: 4px 12px; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
+                                            <i class='bx bx-trash'></i> Clear
+                                        </button>
+                                        <button class="btn btn-outline btn-sm" id="cancel-lyric-edit-btn"
+                                            style="border-radius: 30px; padding: 4px 12px;">
+                                            Cancel
+                                        </button>
+                                    </div>
+
+                                    <div style="display: flex; gap: 8px; margin-left: auto;">
+                                        <button class="btn btn-outline btn-sm" id="re-request-lyrics-btn"
+                                            style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
+                                            <i class='bx bx-search'></i> Find Lyrics
+                                        </button>
+                                        <button class="btn btn-outline btn-sm" id="edit-lyrics-btn"
+                                            style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
+                                            <i class='bx bx-edit-alt'></i> Edit Lyrics
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="lyrics-scroll-area" id="lyrics-scroll-area">
+                                    <div class="lyrics-content" id="lyrics-content">
+                                        <!-- Lyrics lines injected here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- MUSIC PLAYER FOOTER -->
+    <footer class="music-player">
+        <audio id="audio-player" crossorigin="anonymous"></audio>
+        <div class="player-left">
+            <img src="https://via.placeholder.com/60" alt="Album Art" class="now-playing-img" id="player-img">
+            <div class="track-info">
+                <div class="track-name" id="player-title">Select a Song</div>
+                <div class="track-artist" id="player-artist">...</div>
+            </div>
+        </div>
+        <div class="player-center">
+            <div class="player-controls">
+                <button class="control-btn" id="btn-shuffle"><i class='bx bx-shuffle'></i></button>
+                <button class="control-btn" id="btn-prev"><i class='bx bx-skip-previous'></i></button>
+                <button class="play-pause-btn" id="btn-play">
+                    <i class='bx bx-play' style="margin-left: 2px;"></i>
+                </button>
+                <button class="control-btn" id="btn-next"><i class='bx bx-skip-next'></i></button>
+                <button class="control-btn" id="btn-repeat"><i class='bx bx-repeat'></i></button>
+            </div>
+            <div class="progress-container">
+                <span id="current-time">0:00</span>
+                <div class="progress-bar-wrapper" id="progress-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <span id="duration">0:00</span>
+            </div>
+        </div>
+        <div class="player-right">
+            <button class="control-btn" id="btn-eq" title="Equalizer" style="margin-right: 15px;">
+                <i class='bx bx-slider-alt'></i>
+            </button>
+            <div class="volume-wrapper">
+                <i class='bx bx-volume-full' id="vol-icon" style="font-size: 20px; cursor: pointer;"></i>
+                <input type="range" min="0" max="100" value="70" class="volume-slider" id="volume-slider">
+            </div>
+        </div>
+    </footer>
+
+    <!-- EQUALIZER POPUP -->
+    <div id="eq-popup" class="eq-popup hidden">
+        <div class="eq-header">
+            <span>Equalizer</span>
+            <label class="switch eq-switch" style="transform: scale(0.8);">
+                <input type="checkbox" id="eq-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="eq-presets" style="margin-bottom: 15px;">
+            <select id="eq-preset-select" class="preset-select"
+                style="width: 100%; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 6px; font-size: 12px; outline: none; cursor: pointer; transition: all 0.2s ease;">
+                <option value="custom" style="background: #1a1a1a;">Custom</option>
+                <option value="flat" style="background: #1a1a1a;">Flat</option>
+                <option value="bass-boost" style="background: #1a1a1a;">Bass Boost</option>
+                <option value="vocal" style="background: #1a1a1a;">Vocal Boost</option>
+                <option value="electronic" style="background: #1a1a1a;">Electronic</option>
+                <option value="rock" style="background: #1a1a1a;">Rock</option>
+            </select>
+        </div>
+        <div class="eq-sliders">
+            <div class="eq-band">
+                <input type="range" min="-12" max="12" value="0" class="eq-slider" id="eq-low">
+                <span>Low</span>
+            </div>
+            <div class="eq-band">
+                <input type="range" min="-12" max="12" value="0" class="eq-slider" id="eq-mid">
+                <span>Mid</span>
+            </div>
+            <div class="eq-band">
+                <input type="range" min="-12" max="12" value="0" class="eq-slider" id="eq-high">
+                <span>High</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- LYRICS SELECTION MODAL -->
+    <div id="lyrics-selection-modal" class="modal-overlay hidden" style="z-index: 3000;">
+        <div class="modal-box" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>Select Lyrics</h3>
+                <i class='bx bx-x' id="close-lyrics-selection-modal"></i>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                    <input type="text" id="lyrics-search-title" class="form-control" placeholder="Song Title"
+                        style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
+                    <input type="text" id="lyrics-search-artist" class="form-control" placeholder="Artist"
+                        style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
+                    <button class="btn" id="lyrics-search-btn"
+                        style="background: var(--accent); color: #000; border-radius: 4px; padding: 8px 16px; font-weight: bold;">Search</button>
+                </div>
+                <div id="lyrics-selection-loading" class="hidden" style="text-align: center; padding: 20px;">
+                    <i class='bx bx-loader-alt bx-spin' style="font-size: 24px;"></i>
+                    <p>Searching for lyrics...</p>
+                </div>
+                <div id="lyrics-selection-results"
+                    style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
+                    <!-- Results will be injected here -->
+                </div>
+                <div id="lyrics-selection-empty" class="hidden"
+                    style="text-align: center; padding: 20px; color: #b3b3b3;">
+                    No lyrics found. Try searching with different terms.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROFILE MODAL -->
+    <div id="profile-modal" class="modal-overlay hidden">
+        <div class="modal-box-user">
+            <div class="modal-header">
+                <h3>Your Profile</h3>
+                <i class='bx bx-x' id="close-profile-modal-btn"></i>
+            </div>
+
+            <div class="profile-content">
+                <div class="user-avatar" id="profile-avatar-display"
+                    style="width: 120px; height: 120px; font-size: 48px; margin: 0 auto 20px;">U</div>
+                <span id="profile-username-display"
+                    style="font-size: 1.5rem; font-weight: bold; display: block; margin-bottom: 10px;">User</span>
+                <p id="profile-bio-display"
+                    style="color: #b3b3b3; margin-bottom: 20px; font-size: 14px; line-height: 1.4; max-width: 250px; margin-left: auto; margin-right: auto;">
+                </p>
+                <div class="profile-stats">
+                    <div>
+                        <strong id="profile-playlists-count">0</strong>
+                        <span>Public Playlists</span>
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="justify-content: center; margin-top: 20px;">
+                    <button class="btn btn-outline" id="view-full-profile-btn"
+                        style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class='bx bx-id-card'></i> Detailed View
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-box settings-modal-box">
+            <div class="modal-header">
+                <div class="settings-header-left">
+                    <i class='bx bx-menu-alt-left' id="settings-menu-toggle"></i>
+                    <h3>Settings</h3>
+                </div>
+                <i class='bx bx-x' id="close-modal-btn"></i>
+            </div>
+
+            <div class="settings-container">
+                <div class="settings-sidebar-overlay" id="settings-overlay"></div>
+                <aside class="settings-sidebar">
+                    <div class="settings-tab active" data-tab="profile">
+                        <i class='bx bx-user'></i>
+                        <span>Profile</span>
+                    </div>
+                    <div class="settings-tab" data-tab="account">
+                        <i class='bx bx-lock-alt'></i>
+                        <span>Account</span>
+                    </div>
+                    <div class="settings-tab" data-tab="privacy">
+                        <i class='bx bx-shield'></i>
+                        <span>Privacy</span>
+                    </div>
+                    <div class="settings-tab" data-tab="storage">
+                        <i class='bx bx-data'></i>
+                        <span>Storage</span>
+                    </div>
+                </aside>
+
+                <main class="settings-content">
+                    <!-- Profile Tab -->
+                    <div class="settings-pane active" id="pane-profile">
+                        <form id="profile-form">
+                            <div class="profile-avatar-section">
+                                <div class="avatar-preview-wrap">
+                                    <div class="avatar-big-preview" id="settings-avatar-preview">U</div>
+                                    <button type="button" class="avatar-edit-btn" id="trigger-upload-btn">
+                                        <i class='bx bx-camera'></i>
+                                    </button>
+                                </div>
+                                <input type="file" id="avatar-upload" accept="image/*" style="display: none;">
+                                <input type="file" id="banner-upload-input" accept="image/*" style="display: none;">
+                            </div>
+
+                            <div class="input-group">
+                                <label>Display Name</label>
+                                <input type="text" id="settings-display-name" placeholder="How others see you">
+                            </div>
+
+                            <div class="input-group">
+                                <label>Bio</label>
+                                <textarea id="settings-bio" placeholder="Tell us about yourself..."></textarea>
+                            </div>
+
+                            <div class="modal-actions">
+                                <button type="submit" class="btn">Save Changes</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Account Tab -->
+                    <div class="settings-pane" id="pane-account">
+                        <form id="password-form">
+                            <h4 style="margin-bottom: 15px; color: #fff;">Change Password</h4>
+                            <div class="input-group">
+                                <label>Current Password</label>
+                                <input type="password" id="old-password" required>
+                            </div>
+                            <div class="input-group">
+                                <label>New Password</label>
+                                <input type="password" id="new-password" required>
+                            </div>
+                            <div class="input-group">
+                                <label>Confirm New Password</label>
+                                <input type="password" id="confirm-new-password" required>
+                            </div>
+                            <div class="modal-actions">
+                                <button type="submit" class="btn">Update Password</button>
+                            </div>
+                        </form>
+
+                        <div style="margin: 25px 0; border-top: 1px solid rgba(255,255,255,0.06);"></div>
+
+                        <div class="security-settings">
+                            <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <i class='bx bx-shield-quarter' style="color: var(--accent);"></i>
+                                Account Security
+                            </h4>
+                            <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">
+                                If you think your account is being used on another device, you can log out from all
+                                other active sessions across all devices.
+                            </p>
+
+                            <div id="devices-list" class="devices-list">
+                                <!-- Devices will be loaded here -->
+                                <p style="color: #666; font-size: 12px; text-align: center; padding: 10px;">Loading
+                                    active sessions...</p>
+                            </div>
+
+                            <button id="logout-others-btn" class="btn btn-outline"
+                                style="width: 100%; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 15px;">
+                                <i class='bx bx-devices'></i> Logout from all other devices
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Privacy Tab -->
+                    <div class="settings-pane" id="pane-privacy">
+                        <div class="security-settings">
+                            <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <i class='bx bx-data' style="color: var(--accent);"></i>
+                                Telemetry & Analytics
+                            </h4>
+                            <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">
+                                We collect listening behavior to calculate your top artists and genres, this data will
+                                be used to provide data for next updates like "monthly rewraps". <br>
+                                You can disable it whenever you want.
+                            </p>
+
+                            <div
+                                style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 25px;">
+                                <div>
+                                    <strong style="display: block; font-size: 14px; margin-bottom: 4px;">Allow Analytics
+                                        Collection</strong>
+                                    <span style="font-size: 12px; color: #888;">If disabled, we will stop tracking your
+                                        listening habits.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="allow-analytics-toggle" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <i class='bx bx-download' style="color: var(--accent);"></i>
+                                Download Your Data
+                            </h4>
+                            <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">
+                                You can request a copy of your listening history and calculated statistics at any time.
+                                The file will be exported in JSON format.
+                            </p>
+                            <button id="download-data-btn" class="btn btn-outline"
+                                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <i class='bx bx-cloud-download'></i> Request Data Export
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Storage Tab -->
+                    <div class="settings-pane" id="pane-storage">
+                        <h3>Storage Quota</h3>
+                        <p style="color: #b3b3b3; font-size: 14px; margin-bottom: 20px;">
+                            Manage your personal library storage. You have a limit of 300 MB for your uploaded songs and
+                            imports.
+                        </p>
+
+                        <div class="setting-group" style="margin-bottom: 30px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                <span style="font-weight: bold; color: #fff;">Usage</span>
+                                <strong id="settings-storage-text" style="color: var(--primary-color);">0 MB / 300
+                                    MB</strong>
+                            </div>
+                            <div
+                                style="width: 100%; background: #333; height: 12px; border-radius: 6px; overflow: hidden;">
+                                <div id="settings-storage-bar" class="animated-progress"
+                                    style="width: 0%; background: var(--primary-color); height: 100%; border-radius: 6px; transition: width 0.3s ease;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group" style="padding-top: 20px; border-top: 1px solid #333;">
+                            <h4 style="margin-bottom: 10px; color: #fff;">Need more space?</h4>
+                            <p style="color: #b3b3b3; font-size: 14px; margin-bottom: 15px;">
+                                To free up space, go to "Your Library" in the left sidebar and delete some of your
+                                existing songs.
+                            </p>
+                            <button class="btn btn-outline"
+                                onclick="document.getElementById('close-modal-btn').click(); document.getElementById('library-link').click();"
+                                style="width: 100%;">
+                                Go to My Library
+                            </button>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <!-- FEED CROP MODAL -->
+    <div id="feed-crop-modal" class="modal-overlay hidden" style="z-index: 2005;">
+        <div class="modal-box" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Crop your photo</h3>
+                <i class='bx bx-x' id="close-feed-crop-btn"></i>
+            </div>
+            <div class="crop-container"
+                style="max-height: 500px; overflow: hidden; margin-bottom: 20px; border-radius: 8px;">
+                <img id="feed-crop-image" style="max-width: 100%;">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" id="cancel-feed-crop-btn">Cancel</button>
+                <button type="button" class="btn" id="save-feed-crop-btn">Apply Crop</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AVATAR CROP MODAL -->
+    <div id="crop-modal" class="modal-overlay hidden" style="z-index: 2000;">
+        <div class="modal-box" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Crop your avatar</h3>
+                <i class='bx bx-x' id="close-crop-btn"></i>
+            </div>
+            <div class="crop-container"
+                style="max-height: 400px; overflow: hidden; margin-bottom: 20px; border-radius: 8px;">
+                <img id="crop-image" style="max-width: 100%;">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" id="cancel-crop-btn">Cancel</button>
+                <button type="button" class="btn" id="save-crop-btn">Apply Crop</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- UPLOAD CONFIRMATION MODAL -->
+    <div id="upload-confirmation-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="width: 400px; text-align: center;">
+            <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
+                <h3>Confirm Upload</h3>
+            </div>
+
+            <div style="padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <i class='bx bx-music' style="font-size: 48px; color: var(--accent); margin-bottom: 10px;"></i>
+                <h4 id="confirm-filename" style="margin-bottom: 5px; word-break: break-all;">song.mp3</h4>
+                <p id="confirm-filesize" style="color: #b3b3b3; font-size: 13px;">0 MB</p>
+            </div>
+
+            <p style="color: #ccc; font-size: 14px; margin-bottom: 25px;">
+                Are you sure you want to upload this track to Streamify?
+            </p>
+
+            <!-- Visibility locked to private -->
+            <div class="input-group" style="text-align: left; margin-bottom: 20px;">
+                <div
+                    style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:8px;">
+                    <i class='bx bx-lock-alt' style="font-size:18px; color:#b3b3b3;"></i>
+                    <div>
+                        <div style="font-size:13px; font-weight:600; color:#fff;">Private — Vault Only</div>
+                        <div style="font-size:12px; color:#b3b3b3;">Only you can see and play this song.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Enable Compression -->
+            <div class="input-group" style="text-align: left; margin-bottom: 20px;">
+                <label for="enable-compression">Enable Compression:</label>
+                <select id="enable-compression"
+                    style="width: 100%; padding: 8px; border-radius: 6px; background: #1e1e1e; color: #fff; border: 1px solid #333;">
+                    <option value="true" selected>Yes (Your song will be compressed for faster streaming & save on
+                        storage)</option>
+                    <option value="false">No (Your song will be uploaded as-is)</option>
+                </select>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="modal-actions" style="justify-content: center;">
+                <button type="button" class="btn btn-outline" id="cancel-upload-btn">Cancel</button>
+                <button type="button" class="btn" id="confirm-upload-btn">Yes, Upload</button>
+            </div>
+        </div>
+    </div>
+
+    </div>
+    </div>
+
+    <!-- EDIT SONG MODAL -->
+    <div id="edit-song-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3>Edit Song</h3>
+                <i class='bx bx-x' id="close-edit-song-modal"></i>
+            </div>
+            <div class="edit-song-content" style="padding: 20px 0;">
+                <input type="hidden" id="edit-song-id">
+
+                <div class="edit-song-cover-wrap">
+                    <div class="edit-song-cover-preview">
+                        <img id="edit-song-cover-img"
+                            src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+                        <button type="button" class="cover-edit-trigger" id="change-song-cover-btn">
+                            <i class='bx bx-camera'></i>
+                        </button>
+                    </div>
+                    <input type="file" id="song-cover-upload" accept="image/*" style="display: none;">
+                </div>
+
+                <div class="input-group">
+                    <label>Song Title</label>
+                    <input type="text" id="edit-song-name" placeholder="Enter song name">
+                </div>
+                <div class="input-group">
+                    <label>Artist</label>
+                    <input type="text" id="edit-song-artist" placeholder="Enter artist name">
+                </div>
+                <div class="input-group">
+                    <label>Album</label>
+                    <input type="text" id="edit-song-album" placeholder="Enter album name">
+                </div>
+                <div class="input-group">
+                    <label>Visibility</label>
+                    <select id="edit-song-visibility"
+                        style="width:100%; padding:10px; background:#1e1e1e; border:1px solid #333; color:#fff; border-radius:8px;">
+                        <option value="public">Public (Everyone can see)</option>
+                        <option value="private">Private (Only you)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-actions" style="margin-top: 10px;">
+                <button type="button" class="btn btn-outline" id="cancel-edit-song">Cancel</button>
+                <button type="button" class="btn" id="save-song-changes">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- COVER EXPAND OVERLAY (Deprecated/Commented Out) -->
+    <!--
+    <div id="cover-expand-overlay">
+        <img id="cover-expand-img" alt="Now Playing">
+        <div class="cover-expand-info">
+            <div class="cover-expand-title">Song Title</div>
+            <div class="cover-expand-artist">Artist</div>
+        </div>
+    </div>
+    -->
+
+    <!-- CREATE PLAYLIST MODAL -->
+    <div id="create-playlist-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Create Playlist</h3>
+                <i class='bx bx-x' id="close-create-playlist-btn"></i>
+            </div>
+            <div style="padding: 20px 0;">
+                <div class="input-group">
+                    <label>Playlist Name</label>
+                    <input type="text" id="new-playlist-name" placeholder="My Awesome Playlist" maxlength="60">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" id="cancel-create-playlist-btn">Cancel</button>
+                <button type="button" class="btn" id="confirm-create-playlist-btn">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD TO PLAYLIST MODAL -->
+    <div id="add-to-playlist-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width: 380px;">
+            <div class="modal-header">
+                <h3>Add to Playlist</h3>
+                <i class='bx bx-x' id="close-add-to-playlist-btn"></i>
+            </div>
+            <div class="add-to-playlist-body" id="add-to-playlist-list">
+                <p style="color:#b3b3b3; padding:15px; text-align:center;">Loading playlists...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- RENAME PLAYLIST MODAL -->
+    <div id="rename-playlist-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Edit Playlist</h3>
+                <i class='bx bx-x' id="close-rename-playlist-btn"></i>
+            </div>
+            <div style="padding: 20px 0;">
+                <input type="hidden" id="rename-playlist-id">
+                <div class="input-group">
+                    <label>Name</label>
+                    <input type="text" id="rename-playlist-name" placeholder="Playlist name" maxlength="60">
+                </div>
+                <div class="input-group" style="margin-top: 15px;">
+                    <label>Bio (Optional)</label>
+                    <textarea id="rename-playlist-bio" placeholder="Playlist description..." maxlength="300"
+                        style="width: 100%; height: 80px; resize: vertical; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 4px;"></textarea>
+                </div>
+                <div class="input-group" style="margin-top: 15px;">
+                    <label>Visibility</label>
+                    <select id="rename-playlist-visibility"
+                        style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 4px; outline: none;">
+                        <option value="private" style="background: #121212;">Private (Link required for others)</option>
+                        <option value="public" style="background: #121212;">Public (Visible on your profile)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" id="cancel-rename-playlist-btn">Cancel</button>
+                <button type="button" class="btn" id="confirm-rename-playlist-btn">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New DM Request Modal -->
+    <div id="dm-new-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width:400px;">
+            <div class="modal-header">
+                <h3>New Message</h3>
+                <i class='bx bx-x' id="close-dm-new-modal"></i>
+            </div>
+            <div style="padding: 20px 0;">
+                <div class="input-group">
+                    <label>Username</label>
+                    <input type="text" id="dm-new-username" placeholder="Enter username...">
+                </div>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;">A request will be sent. The
+                    other user must accept before you can message.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" id="dm-new-cancel">Cancel</button>
+                <button type="button" class="btn" id="dm-new-send">Send Request</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DM Requests Modal -->
+    <div id="dm-requests-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width:420px;">
+            <div class="modal-header">
+                <h3>Message Requests</h3>
+                <i class='bx bx-x' id="close-dm-requests-modal"></i>
+            </div>
+            <div class="dm-requests-tabs">
+                <button class="dm-req-tab active" data-tab="received">Received</button>
+                <button class="dm-req-tab" data-tab="sent">Sent</button>
+            </div>
+            <div class="dm-requests-list" id="dm-requests-list">
+                <p class="loading-text">No pending requests</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/Static/home/js/config.js?v=3.9"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    <script src="/Static/home/js/offline.js?v=3.9"></script>
+    <script src="/Static/home/js/player.js?v=3.9"></script>
+    <script src="/Static/home/js/api.js?v=3.9"></script>
+    <script src="/Static/home/js/upload.js?v=3.9"></script>
+    <script src="/Static/home/js/ui.js?v=3.9"></script>
+
+</body>
+
+</html>
+
+</html>

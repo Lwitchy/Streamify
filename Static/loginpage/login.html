@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streamify | Beta</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <meta name="theme-color" content="#121212">
+  <link rel="stylesheet" href="/Static/loginpage/css/login.css?v=3.9">
+  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+  <!-- Intro Animation -->
+  <div id="intro" style="display: none;" class="intro">
+    <div class="intro-wrapper">
+      <h1 class="intro-text gradient-background">Streamify</h1>
+    </div>
+  </div>
+
+  <header class="header">
+    <div class="brand">
+      <h2 class="gradient-background">Streamify</h2>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- LOGIN FORM -->
+    <div class="form-wrapper login-wrapper" id="loginWrapper">
+      <div class="wrapper-header">
+        <h2 class="gradient-text">Welcome Back</h2>
+        <p>Sign in to continue</p>
+      </div>
+
+      <center>
+        <p id="failedText" class="failedText" style="display: none; color: #ff4d4d;">Invalid credentials</p>
+      </center>
+
+      <form id="loginForm">
+        <div class="input-box">
+          <input type="text" name="username" placeholder="Username" required>
+          <i class='bx bxs-user'></i>
+        </div>
+        <div class="input-box">
+          <input type="password" name="password" placeholder="Password" required>
+          <i class='bx bxs-lock-alt'></i>
+        </div>
+        <br>
+        <button type="submit" class="btn">Sign In</button>
+        <div class="toggle-link">
+          <p>Don't have an account? <a href="#" id="showRegister">Sign Up</a></p>
+        </div>
+      </form>
+    </div>
+
+    <!-- REGISTER FORM -->
+    <div class="form-wrapper register-wrapper hidden" id="registerWrapper">
+      <div class="wrapper-header">
+        <h2 class="gradient-text">Create Account</h2>
+        <p>Join us to <span class="live-count">stream, share, and connect</span> in a safer place!</p>
+      </div>
+
+      <center>
+        <p id="regFailedText" class="failedText" style="display: none; color: #ff4d4d;">Registration failed</p>
+      </center>
+
+      <form id="registerForm">
+        <div class="input-box">
+          <input type="text" name="username" placeholder="Username" required>
+          <i class='bx bxs-user'></i>
+        </div>
+        <div class="input-box">
+          <input type="password" name="password" id="regPassword" placeholder="Password" required>
+          <i class='bx bxs-lock-alt'></i>
+        </div>
+        <div class="input-box">
+          <input type="password" name="confirm_password" id="regConfirmPassword" placeholder="Confirm Password"
+            required>
+          <i class='bx bxs-lock-check'></i>
+        </div>
+
+        <div class="security-badges">
+          <div class="badge"><i class='bx bxs-check-shield'></i> <span>Hashed</span></div>
+          <div class="badge"><i class='bx bxs-lock'></i> <span>SSL</span></div>
+          <div class="badge"><i class='bx bxs-user-check'></i> <span>Protected</span></div>
+        </div>
+
+        <button type="submit" class="btn">Sign Up</button>
+        <div class="toggle-link">
+          <p>Already have an account? <a href="#" id="showLogin">Sign In</a></p>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="loading-spinner" id="loadingSpinner"></div>
+
+</body>
+<script src="/Static/loginpage/js/login.js?v=3.9"></script>
+
+</html>

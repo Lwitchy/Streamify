@@ -1,0 +1,681 @@
+
+/* === SIDEBAR NAVIGATION === */
+/* Left sidebar with navigation menu */
+.sidebar {
+    width: var(--sidebar-width);
+    background: var(--sidebar-bg);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-right: 1px solid var(--glass-border);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+}
+
+.morph-logo {
+    padding: 24px 24px 0;
+    flex-shrink: 0;
+}
+
+.sidebar-scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding: 0 24px 24px;
+    padding-bottom: calc(var(--player-height) + 24px);
+}
+
+/* Logo in sidebar header */
+.logo {
+    font-size: 28px;
+    font-weight: 800;
+    margin-bottom: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    letter-spacing: -0.5px;
+}
+
+/* --- MORPH LOGO --- */
+/*
+ * One-shot reveal: the brand name materialises from a blurred, scaled-down state
+ * and then sits permanently. Uses the existing .gradient-text animation for colour.
+ */
+
+.morph-logo {
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 44px;
+}
+
+.morph-text {
+    font-family: 'Outfit', sans-serif;
+    font-size: 26px;
+    font-weight: 900;
+    /* Boldest weight for premium feel */
+    letter-spacing: -1px;
+
+    /* Start state: invisible + blurred + slightly smaller */
+    opacity: 0;
+    filter: blur(14px);
+    transform: scale(0.88);
+
+    /* 
+     * COMBINED ANIMATION:
+     * 1. morphReveal: One-shot entrance (forwards to stick)
+     * 2. gradient-anim: Infinite color morphing
+     */
+    animation:
+        morphReveal 1.9s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards,
+        gradient-anim 5s linear infinite;
+}
+
+
+
+@keyframes morphReveal {
+    0% {
+        opacity: 0;
+        filter: blur(14px);
+        transform: scale(0.88);
+        letter-spacing: -4px;
+    }
+
+    40% {
+        opacity: 0.6;
+        filter: blur(6px);
+        transform: scale(0.96);
+        letter-spacing: -2px;
+    }
+
+    100% {
+        opacity: 1;
+        filter: blur(0px);
+        transform: scale(1);
+        letter-spacing: -0.5px;
+    }
+}
+
+
+/* Navigation list - remove default list styling */
+.sidebar-nav ul {
+    list-style: none;
+}
+
+/* Individual navigation items with staggered entrance animation */
+.sidebar-nav li {
+    margin-bottom: 8px;
+    opacity: 0;
+    animation: slideInLeft 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Stagger animation delays for each menu item */
+.sidebar-nav ul:nth-of-type(1) li:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+.sidebar-nav ul:nth-of-type(1) li:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.sidebar-nav ul:nth-of-type(1) li:nth-child(3) {
+    animation-delay: 0.3s;
+}
+
+.sidebar-nav ul:nth-of-type(1) li:nth-child(4) {
+    animation-delay: 0.4s;
+}
+
+.sidebar-nav ul:nth-of-type(2) li:nth-child(1) {
+    animation-delay: 0.5s;
+}
+
+.sidebar-nav ul:nth-of-type(2) li:nth-child(2) {
+    animation-delay: 0.6s;
+}
+
+/* Slide in animation - items appear from left */
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Navigation links styling */
+.sidebar-nav a {
+    text-decoration: none;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-radius: 8px;
+    transition: var(--transition);
+    gap: 16px;
+    border: 1px solid transparent;
+}
+
+/* Hover and active states for navigation links */
+.sidebar-nav a:hover,
+.sidebar-nav a.active {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Icon sizing for navigation items */
+.sidebar-nav i {
+    font-size: 22px;
+}
+
+/* Visual divider between nav sections */
+.sidebar-divider {
+    height: 1px;
+    background-color: var(--glass-border);
+    margin: 20px 0;
+}
+
+html,
+body {
+    height: 100%;
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    overflow-x: hidden;
+}
+
+/* === MAIN CONTENT AREA === */
+/* Main container for all page content */
+.main-content {
+    flex: 1;
+    background: transparent;
+    overflow-y: auto;
+    position: relative;
+    overflow-x: hidden;
+    /* Add padding-bottom to prevent content from hiding behind the player */
+    padding-bottom: calc(var(--player-height) + 24px);
+}
+
+.main-content.no-scroll {
+    overflow: hidden;
+}
+
+/* TOP BAR - Sticky header with navigation and user menu */
+.top-bar {
+    position: sticky;
+    top: 0;
+    padding: 16px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    z-index: 5;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+/* Navigation arrow buttons (back/forward) */
+.nav-arrows i {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    padding: 8px;
+    margin-right: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.nav-arrows i:hover {
+    background: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+.icon-wrapper {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.notif-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 10px;
+    height: 10px;
+    background: #ff4d4d;
+    border-radius: 50%;
+    border: 2px solid #1a1a1a;
+    box-shadow: 0 0 5px rgba(255, 77, 77, 0.5);
+}
+
+/* Notification pill */
+.notif-pill {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 4px 4px 4px 4px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+    border: 1px solid transparent;
+    margin-right: 12px;
+}
+
+.notif-pill:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.notif-pill:active {
+    transform: scale(0.95);
+}
+
+/* User profile pill in top-right corner */
+.user-pill {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 4px 12px 4px 4px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+    border: 1px solid transparent;
+    max-width: 220px;
+    /* Prevent long names from stretching the bar */
+}
+
+.user-pill span:not(.user-avatar) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.user-pill:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* User avatar circle with gradient background */
+.user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+/* CONTENT SECTIONS */
+
+/* Main content container with fade-in animation */
+.content-container {
+    padding: 32px;
+    animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Utility class to force re-trigger animation when sections become visible */
+.fade-in-animate {
+    animation: fadeInUp 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+}
+
+/* Fade in and slide up animation for content sections */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(40px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* Section titles and headings */
+h2,
+.section-title {
+    font-size: 28px;
+    margin-bottom: 24px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* === DROPDOWN MENU - User menu styling === */
+
+
+.notification-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 12px;
+    background: rgba(20, 20, 20, 0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 0;
+    /* Remove padding to allow sticky header to reach edges */
+    width: 340px;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.7);
+    display: none;
+    z-index: 1000;
+    animation: fadeInMenu 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    overflow: hidden;
+    /* Round corners of inner content */
+}
+
+.notification-menu h4 {
+    padding: 16px;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(25, 25, 25, 0.5);
+    backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.notif-list {
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 8px;
+    overscroll-behavior: contain;
+    /* Prevent background scroll when menu is reached */
+}
+
+/* Custom Scrollbar for Notifications */
+.notif-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.notif-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.notif-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+.notif-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Menu overlay positioning */
+.user-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 12px;
+    background: rgba(30, 30, 30, 0.8);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 8px;
+    width: 180px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    display: none;
+    z-index: 20;
+    animation: fadeInMenu 0.2s ease forwards;
+}
+
+/* Fade in animation for menu */
+@keyframes fadeInMenu {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Show menu when active */
+.user-menu.show {
+    display: block;
+}
+
+.notification-menu.show {
+    display: block;
+}
+
+.notif-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.notif-item:last-child {
+    border-bottom: none;
+}
+
+.notif-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.notif-item.unread {
+    background: rgba(65, 105, 225, 0.08);
+}
+
+.notif-item-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.notif-item-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.notif-item-avatar-placeholder {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.notif-item-content {
+    flex-grow: 1;
+}
+
+.notif-item-text {
+    font-size: 13px;
+    line-height: 1.4;
+    color: #eee;
+}
+
+.notif-item-text b {
+    color: #fff;
+    font-weight: 600;
+}
+
+.notif-item-time {
+    font-size: 11px;
+    color: #888;
+    margin-top: 4px;
+}
+
+/* Logout button styling */
+.logout-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 14px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.logout-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Settings button styling */
+.settings-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 14px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.settings-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+
+/* Profile button styling */
+
+.profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 14px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.profile-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* DM button styling in user menu */
+.dm-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 14px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+    position: relative;
+}
+
+.dm-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+
+/* Hidden utility class */
+.hidden {
+    display: none !important;
+}
+
+/* === SEARCH BAR - Glass morphism style === */
+
+/* Main search input container */
+.search-wrapper {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--glass-border);
+    border-radius: 50px;
+    padding: 10px 18px;
+    width: 360px;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+/* Hover state - slightly brighter background */
+.search-wrapper:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Focus state - darker background for better readability when typing */
+.search-wrapper:focus-within {
+    background: #1e1e23;
+    border-color: #fff;
+    transform: scale(1.02);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+/* Search icon styling */
+.search-wrapper i {
+    font-size: 20px;
+    color: var(--text-secondary);
+    margin-right: 12px;
+    transition: 0.3s;
+}
+
+.search-wrapper:focus-within i {
+    color: #fff;
+}
+
+/* Search input field itself */
+.search-wrapper input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    width: 100%;
+    font-family: inherit;
+}
+
+/* Placeholder text styling */
+.search-wrapper input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* Remove browser's default search clear button (X) */
+.search-wrapper input::-webkit-search-cancel-button {
+    display: none;
+}

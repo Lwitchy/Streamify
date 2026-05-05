@@ -1,0 +1,161 @@
+
+/* --- CSS VARIABLES & RESET --- */
+/* Define all color schemes, sizes, and animation values as variables */
+/* This allows for easy theme switching and consistent styling throughout */
+:root {
+    /* Primary background colors */
+    --bg-color: #000;
+    --sidebar-bg: rgba(0, 0, 0, 0.2);
+
+    /* Card styling - uses glass-morphism effect */
+    --card-bg: rgba(255, 255, 255, 0.02);
+    --card-hover: rgba(255, 255, 255, 0.12);
+
+    /* Text colors - white with varying opacity for hierarchy */
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.65);
+
+    /* Accent colors (Spotify green) */
+    --accent: #1db954;
+    --accent-hover: #1ed760;
+
+    /* Gradient colors for buttons and visual effects */
+    --gradient-1: #4169e1;
+    --gradient-2: #8164d7;
+
+    /* Glass effect border and shadow */
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+
+    /* Layout dimensions */
+    --border-radius: 12px;
+    --sidebar-width: 240px;
+    --player-height: 90px;
+
+    /* Animation timings for smooth transitions */
+    --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    --click-anim: transform 0.1s ease;
+}
+
+/* Global reset - removes default margins/padding and sets border-box model */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* Main body styling - dark theme with radial gradient background */
+body {
+    background-color: var(--bg-color);
+    /* Dynamic radial gradient creates depth and visual interest */
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(30, 30, 35, 0.9), transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(20, 20, 25, 0.9), transparent 25%);
+    /* Fixed attachment creates a parallax effect when scrolling */
+    background-attachment: fixed;
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+}
+
+/* === SCROLLBAR CUSTOMIZATION === */
+/* Custom scrollbar styling for webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+/* Brighten scrollbar on hover for better visibility */
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* === ANIMATION UTILITIES === */
+
+/* 
+ * SCALE DOWN ANIMATION ON CLICK
+ * Applied to all interactive elements for tactile feedback
+ * Creates the "pressed" effect when user clicks
+ */
+.btn:active,
+.card:active,
+.notif-pill:active,
+.user-pill:active {
+    transform: scale(0.95);
+}
+
+.nav-arrows i:active,
+.user-pill:active,
+.play-pause-btn:active,
+.control-btn:active,
+.sidebar-nav a:active {
+    transform: scale(0.96) !important;
+    transition: var(--click-anim);
+    user-select: none;
+}
+
+/* * ANIMATED GRADIENT TEXT */
+.gradient-text {
+    background: linear-gradient(90deg,
+            #6366f1, #a855f7, #ec4899, #6366f1);
+
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+
+    /* Speed up from 20s to 5s for more dynamic feel */
+    animation: gradient-anim 5s linear infinite;
+}
+
+@keyframes gradient-anim {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    100% {
+        background-position: 200% 50%;
+    }
+}
+
+/* --- POP-IN ANIMATION --- */
+@keyframes popIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.92) translateY(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.pop-in {
+    animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* --- SHRINK & HIDE ANIMATION --- */
+.shrink-hide {
+    max-height: 0;
+    opacity: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.expand-show {
+    max-height: 500px; /* Increased to allow for larger metadata boxes */
+    opacity: 1;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}

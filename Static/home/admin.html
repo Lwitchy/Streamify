@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streamify - Admin Panel</title>
+    <link rel="stylesheet" href="/Static/home/css/admin.css">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <span class="morph-text">Streamify</span>
+        </div>
+        <div class="nav-item active" data-section="dashboard">
+            <i class='bx bxs-dashboard'></i> Dashboard
+        </div>
+        <div class="nav-item" data-section="config">
+            <i class='bx bx-cog'></i> Server Config
+        </div>
+        <div class="nav-item" data-section="database">
+            <i class='bx bx-data'></i> Database Viewer
+        </div>
+        <div class="nav-item" onclick="window.location.href='/home'" style="margin-top: auto; color: var(--danger)">
+            <i class='bx bx-log-out-circle'></i> Back to App
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- Dashboard Section -->
+        <div id="dashboard" class="admin-section active">
+            <div class="header">
+                <h1>Overview</h1>
+            </div>
+            <div class="dashboard-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Users</div>
+                    <div class="stat-value" id="stat-users">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Songs Uploaded</div>
+                    <div class="stat-value" id="stat-songs">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Social Posts</div>
+                    <div class="stat-value" id="stat-posts">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Sessions</div>
+                    <div class="stat-value" id="stat-sessions">-</div>
+                </div>
+            </div>
+
+            <div class="header">
+                <h1>System Info</h1>
+            </div>
+            <div class="dashboard-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Uptime</div>
+                    <div class="stat-value" id="stat-uptime" style="font-size: 20px;">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Node Version</div>
+                    <div class="stat-value" id="stat-node" style="font-size: 20px;">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Platform</div>
+                    <div class="stat-value" id="stat-platform" style="font-size: 20px;">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Section -->
+        <div id="config" class="admin-section">
+            <div class="header">
+                <h1>Server Configuration</h1>
+            </div>
+            <div class="config-card">
+                <div class="field-group">
+                    <span class="field-label">Maintenance Mode</span>
+                    <label class="toggle-container" id="maintenance-toggle-label">
+                        <div class="toggle-switch"></div>
+                        <span id="maintenance-status">Disabled</span>
+                    </label>
+                </div>
+                <div class="field-group">
+                    <span class="field-label">Lockdown New Posts</span>
+                    <label class="toggle-container" id="lockdown-toggle-label">
+                        <div class="toggle-switch"></div>
+                        <span id="lockdown-status">Disabled</span>
+                    </label>
+                </div>
+                <div class="field-group">
+                    <span class="field-label">Maintenance Message</span>
+                    <textarea id="maintenance-message" placeholder="Enter message for users..."></textarea>
+                </div>
+                <button class="btn-primary" id="save-config">Save Configuration</button>
+            </div>
+
+            <div class="header" style="margin-top: 30px;">
+                <h1>Rate Limits</h1>
+            </div>
+            <div class="config-card">
+                <div class="dashboard-grid" style="gap: 20px;">
+                    <div class="field-group">
+                        <span class="field-label">API Limit (req/min)</span>
+                        <input type="number" id="limit-api" class="admin-input">
+                    </div>
+                    <div class="field-group">
+                        <span class="field-label">Social Limit (likes/min)</span>
+                        <input type="number" id="limit-social" class="admin-input">
+                    </div>
+                    <div class="field-group">
+                        <span class="field-label">Comments Limit (msg/min)</span>
+                        <input type="number" id="limit-comment" class="admin-input">
+                    </div>
+                    <div class="field-group">
+                        <span class="field-label">Posts (s/post)</span>
+                        <input type="number" id="limit-post" class="admin-input">
+                    </div>
+                    <div class="field-group">
+                        <span class="field-label">YouTube (max songs/window)</span>
+                        <input type="number" id="limit-youtube" class="admin-input">
+                    </div>
+                </div>
+                <button class="btn-primary" id="save-limits" style="margin-top: 20px;">Update Limits</button>
+            </div>
+        </div>
+
+        <!-- Database Section -->
+        <div id="database" class="admin-section">
+            <div class="header">
+                <h1>Database Viewer</h1>
+                <div class="db-controls">
+                    <!-- Only visible to Owner role -->
+                    <div class="raw-view-wrapper hidden" id="raw-view-toggle-container"
+                        style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">Raw View</span>
+                        <label class="toggle-container" style="transform: scale(0.8);">
+                            <input type="checkbox" id="raw-view-toggle"
+                                style="opacity:0; position:absolute; width:0; height:0;">
+                            <div class="toggle-switch" id="raw-view-switch"></div>
+                        </label>
+                    </div>
+
+                    <label style="color: var(--text-secondary); font-size: 14px; font-weight: 600;">Table:</label>
+                    <select id="db-table-select">
+                        <option value="users">Users</option>
+                        <option value="songs">Songs</option>
+                        <option value="posts">Posts</option>
+                        <option value="sessions">Sessions</option>
+                        <option value="playlists">Playlists</option>
+                        <option value="post_comments">Comments</option>
+                        <option value="notifications">Notifications</option>
+                        <option value="dm_messages" id="opt-dm-messages">DM Messages</option>
+                        <option value="system_logs">System Logs</option>
+                    </select>
+                </div>
+            </div>
+            <div class="db-container">
+                <div class="table-wrapper">
+                    <table id="db-table">
+                        <thead id="db-thead"></thead>
+                        <tbody id="db-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/Static/home/js/admin.js"></script>
+</body>
+
+</html>
