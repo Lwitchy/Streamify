@@ -33,6 +33,9 @@ Static/uploads/feed/*
 # 4. Music Library 
 MusicLibrary/*
 !MusicLibrary/.gitkeep
+!MusicLibrary/uploads/
+MusicLibrary/uploads/*
+!MusicLibrary/uploads/.gitkeep
 
 # Catch-all
 node_modules/
