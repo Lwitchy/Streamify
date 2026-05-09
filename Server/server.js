@@ -234,26 +234,32 @@ function downloadFile(url, dest) {
 }
 
 // --- Initialize Database ---
-HandleDatabase.createUsersTable();
-HandleDatabase.createSongsTable();
-HandleDatabase.createSessionsTable();
-HandleDatabase.createTelemetryTable();
-HandleDatabase.createPostsTable();
-HandleDatabase.createPostLikesTable();
-HandleDatabase.createPostCommentsTable();
-HandleDatabase.createPlaylistsTable();
-HandleDatabase.createPlaylistSongsTable();
-HandleDatabase.createNotificationsTable();
-HandleDatabase.createMentionsTable();
-HandleDatabase.createDmRequestsTable();
-HandleDatabase.createDmConversationsTable();
-HandleDatabase.createDmMessagesTable();
-HandleDatabase.createSystemLogsTable();
-HandleDatabase.createSystemConfigTable();
-HandleDatabase.createLyricsTable();
-HandleDatabase.createSocialTriggers();
-HandleDatabase.recalculateLikes();
-HandleDatabase.recalculateAllStorageUsed();
+(async () => {
+    try {
+        await HandleDatabase.createUsersTable();
+        await HandleDatabase.createSongsTable();
+        await HandleDatabase.createSessionsTable();
+        await HandleDatabase.createTelemetryTable();
+        await HandleDatabase.createPostsTable();
+        await HandleDatabase.createPostLikesTable();
+        await HandleDatabase.createPostCommentsTable();
+        await HandleDatabase.createPlaylistsTable();
+        await HandleDatabase.createPlaylistSongsTable();
+        await HandleDatabase.createNotificationsTable();
+        await HandleDatabase.createMentionsTable();
+        await HandleDatabase.createDmRequestsTable();
+        await HandleDatabase.createDmConversationsTable();
+        await HandleDatabase.createDmMessagesTable();
+        await HandleDatabase.createSystemLogsTable();
+        await HandleDatabase.createSystemConfigTable();
+        await HandleDatabase.createLyricsTable();
+        await HandleDatabase.createSocialTriggers();
+        await HandleDatabase.recalculateLikes();
+        await HandleDatabase.recalculateAllStorageUsed();
+    } catch (err) {
+        console.error("Database initialization failed:", err);
+    }
+})();
 
 // --- Automated Maintenance ---
 // Initial backup on startup (wait 3s for DB to settle)
