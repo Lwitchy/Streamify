@@ -1,0 +1,7 @@
+{
+  "project": "Chromaprint fpcalc",
+  "version": "1.6.1",
+  "source": "https://github.com/acoustid/chromaprint/releases/download/v1.6.1/chromaprint-fpcalc-1.6.1-linux-x86_64.tar.gz",
+  "archiveSha256": "fc16cd37a70168040bc9ceb45f1d4d1216f5a75bc4c9cf8564bea70ac6a45733",
+  "installedAs": "fpcalc"
+}

@@ -1,16 +1,16 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Streamify | Beta</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <meta name="theme-color" content="#121212">
-  <link rel="stylesheet" href="/Static/loginpage/css/login.css?v=3.9">
-  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/Static/loginpage/css/login.css?v=4.8">
+  <link href='/Static/vendor/boxicons/boxicons.min.css?v=4.8' rel='stylesheet'>
+  <link href="/Static/vendor/fonts/outfit.css?v=4.8" rel="stylesheet">
 </head>
 
 <body>
@@ -43,11 +43,11 @@
 
       <form id="loginForm">
         <div class="input-box">
-          <input type="text" name="username" placeholder="Username" required>
+          <input type="text" name="username" id="loginUsername" placeholder="Username" autocomplete="username" required>
           <i class='bx bxs-user'></i>
         </div>
         <div class="input-box">
-          <input type="password" name="password" placeholder="Password" required>
+          <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
           <i class='bx bxs-lock-alt'></i>
         </div>
         <br>
@@ -71,16 +71,16 @@
 
       <form id="registerForm">
         <div class="input-box">
-          <input type="text" name="username" placeholder="Username" required>
+          <input type="text" name="username" id="regUsername" placeholder="Username" minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="username" required>
           <i class='bx bxs-user'></i>
         </div>
         <div class="input-box">
-          <input type="password" name="password" id="regPassword" placeholder="Password" required>
+          <input type="password" name="password" id="regPassword" placeholder="Password" autocomplete="new-password" required>
           <i class='bx bxs-lock-alt'></i>
         </div>
         <div class="input-box">
           <input type="password" name="confirm_password" id="regConfirmPassword" placeholder="Confirm Password"
-            required>
+            autocomplete="new-password" required>
           <i class='bx bxs-lock-check'></i>
         </div>
 
@@ -101,6 +101,6 @@
   <div class="loading-spinner" id="loadingSpinner"></div>
 
 </body>
-<script src="/Static/loginpage/js/login.js?v=3.9"></script>
+<script src="/Static/loginpage/js/login.js?v=4.20"></script>
 
 </html>

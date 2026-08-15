@@ -5,6 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Polishing Update - 2026-08-15
+
+Detailed engineering notes and the manual verification checklist are available
+in [`MD Files/Engineering/POLISHING_UPDATE.md`](MD%20Files/Engineering/POLISHING_UPDATE.md).
+
+### Smart Auto Enrich
+
+- Replaced the old single-score matcher with Unicode-aware title, artist-credit,
+  featured-artist, duration, version, album-context and provider-agreement evidence.
+- Added strict handling for live, remix, edit, acoustic, instrumental, demo,
+  remaster, sped-up and slowed versions.
+- Added optional Owner-configured Chromaprint/AcoustID identification with
+  MusicBrainz and Apple text fallback.
+- Added OOBE and Owner Settings choices for local-only, text-only, or acoustic
+  identification. Source audio is never uploaded or modified.
+- Added pinned `fpcalc` builds for Windows, Linux and macOS with checksum-based
+  retrieval, ASAR unpacking and runtime override support.
+- Added stable song/recording/release/artist identities, metadata provenance,
+  external identifiers, field locks, revisions and soft file availability.
+- Added persisted, resumable Owner-only enrichment jobs with pause, cancel,
+  idempotent decisions and optimistic conflict protection.
+- Redesigned the review popup with evidence, provider status, per-field safety,
+  release alternatives, cover staging and explicit unknown/error states.
+- Kept ambiguous album/year/cover values unchecked by default while allowing an
+  explicit Owner choice; selecting a Release card also records its canonical ID.
+- Changed metadata locks to protect against automatic overwrite without blocking
+  explicit Owner-approved corrections.
+- Removed unreviewed browser/server iTunes cover guessing and retired unsafe
+  direct/batch enrichment application routes.
+- Added 24 deterministic metadata/fingerprint/provider tests.
+
+Full details: [`SMART_AUTO_ENRICH_UPDATE.md`](MD%20Files/Engineering/SMART_AUTO_ENRICH_UPDATE.md).
+
+### Added
+
+- Account-scoped offline metadata and media caches.
+- Offline Range streaming for downloaded MP3/FLAC and other supported audio.
+- Response compression for HTML, CSS, JavaScript, and JSON.
+- Explicit Node.js 22.12 minimum and launcher checks.
+- Baseline security headers and explicit reverse-proxy trust configuration.
+
+### Fixed
+
+- Private-song access through public playlists and direct static music paths.
+- Concurrent first registration, duplicate usernames, and remote LAN Owner claiming.
+- Startup readiness, overlapping music scans, failed-root pruning, and shutdown completion.
+- Malformed and unsatisfiable audio Range requests.
+- Direct profile/playlist routing and stale playback, search, lyrics, profile, AI, and modal requests.
+- Player play/pause state, queue end, shuffle, zero volume, telemetry thresholds, and lyrics wake locks.
+- Empty/error playlist state retaining actions or songs from a previous view.
+- Offline downloads reporting success before IndexedDB transactions committed.
+- Offline account data being visible after switching users.
+- Maintenance mode intercepting PWA assets and redirecting normal users in a loop.
+- AI-selected covers being saved but ignored by library/playback responses.
+- Avatar, banner, and cover replacement deleting valid files before replacement validation.
+
+### Security
+
+- Music directories and rescans are now Owner-only.
+- Admin database browsing no longer exposes live session tokens.
+- Lyrics and smart-metadata DOM injection paths were removed.
+- Electron navigation and IPC now require exact trusted origins.
+- Browser origins are same-origin by default or must be listed explicitly in `FRONTEND_URL`.
+- Deleted usernames are reserved to prevent account/session/offline-data inheritance.
+- Retired downloader endpoints now return HTTP 410.
+
+### Performance
+
+- Download status uses one IndexedDB read per rendered collection instead of per row.
+- Song artwork uses lazy loading and asynchronous decoding.
+- Stale cover, search, lyrics, and playback requests are cancelled.
+- Removed a no-op forced-layout timer and animation-frame throttled artwork tilt.
+- The retired upload client is no longer loaded at startup.
+- The special 404 page downloads only its selected image.
+
+### Changed
+
+- Folder-managed songs are represented as one shared library rather than being attributed to a hardcoded user.
+- Folder-managed source files cannot be deleted through Streamify APIs.
+- The retired Upload PWA shortcut was removed.
+- Native Electron dependency rebuilding is explicit through `npm run rebuild` instead of an install-time hook.
+- Project package metadata now matches the MIT license.
+
+### Verification
+
+- Static JavaScript syntax, JSON manifests, direct dependencies, lock metadata, and app-shell references passed.
+- npm reported zero known dependency vulnerabilities.
+- Runtime, browser, device, offline, and packaged-app verification remains manual by request.
+
 
 ## [0.2.1] - Feature Updates - 2026-04-19
 
@@ -107,7 +196,7 @@ git pull origin main
 1. Download the latest release
 2. Backup your `Database/` directory
 3. Replace the code files (keeping your Database folder intact)
-4. Update Python dependencies: `pip install -r requirements.txt`
+4. Install Node.js 22.12 or newer and run `npm install`
 5. Restart the application
 
 ## Version History
@@ -122,24 +211,8 @@ git pull origin main
 ## Future Roadmap
 
 ### Planned Features
-- [ ] Alternative to upload songs, using Youtube/Spotify links to add songs directly onto your library
-- [ ] Badges when new post appears in Feed
-- [ ] Catergories in feed (Top liked, Newest, Oldest)
-- [ ] Hyerarchy in comments, ability to reply to comments, like comments
-- [ ] Ability to edit posts, comments
-- [ ] Music playlists
-- [-] User statistics and analytics
 - [ ] Custom themes
-- [ ] Equalizer
-- [ ] Tagging People in Feed
-- [ ] Private DMs
-- [ ] Sending GIFs on Feed
-- [ ] Lyrics with LRCLIB or some other API
-- [ ] Android App
-- [ ] Auto moderation? (for usernames)
 - [ ] A suggestion tab
-- [ ] Sharing short clips of songs in the feed
-- [ ] Ability to share songs with eachother
 
 
 

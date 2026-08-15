@@ -6,14 +6,57 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const HandleDatabase = require('./database');
+const RT = require('./runtime');
 
-// Set ffmpeg path
-ffmpeg.setFfmpegPath(ffmpegPath);
+// Set ffmpeg path.
+// unpackPath() rewrites app.asar -> app.asar.unpacked when running inside a
+// packaged Electron build. The OS cannot exec a binary that only exists inside
+// the asar archive, so without this ffmpeg silently fails to spawn.
+ffmpeg.setFfmpegPath(RT.unpackPath(ffmpegPath));
+
+async function writeProfileImage(fileBuffer, directory, username, width, height, urlType) {
+    if (!/^[A-Za-z0-9_-]{3,32}$/.test(username)) {
+        throw new Error('Invalid username for profile media');
+    }
+    if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
+
+    const image = await Jimp.read(fileBuffer);
+    const sourceWidth = image.bitmap?.width || image.width;
+    const sourceHeight = image.bitmap?.height || image.height;
+    if (!sourceWidth || !sourceHeight || sourceWidth * sourceHeight > 25_000_000) {
+        throw new Error('Image dimensions are too large');
+    }
+    image.resize({ w: width, h: height });
+
+    const savePath = path.join(directory, `${username}.jpg`);
+    const tempPath = path.join(directory, `.${username}-${crypto.randomUUID()}.jpg`);
+    const backupPath = `${savePath}.backup`;
+    await image.write(tempPath);
+
+    try {
+        if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+        if (fs.existsSync(savePath)) fs.renameSync(savePath, backupPath);
+        fs.renameSync(tempPath, savePath);
+        if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+
+        for (const ext of ['.jpeg', '.png', '.webp', '.gif']) {
+            const oldPath = path.join(directory, `${username}${ext}`);
+            if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        }
+    } catch (error) {
+        if (!fs.existsSync(savePath) && fs.existsSync(backupPath)) fs.renameSync(backupPath, savePath);
+        throw error;
+    } finally {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    }
+
+    return `/Static/${urlType}/${username}.jpg`;
+}
 
 const Media = {
     // Media.resolve_cover
     resolveCover: (songBaseName) => {
-        const baseDir = path.join(__dirname, '../Static/covers');
+        const baseDir = RT.paths.covers;
         if (!fs.existsSync(baseDir)) return null;
 
         const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -33,7 +76,7 @@ const Media = {
     },
 
     resolveAvatar: (username) => {
-        const baseDir = path.join(__dirname, '../Static/avatars');
+        const baseDir = RT.paths.avatars;
         if (!fs.existsSync(baseDir)) return null;
 
         const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -53,7 +96,7 @@ const Media = {
     },
 
     resolveUserBanner: (username) => {
-        const baseDir = path.join(__dirname, '../Static/banners');
+        const baseDir = RT.paths.banners;
         if (!fs.existsSync(baseDir)) return null;
 
         const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -107,25 +150,8 @@ const Media = {
     },
 
     processAvatarUpload: async (fileBuffer, username) => {
-        const avatarsDir = path.join(__dirname, '../Static/avatars');
-        if (!fs.existsSync(avatarsDir)) {
-            fs.mkdirSync(avatarsDir, { recursive: true });
-        }
-
-        // Clean up old avatars
-        const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-        for (const ext of exts) {
-            const p = path.join(avatarsDir, `${username}${ext}`);
-            if (fs.existsSync(p)) fs.unlinkSync(p);
-        }
-
         try {
-            const image = await Jimp.read(fileBuffer);
-            image.resize({ w: 512, h: 512 }); // Resize to 512x512
-            const savePath = path.join(avatarsDir, `${username}.jpg`);
-            
-            await image.write(savePath);
-            return `/Static/avatars/${username}.jpg`;
+            return await writeProfileImage(fileBuffer, RT.paths.avatars, username, 512, 512, 'avatars');
         } catch (err) {
             console.error("Error processing avatar:", err);
             return null;
@@ -133,26 +159,8 @@ const Media = {
     },
 
     processUserBannerUpload: async (fileBuffer, username) => {
-        const bannersDir = path.join(__dirname, '../Static/banners');
-        if (!fs.existsSync(bannersDir)) {
-            fs.mkdirSync(bannersDir, { recursive: true });
-        }
-
-        // Clean up old banners
-        const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-        for (const ext of exts) {
-            const p = path.join(bannersDir, `${username}${ext}`);
-            if (fs.existsSync(p)) fs.unlinkSync(p);
-        }
-
         try {
-            const image = await Jimp.read(fileBuffer);
-            // Banner aspect ratio 1500x500 is common (3:1)
-            image.resize({ w: 1500, h: 500 }); 
-            const savePath = path.join(bannersDir, `${username}.jpg`);
-            
-            await image.write(savePath);
-            return `/Static/banners/${username}.jpg`;
+            return await writeProfileImage(fileBuffer, RT.paths.banners, username, 1500, 500, 'banners');
         } catch (err) {
             console.error("Error processing banner:", err);
             return null;
@@ -239,7 +247,14 @@ const Media = {
 
         console.log(`[DEBUG] Metadata - Title: ${title}, Artist: ${artist}, Duration: ${duration}s`);
 
-        const uploadDir = path.join(__dirname, baseDirectory, 'uploads');
+        // baseDirectory is historically expressed relative to Server/ (e.g.
+        // "../MusicLibrary/"). Strip the leading ../ and resolve against
+        // DATA_ROOT so packaged builds write to the per-user data directory.
+        const uploadDir = path.join(
+            RT.DATA_ROOT,
+            baseDirectory.replace(/^\.\.[\\/]/, ''),
+            'uploads'
+        );
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -284,7 +299,7 @@ const Media = {
         try {
             await runCompression();
 
-            const dbRelativePath = path.relative(path.join(__dirname, '../'), newPath).replace(/\\/g, '/');
+            const dbRelativePath = path.relative(RT.DATA_ROOT, newPath).replace(/\\/g, '/');
             
             // Get final file size
             let finalBytes = 0;
@@ -303,7 +318,13 @@ const Media = {
             
             const source = fingerprint.source || "upload";
 
-            await HandleDatabase.insertSong(title, artist, album, genre, duration, dbRelativePath, uploadedBy, visibility, fingerprint.youtube_id, fingerprint.file_hash, bitrate, source);
+            // Metadata will be enriched on-demand by user via Smart Metadata Review
+            // (no more silent auto-enrichment that could overwrite with wrong data)
+            let year = null;
+            let coverPath = null;
+            let aiEnriched = 0;
+
+            await HandleDatabase.insertSong(title, artist, album, genre, duration, dbRelativePath, uploadedBy, visibility, fingerprint.youtube_id, fingerprint.file_hash, bitrate, source, year, aiEnriched, coverPath);
             
             console.log(`Success! Saved to ${dbRelativePath} (${finalBytes} bytes)`);
             return dbRelativePath;

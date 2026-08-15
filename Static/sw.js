@@ -1,204 +1,380 @@
-const CACHE_NAME = 'streamify-app-shell-v30';
-const MEDIA_CACHE_NAME = 'streamify-media-cache';
+// Bump this whenever cached app-shell assets change. Old shell caches are
+// removed during activation so clients cannot retain stale CSS or JavaScript.
+const CACHE_NAME = 'streamify-app-shell-v53';
+const MEDIA_CACHE_PREFIX = 'streamify-media-cache-';
+const OFFLINE_STATE_CACHE_NAME = 'streamify-offline-state-v1';
+const ACTIVE_USER_STATE_URL = '/__streamify_offline_state__/active-user';
 
-// Assets to cache immediately
 const APP_SHELL = [
   '/home',
   '/manifest.json',
   '/favicon.ico',
   '/Static/icon-192.png',
   '/Static/icon-512.png',
-  'https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css',
-  'https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap'
+  '/Static/home/css/base.css?v=4.19',
+  '/Static/home/css/layout.css?v=4.9',
+  '/Static/home/css/components.css?v=4.8',
+  '/Static/home/css/upload.css?v=4.8',
+  '/Static/home/css/player.css?v=4.16',
+  '/Static/home/css/modals.css?v=4.22',
+  '/Static/home/css/library.css?v=4.21',
+  '/Static/home/css/profile.css?v=4.8',
+  '/Static/home/css/toasts.css?v=4.8',
+  '/Static/home/css/home_mobile.css?v=4.22',
+  '/Static/vendor/boxicons/boxicons.min.css?v=4.8',
+  '/Static/vendor/boxicons/fonts/boxicons.eot',
+  '/Static/vendor/boxicons/fonts/boxicons.woff2',
+  '/Static/vendor/boxicons/fonts/boxicons.woff',
+  '/Static/vendor/boxicons/fonts/boxicons.ttf',
+  '/Static/vendor/boxicons/fonts/boxicons.svg',
+  '/Static/vendor/fonts/outfit.css?v=4.8',
+  '/Static/vendor/fonts/outfit-latin.woff2',
+  '/Static/vendor/fonts/outfit-latin-ext.woff2',
+  '/Static/vendor/cropperjs/cropper.min.css?v=4.8',
+  '/Static/home/js/config.js?v=4.20',
+  '/Static/vendor/cropperjs/cropper.min.js?v=4.8',
+  '/Static/home/js/offline.js?v=4.20',
+  '/Static/home/js/player.js?v=4.23',
+  '/Static/home/js/api_v2.js?v=4.25',
+  '/Static/home/js/ui.js?v=4.23'
 ];
 
+let activeUserKey;
+let activeUserLoadPromise = null;
+
 self.addEventListener('install', event => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(APP_SHELL).catch(err => {
-        console.warn('[SW] App Shell partial cache:', err);
-      });
-    })
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(APP_SHELL);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(self.clients.claim());
-  // Clean up old caches
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys.map(key => {
-        if (key !== CACHE_NAME && key !== MEDIA_CACHE_NAME) {
-          return caches.delete(key);
-        }
-      })
-    ))
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(key => {
+      const keep = key === CACHE_NAME ||
+        key === OFFLINE_STATE_CACHE_NAME ||
+        key.startsWith(MEDIA_CACHE_PREFIX);
+      return keep ? Promise.resolve(false) : caches.delete(key);
+    }));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('message', event => {
+  if (!event.data || typeof event.data.type !== 'string') return;
+
+  if (event.data.type === 'SET_CURRENT_USER') {
+    event.waitUntil(setActiveUser(event.data.username));
+  } else if (event.data.type === 'CLEAR_ACTIVE_USER') {
+    event.waitUntil(setActiveUser(null));
+  }
 });
 
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+  const request = event.request;
+  const url = new URL(request.url);
+  const isSameOrigin = url.origin === self.location.origin;
 
-  // 1. Handle API requests
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/')) {
-    if (event.request.method === 'GET' && url.pathname.startsWith('/api/playlists')) {
-      // Cache playlists metadata so it works offline
-      event.respondWith(
-        fetch(event.request).then(async networkResponse => {
-          if (networkResponse.ok) {
-            const cacheCopy = networkResponse.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, cacheCopy));
-            return networkResponse;
-          } else if (networkResponse.status === 304) {
-            const cached = await caches.match(event.request);
-            return cached || networkResponse;
-          }
-          return networkResponse;
-        }).catch(() => {
-          return caches.match(event.request);
-        })
-      );
-      return;
-    }
-    // Other API requests pass through
+  // Downloaded streams are API URLs, so this must run before generic API
+  // passthrough. Only GETs are eligible for CacheStorage matching.
+  if (isSameOrigin && request.method === 'GET' && /^\/api\/stream\/[^/]+\/?$/.test(url.pathname)) {
+    event.respondWith(handleMediaRequest(request));
     return;
   }
 
-  // 2. Handle Media Files & Range Requests
-  if (event.request.method === 'GET' && (url.pathname.startsWith('/MusicLibrary/') || url.pathname.startsWith('/Static/'))) {
-    // For seek operations (Range header present): bypass ALL caches — both the SW
-    // media cache and the browser HTTP cache. If the HTTP cache returns a full 200
-    // response to a Range request, the audio element stalls waiting for partial data.
-    if (event.request.headers.get('Range')) {
-      event.respondWith(fetch(new Request(event.request, { cache: 'no-store' })));
-      return;
-    }
-    event.respondWith(handleMediaRequest(event.request));
+  // API and socket traffic remains network-owned. Metadata intended for
+  // offline use is stored explicitly in IndexedDB by offline.js.
+  if (isSameOrigin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/'))) {
     return;
   }
 
-  // 3. Network-First for App Shell & other static assets
-  if (event.request.method === 'GET' && url.protocol.startsWith('http')) {
-    event.respondWith(
-      fetch(event.request).then(networkResponse => {
-        // If we got a valid response, update the cache
-        if (networkResponse && networkResponse.status === 200) {
-          const cacheCopy = networkResponse.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, cacheCopy));
-        }
-        return networkResponse;
-      }).catch(async () => {
-        const cachedResponse = await caches.match(event.request, { ignoreSearch: true });
-        if (cachedResponse) return cachedResponse;
+  const isUserMedia =
+    url.pathname.startsWith('/MusicLibrary/') ||
+    url.pathname.startsWith('/Static/covers/') ||
+    url.pathname.startsWith('/Static/avatars/') ||
+    url.pathname.startsWith('/Static/banners/');
+  const isMediaDestination =
+    request.destination === 'audio' ||
+    request.destination === 'video' ||
+    request.destination === 'image';
 
-        // Offline fallback
-        if (url.pathname === '/' || url.pathname === '/home') {
-          return caches.match('/home', { ignoreSearch: true });
-        }
+  if (isSameOrigin && request.method === 'GET' && (isUserMedia || isMediaDestination)) {
+    event.respondWith(handleMediaRequest(request));
+    return;
+  }
 
-        // Return an empty SVG for images so it doesn't break image tags
-        if (event.request.destination === 'image') {
-          return new Response('<svg width="1" height="1" xmlns="http://www.w3.org/2000/svg"></svg>', {
-            headers: { 'Content-Type': 'image/svg+xml' }
-          });
-        }
+  const isAppNavigation = request.mode === 'navigate' && isSameOrigin && (
+    url.pathname === '/' ||
+    url.pathname === '/home' ||
+    url.pathname.startsWith('/profile/')
+  );
 
-        // Return a generic error response instead of undefined
-        return new Response('Network error happened', { status: 408, headers: { 'Content-Type': 'text/plain' } });
-      })
-    );
+  if (isAppNavigation) {
+    const networkPromise = fetch(request);
+    const cacheUpdate = networkPromise.then(response => {
+      if (url.pathname !== '/home' || !response.ok) return;
+      return caches.open(CACHE_NAME).then(cache => cache.put('/home', response.clone()));
+    }).catch(() => undefined);
+
+    event.waitUntil(cacheUpdate);
+    event.respondWith(networkPromise.catch(async () => {
+      const cache = await caches.open(CACHE_NAME);
+      return await cache.match('/home') || offlineResponse('App shell is not available offline');
+    }));
+    return;
+  }
+
+  // Network-first for app-shell assets. Exact query matching preserves the
+  // versioning contract used by home.html instead of serving an older asset.
+  if (isSameOrigin && request.method === 'GET' && url.protocol.startsWith('http')) {
+    const networkPromise = fetch(request);
+    const shouldCache = url.pathname.startsWith('/Static/') ||
+      url.pathname === '/manifest.json' ||
+      url.pathname === '/favicon.ico';
+    const cacheUpdate = networkPromise.then(response => {
+      if (!shouldCache || !response.ok) return;
+      return caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()));
+    }).catch(() => undefined);
+
+    event.waitUntil(cacheUpdate);
+    event.respondWith(networkPromise.catch(async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cachedResponse = await cache.match(request);
+      if (cachedResponse) return cachedResponse;
+
+      if (request.destination === 'image') {
+        return new Response('<svg width="1" height="1" xmlns="http://www.w3.org/2000/svg"></svg>', {
+          headers: { 'Content-Type': 'image/svg+xml' }
+        });
+      }
+
+      return offlineResponse('Network resource is not available offline');
+    }));
   }
 });
 
-// Range request handling function
-async function handleMediaRequest(request) {
-  const cache = await caches.open(MEDIA_CACHE_NAME);
+function normalizeUsername(username) {
+  if (typeof username !== 'string') return null;
+  const normalized = username.trim().toLowerCase();
+  return normalized || null;
+}
 
-  // Try matching directly first
-  let cachedResponse = await cache.match(request, { ignoreSearch: true, ignoreVary: true });
+function getMediaCacheName(username) {
+  return `${MEDIA_CACHE_PREFIX}${encodeURIComponent(username)}`;
+}
 
-  if (!cachedResponse) {
-    // If not found, try matching by checking all keys in the cache manually.
-    // This is the most reliable fallback if the browser alters the Request object.
-    const url = new URL(request.url);
-    const keys = await cache.keys();
-    for (const key of keys) {
-      const keyUrl = new URL(key.url);
-      if (keyUrl.pathname === url.pathname || decodeURIComponent(keyUrl.pathname) === decodeURIComponent(url.pathname)) {
-        cachedResponse = await cache.match(key, { ignoreSearch: true, ignoreVary: true });
-        break;
+async function getActiveUser() {
+  if (activeUserKey !== undefined) return activeUserKey;
+  if (activeUserLoadPromise) return activeUserLoadPromise;
+
+  activeUserLoadPromise = (async () => {
+    try {
+      const cache = await caches.open(OFFLINE_STATE_CACHE_NAME);
+      const response = await cache.match(ACTIVE_USER_STATE_URL);
+      if (!response) {
+        activeUserKey = null;
+        return null;
       }
+      const state = await response.json();
+      activeUserKey = normalizeUsername(state.username);
+      return activeUserKey;
+    } catch (error) {
+      console.warn('[SW] Could not restore the active offline user:', error);
+      activeUserKey = null;
+      return null;
+    } finally {
+      activeUserLoadPromise = null;
     }
+  })();
+
+  return activeUserLoadPromise;
+}
+
+async function setActiveUser(username) {
+  const normalized = normalizeUsername(username);
+  activeUserKey = normalized;
+  activeUserLoadPromise = null;
+
+  const cache = await caches.open(OFFLINE_STATE_CACHE_NAME);
+  if (!normalized) {
+    await cache.delete(ACTIVE_USER_STATE_URL);
+    return;
+  }
+
+  await cache.put(ACTIVE_USER_STATE_URL, new Response(JSON.stringify({ username: normalized }), {
+    headers: { 'Content-Type': 'application/json' }
+  }));
+}
+
+async function handleMediaRequest(request) {
+  const userKey = await getActiveUser();
+  let cachedResponse = null;
+
+  if (userKey) {
+    const userCache = await caches.open(getMediaCacheName(userKey));
+    cachedResponse = await userCache.match(request, { ignoreVary: true });
+
   }
 
   if (!cachedResponse) {
-    // If not in media cache, check the app shell cache just in case (e.g. for CSS/JS)
     const shellCache = await caches.open(CACHE_NAME);
-    const shellMatch = await shellCache.match(request, { ignoreSearch: true, ignoreVary: true });
-    if (shellMatch) return shellMatch;
-
-    // Fallback to network
-    return fetch(request);
+    cachedResponse = await shellCache.match(request, { ignoreVary: true });
   }
 
-  // If there's no Range header, return the full cached response
+  if (!cachedResponse) return fetchMediaFromNetwork(request);
+
   const rangeHeader = request.headers.get('Range');
-  if (!rangeHeader) {
-    return cachedResponse;
+  if (!rangeHeader) return cachedResponse;
+
+  if (cachedResponse.status !== 200 || !cachedResponse.body) {
+    return fetchMediaFromNetwork(request);
   }
 
-  // For large files (FLAC, WAV, etc.) loading the whole ArrayBuffer just to slice it
-  // can freeze the SW and cause seeking to hang. Fall back to network so the server's
-  // native Range/206 support handles it efficiently.
-  const contentLength = parseInt(cachedResponse.headers.get('Content-Length') || '0', 10);
-  if (contentLength > 10 * 1024 * 1024) { // 10 MB threshold
-    return fetch(request);
+  const contentLengthHeader = cachedResponse.headers.get('Content-Length');
+  const totalLength = Number(contentLengthHeader);
+  if (!contentLengthHeader || !Number.isSafeInteger(totalLength) || totalLength <= 0) {
+    return fetchMediaFromNetwork(request);
   }
 
-  // Parse Range header (e.g., "bytes=0-1024")
-  const buffer = await cachedResponse.arrayBuffer();
-  const bytes = rangeHeader.match(/bytes=(\d+)-(\d+)?/);
-  const start = Number(bytes[1]);
-  const end = bytes[2] ? Number(bytes[2]) : buffer.byteLength - 1;
+  const range = parseSingleRange(rangeHeader, totalLength);
+  if (!range) return rangeNotSatisfiable(totalLength);
 
-  // Sliced buffer for 206 response
-  const chunk = buffer.slice(start, end + 1);
+  const headers = new Headers(cachedResponse.headers);
+  headers.delete('Content-Encoding');
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Content-Range', `bytes ${range.start}-${range.end}/${totalLength}`);
+  headers.set('Content-Length', String(range.end - range.start + 1));
 
-  return new Response(chunk, {
+  return new Response(createRangeStream(cachedResponse.body, range.start, range.end), {
     status: 206,
     statusText: 'Partial Content',
-    headers: new Headers({
-      'Content-Type': cachedResponse.headers.get('Content-Type') || 'audio/mpeg',
-      'Content-Range': `bytes ${start}-${end}/${buffer.byteLength}`,
-      'Content-Length': chunk.byteLength,
-      'Accept-Ranges': 'bytes'
-    })
+    headers
   });
 }
 
-// Background Fetch success handler
+function parseSingleRange(header, totalLength) {
+  if (totalLength <= 0 || typeof header !== 'string' || header.includes(',')) return null;
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());
+  if (!match || (!match[1] && !match[2])) return null;
+
+  if (!match[1]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
+    return {
+      start: Math.max(totalLength - suffixLength, 0),
+      end: totalLength - 1
+    };
+  }
+
+  const start = Number(match[1]);
+  const requestedEnd = match[2] ? Number(match[2]) : totalLength - 1;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd) ||
+      start >= totalLength || requestedEnd < start) {
+    return null;
+  }
+
+  return { start, end: Math.min(requestedEnd, totalLength - 1) };
+}
+
+function createRangeStream(body, start, end) {
+  const reader = body.getReader();
+  let sourceOffset = 0;
+  let finished = false;
+
+  return new ReadableStream({
+    async pull(controller) {
+      if (finished) return;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          finished = true;
+          controller.close();
+          return;
+        }
+
+        const chunkStart = sourceOffset;
+        const chunkEnd = sourceOffset + value.byteLength - 1;
+        sourceOffset += value.byteLength;
+
+        if (chunkEnd < start) continue;
+        if (chunkStart > end) {
+          finished = true;
+          reader.cancel().catch(() => undefined);
+          controller.close();
+          return;
+        }
+
+        const from = Math.max(start - chunkStart, 0);
+        const to = Math.min(end - chunkStart + 1, value.byteLength);
+        controller.enqueue(value.subarray(from, to));
+
+        if (chunkEnd >= end) {
+          finished = true;
+          reader.cancel().catch(() => undefined);
+          controller.close();
+        }
+        return;
+      }
+    },
+    cancel(reason) {
+      finished = true;
+      return reader.cancel(reason);
+    }
+  });
+}
+
+async function fetchMediaFromNetwork(request) {
+  try {
+    const networkRequest = request.headers.has('Range')
+      ? new Request(request, { cache: 'no-store' })
+      : request;
+    return await fetch(networkRequest);
+  } catch (error) {
+    return offlineResponse('Media is not available offline');
+  }
+}
+
+function rangeNotSatisfiable(totalLength) {
+  return new Response(null, {
+    status: 416,
+    statusText: 'Range Not Satisfiable',
+    headers: {
+      'Accept-Ranges': 'bytes',
+      'Content-Range': `bytes */${totalLength}`
+    }
+  });
+}
+
+function offlineResponse(message) {
+  return new Response(message, {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: { 'Content-Type': 'text/plain' }
+  });
+}
+
 self.addEventListener('backgroundfetchsuccess', event => {
-  const bgFetch = event.registration;
+  event.waitUntil((async () => {
+    const userKey = await getActiveUser();
+    if (!userKey) throw new Error('Cannot commit a background download without an active user');
 
-  event.waitUntil(async function () {
-    const cache = await caches.open(MEDIA_CACHE_NAME);
-    const records = await bgFetch.matchAll();
-
-    const promises = records.map(async record => {
+    const cache = await caches.open(getMediaCacheName(userKey));
+    const records = await event.registration.matchAll();
+    for (const record of records) {
       const response = await record.responseReady;
       await cache.put(record.request, response);
-    });
+    }
 
-    await Promise.all(promises);
-
-    // Notify clients that download finished
-    const clients = await self.clients.matchAll();
-    clients.forEach(client => {
+    const clients = await self.clients.matchAll({ includeUncontrolled: true });
+    for (const client of clients) {
       client.postMessage({
         type: 'DOWNLOAD_COMPLETE',
-        id: bgFetch.id // We can use the song ID as the fetch ID
+        id: event.registration.id
       });
-    });
-  }());
+    }
+  })());
 });

@@ -1,6 +1,6 @@
-/**
+﻿/**
  * ============================================================================
- * STREAMIFY — ui.js
+ * STREAMIFY - ui.js
  * ============================================================================
  * DOM initialization, sidebar navigation, modals, search box,
  * mobile menu, avatar upload, and logout.
@@ -12,11 +12,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* ===================================================
      * PWA Service Worker Registration
-     * =================================================== */
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=2.2')
+     * ===================================================
+     * Service workers are only available in a secure context. That means
+     * https://, or localhost (which the desktop app always uses).
+     * A phone on a plain-HTTP LAN address cannot register one, so we skip it
+     * and tell the user what that costs instead of throwing an error into the
+     * console on every page load.
+     */
+    if (window.StreamifyEnv && window.StreamifyEnv.canUseServiceWorker) {
+        navigator.serviceWorker.register('/sw.js?v=2.8')
             .then(reg => console.log('[SW] Registered successfully:', reg.scope))
             .catch(err => console.error('[SW] Registration failed:', err));
+    } else if (window.StreamifyEnv && !window.StreamifyEnv.isSecure) {
+        console.info(
+            '[SW] Skipped: this page is not a secure context. ' +
+            'Offline downloads and installing to the home screen need HTTPS.'
+        );
+    }
+
+    /* Explain the above to the user, once, if it applies to them. */
+    if (typeof window.initInsecureContextNotice === 'function') {
+        window.initInsecureContextNotice();
     }
 
     /* ===================================================
@@ -28,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('You are offline. Switching to Offline Library.', 'warning');
 
             // Disable other links
-            ['home-link', 'people-link', 'upload-link', 'about-link'].forEach(id => {
+            ['upload-link', 'about-link'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
                     el.style.pointerEvents = 'none';
@@ -82,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('You are back online.', 'success');
 
             // Re-enable links
-            ['home-link', 'people-link', 'upload-link', 'about-link'].forEach(id => {
+            ['upload-link', 'about-link'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
                     el.style.pointerEvents = 'auto';
@@ -106,15 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Trigger fetch refresh
             if (typeof fetchLibrary === 'function') fetchLibrary();
-            if (typeof fetchPosts === 'function') {
-                const postsContainer = document.getElementById('posts-container');
-                if (postsContainer && (postsContainer.innerHTML.includes('Error') || postsContainer.children.length === 0 || window.currentActiveView === 'home')) {
-                    if (postsContainer.innerHTML.includes('Error') || postsContainer.children.length === 0) {
-                        postsContainer.innerHTML = '<div class="loader"></div>';
-                    }
-                    fetchPosts(false);
-                }
-            }
         }
     }
 
@@ -129,16 +136,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* ===================================================
      * LOGOUT
-     * POST /logout → clear session → redirect to /login
+     * POST /logout -> clear session -> redirect to /login
      * =================================================== */
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
-        logoutBtn.addEventListener('click', e => {
+        logoutBtn.addEventListener('click', async e => {
             e.preventDefault();
-            fetch(window.API_BASE_URL + '/logout', { method: 'POST', credentials: 'include' })
-                .then(r => r.json())
-                .then(() => { window.location.href = '/login'; })
-                .catch(() => { window.location.href = '/login'; }); // fail-safe redirect
+            try {
+                await fetch(window.API_BASE_URL + '/logout', { method: 'POST', credentials: 'include' });
+            } catch (error) {
+                console.warn('[LOGOUT] Server logout failed; clearing local state anyway.', error);
+            }
+            try {
+                if (window.OfflineStore) await window.OfflineStore.clearActiveUser();
+            } catch (error) {
+                console.error('[LOGOUT] Failed to clear offline account state:', error);
+            }
+            window.location.href = '/login';
         });
     }
 
@@ -160,15 +174,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     if (userPill && userMenu) {
-        userPill.addEventListener('click', e => {
-            e.stopPropagation();
+        const toggleUserMenu = () => {
             if (notifMenu) notifMenu.classList.remove('show');
             userMenu.classList.toggle('show');
+            userPill.setAttribute('aria-expanded', String(userMenu.classList.contains('show')));
+        };
+        userPill.addEventListener('click', e => {
+            e.stopPropagation();
+            toggleUserMenu();
+        });
+        userPill.addEventListener('keydown', e => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            e.stopPropagation();
+            toggleUserMenu();
         });
     }
 
     document.addEventListener('click', e => {
-        if (userMenu && userMenu.classList.contains('show') && !userMenu.contains(e.target) && !userPill.contains(e.target)) userMenu.classList.remove('show');
+        if (userMenu && userMenu.classList.contains('show') && !userMenu.contains(e.target) && !userPill.contains(e.target)) {
+            userMenu.classList.remove('show');
+            if (userPill) userPill.setAttribute('aria-expanded', 'false');
+        }
         if (notifMenu && notifMenu.classList.contains('show') && !notifMenu.contains(e.target) && !notifPill.contains(e.target)) notifMenu.classList.remove('show');
     });
 
@@ -187,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
             clearUserProfile();
             fetchCurrentUser();
             userMenu.classList.remove('show');
+            if (userPill) userPill.setAttribute('aria-expanded', 'false');
             profileModal.classList.remove('hidden');
         });
     }
@@ -203,29 +231,405 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsTabs = document.querySelectorAll('.settings-tab');
     const settingsPanes = document.querySelectorAll('.settings-pane');
 
-    const openSettings = () => {
-        if (!appCache.user) {
-            fetchCurrentUser(true);
+    const metadataModes = new Set([
+        'local_only',
+        'text_only',
+        'acoustic_with_text_fallback'
+    ]);
+    const metadataSettingsState = {
+        mode: 'local_only',
+        acoustidConfigured: false,
+        acoustidKeySource: null,
+        fpcalcAvailable: false,
+        acoustidStatusKnown: false,
+        fpcalcStatusKnown: false,
+        apiSupport: 'unknown',
+        clearKeyUnsupported: false,
+        loading: false,
+        loadFailed: false
+    };
+    let metadataLoadPromise = null;
+
+    const metadataEndpoint = () => (window.API_BASE_URL || '') + '/api/settings/metadata';
+    const isMissingMetadataEndpoint = response => [404, 405, 501].includes(response.status);
+    const normalizeMetadataMode = mode => metadataModes.has(mode) ? mode : 'local_only';
+    const metadataScopes = () => document.querySelectorAll('[data-metadata-scope]');
+
+    function clearMetadataKeyInputs() {
+        metadataScopes().forEach(scope => {
+            const keyInput = scope.querySelector('[data-acoustid-key]');
+            if (keyInput) keyInput.value = '';
+        });
+    }
+
+    function selectedMetadataMode(scope) {
+        const selected = scope && scope.querySelector('input[type="radio"]:checked');
+        return normalizeMetadataMode(selected ? selected.value : 'local_only');
+    }
+
+    function setMetadataNotice(scope, message) {
+        const notice = scope && scope.querySelector('[data-metadata-api-notice]');
+        if (!notice) return;
+        notice.textContent = message || '';
+        notice.classList.toggle('hidden', !message);
+    }
+
+    function renderMetadataScope(scope, forceMode = false) {
+        if (!scope) return;
+
+        if (forceMode || scope.dataset.metadataDirty !== 'true') {
+            scope.querySelectorAll('input[type="radio"]').forEach(input => {
+                input.checked = input.value === metadataSettingsState.mode;
+            });
         }
-        userMenu.classList.remove('show');
+
+        const mode = selectedMetadataMode(scope);
+        const isAcoustic = mode === 'acoustic_with_text_fallback';
+        const busy = scope.dataset.metadataBusy === 'true';
+        const controlsUnavailable = metadataSettingsState.loading || busy || metadataSettingsState.apiSupport === 'missing';
+        const keyInput = scope.querySelector('[data-acoustid-key]');
+        const keyStatus = scope.querySelector('[data-acoustid-status]');
+        const fpcalcStatus = scope.querySelector('[data-fpcalc-status]');
+        const acoustidFields = scope.querySelector('[data-acoustid-fields]');
+        const clearKeyButton = scope.querySelector('[data-clear-acoustid-key]');
+        const saveButton = scope.querySelector('[data-save-metadata]');
+
+        scope.querySelectorAll('.metadata-mode-option').forEach(option => {
+            const radio = option.querySelector('input[type="radio"]');
+            option.classList.toggle('is-selected', !!radio && radio.checked);
+        });
+        scope.querySelectorAll('input[type="radio"]').forEach(input => {
+            input.disabled = controlsUnavailable;
+        });
+
+        if (acoustidFields) acoustidFields.classList.toggle('hidden', !isAcoustic);
+        if (keyInput) {
+            keyInput.disabled = controlsUnavailable;
+            keyInput.required = isAcoustic && !metadataSettingsState.acoustidConfigured && metadataSettingsState.apiSupport !== 'missing';
+            keyInput.placeholder = metadataSettingsState.acoustidConfigured
+                ? 'Configured key is masked'
+                : 'Enter application client key';
+        }
+        if (clearKeyButton) {
+            clearKeyButton.classList.toggle(
+                'hidden',
+                !metadataSettingsState.acoustidConfigured ||
+                metadataSettingsState.acoustidKeySource === 'environment' ||
+                metadataSettingsState.apiSupport === 'missing' ||
+                metadataSettingsState.clearKeyUnsupported
+            );
+            clearKeyButton.disabled = metadataSettingsState.loading || busy;
+        }
+        if (saveButton) {
+            saveButton.disabled = controlsUnavailable;
+            saveButton.innerHTML = busy
+                ? "<i class='bx bx-loader-alt bx-spin'></i> Saving..."
+                : 'Save Metadata Settings';
+        }
+
+        if (keyStatus && fpcalcStatus) {
+            if (metadataSettingsState.loading) {
+                keyStatus.textContent = 'Checking...';
+                keyStatus.dataset.status = 'unknown';
+                fpcalcStatus.textContent = 'Checking...';
+                fpcalcStatus.dataset.status = 'unknown';
+            } else {
+                const statusesReadable = metadataSettingsState.apiSupport === 'available' && !metadataSettingsState.loadFailed;
+                if (statusesReadable && metadataSettingsState.acoustidStatusKnown) {
+                    keyStatus.textContent = metadataSettingsState.acoustidConfigured
+                        ? (metadataSettingsState.acoustidKeySource === 'environment' ? 'Configured by environment' : 'Configured')
+                        : 'Not configured';
+                    keyStatus.dataset.status = metadataSettingsState.acoustidConfigured ? 'configured' : 'missing';
+                } else {
+                    keyStatus.textContent = 'Status unavailable';
+                    keyStatus.dataset.status = 'unknown';
+                }
+                if (statusesReadable && metadataSettingsState.fpcalcStatusKnown) {
+                    fpcalcStatus.textContent = metadataSettingsState.fpcalcAvailable ? 'Available' : 'Unavailable';
+                    fpcalcStatus.dataset.status = metadataSettingsState.fpcalcAvailable ? 'available' : 'unavailable';
+                } else {
+                    fpcalcStatus.textContent = 'Status unavailable';
+                    fpcalcStatus.dataset.status = 'unknown';
+                }
+            }
+        }
+
+        if (metadataSettingsState.apiSupport === 'missing') {
+            setMetadataNotice(scope, 'This server does not expose metadata settings. This step will be skipped, and basic setup can continue without changing metadata behavior.');
+        } else if (metadataSettingsState.loadFailed) {
+            setMetadataNotice(scope, 'Current metadata settings could not be loaded. Local-only setup can still continue, or you can retry by saving a choice.');
+        } else if (metadataSettingsState.clearKeyUnsupported) {
+            setMetadataNotice(scope, 'This server does not expose AcoustID key removal. Lookup modes can still be saved.');
+        } else {
+            setMetadataNotice(scope, '');
+        }
+    }
+
+    function renderMetadataScopes(forceMode = false) {
+        metadataScopes().forEach(scope => renderMetadataScope(scope, forceMode));
+    }
+
+    async function loadMetadataSettings() {
+        if (metadataLoadPromise) return metadataLoadPromise;
+
+        metadataSettingsState.loading = true;
+        metadataSettingsState.loadFailed = false;
+        renderMetadataScopes();
+
+        metadataLoadPromise = (async () => {
+            try {
+                const response = await fetch(metadataEndpoint(), { credentials: 'include' });
+                const data = await response.json().catch(() => ({}));
+
+                if (isMissingMetadataEndpoint(response)) {
+                    metadataSettingsState.apiSupport = 'missing';
+                    metadataSettingsState.mode = 'local_only';
+                    metadataSettingsState.acoustidConfigured = false;
+                    metadataSettingsState.acoustidKeySource = null;
+                    metadataSettingsState.fpcalcAvailable = false;
+                    metadataSettingsState.acoustidStatusKnown = false;
+                    metadataSettingsState.fpcalcStatusKnown = false;
+                    clearMetadataKeyInputs();
+                    return false;
+                }
+
+                metadataSettingsState.apiSupport = 'available';
+                if (!response.ok) throw new Error(data.error || 'Could not load metadata settings.');
+
+                metadataSettingsState.mode = normalizeMetadataMode(data.mode);
+                metadataSettingsState.acoustidConfigured = data.acoustid_configured === true;
+                metadataSettingsState.acoustidKeySource = data.acoustid_key_source || null;
+                metadataSettingsState.fpcalcAvailable = data.fpcalc_available === true;
+                metadataSettingsState.acoustidStatusKnown = typeof data.acoustid_configured === 'boolean';
+                metadataSettingsState.fpcalcStatusKnown = typeof data.fpcalc_available === 'boolean';
+                return true;
+            } catch (error) {
+                metadataSettingsState.loadFailed = true;
+                console.warn('[METADATA SETTINGS] Could not load settings:', error.message);
+                return false;
+            } finally {
+                metadataSettingsState.loading = false;
+                const forceLocalMode = metadataSettingsState.apiSupport === 'missing';
+                metadataLoadPromise = null;
+                renderMetadataScopes(forceLocalMode);
+            }
+        })();
+
+        return metadataLoadPromise;
+    }
+
+    async function saveMetadataSettings(scopeName, { allowLocalFallback = false } = {}) {
+        if (metadataLoadPromise) await metadataLoadPromise;
+
+        const scope = document.querySelector(`[data-metadata-scope="${scopeName}"]`);
+        if (!scope) return false;
+
+        if (metadataSettingsState.apiSupport === 'missing') {
+            metadataSettingsState.mode = 'local_only';
+            renderMetadataScopes(true);
+            return allowLocalFallback;
+        }
+
+        const mode = selectedMetadataMode(scope);
+        const keyInput = scope.querySelector('[data-acoustid-key]');
+        if (mode === 'acoustic_with_text_fallback' && !metadataSettingsState.acoustidConfigured && (!keyInput || !keyInput.value.trim())) {
+            showToast('Enter an AcoustID application client key to use acoustic lookup.', 'warning');
+            if (keyInput) keyInput.focus();
+            return false;
+        }
+
+        const payload = { mode };
+        if (mode === 'acoustic_with_text_fallback' && keyInput && keyInput.value.trim()) {
+            payload.acoustid_client_key = keyInput.value.trim();
+        }
+
+        scope.dataset.metadataBusy = 'true';
+        renderMetadataScope(scope);
+
+        try {
+            const response = await fetch(metadataEndpoint(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (isMissingMetadataEndpoint(response)) {
+                metadataSettingsState.apiSupport = 'missing';
+                metadataSettingsState.mode = 'local_only';
+                metadataSettingsState.acoustidConfigured = false;
+                metadataSettingsState.acoustidKeySource = null;
+                metadataSettingsState.fpcalcAvailable = false;
+                metadataSettingsState.acoustidStatusKnown = false;
+                metadataSettingsState.fpcalcStatusKnown = false;
+                clearMetadataKeyInputs();
+                renderMetadataScopes(true);
+                showToast('Metadata settings are unavailable; continuing without changing metadata behavior.', 'warning');
+                return allowLocalFallback;
+            }
+            if (!response.ok || data.success === false) {
+                throw new Error(data.error || 'Could not save metadata settings.');
+            }
+
+            metadataSettingsState.apiSupport = 'available';
+            metadataSettingsState.loadFailed = false;
+            metadataSettingsState.mode = metadataModes.has(data.mode) ? data.mode : mode;
+            if (typeof data.acoustid_configured === 'boolean') {
+                metadataSettingsState.acoustidConfigured = data.acoustid_configured;
+                metadataSettingsState.acoustidStatusKnown = true;
+            } else if (payload.acoustid_client_key) {
+                metadataSettingsState.acoustidConfigured = true;
+                metadataSettingsState.acoustidStatusKnown = true;
+            }
+            metadataSettingsState.acoustidKeySource = data.acoustid_key_source ||
+                (metadataSettingsState.acoustidConfigured ? 'stored' : null);
+            if (typeof data.fpcalc_available === 'boolean') {
+                metadataSettingsState.fpcalcAvailable = data.fpcalc_available;
+                metadataSettingsState.fpcalcStatusKnown = true;
+            }
+            clearMetadataKeyInputs();
+            metadataScopes().forEach(item => delete item.dataset.metadataDirty);
+            renderMetadataScopes(true);
+            showToast('Metadata settings saved.', 'success');
+            return true;
+        } catch (error) {
+            console.warn('[METADATA SETTINGS] Could not save settings:', error.message);
+            if (allowLocalFallback && mode === 'local_only') {
+                showToast('Local-only setup will continue; the metadata preference could not be saved.', 'warning');
+                return true;
+            }
+            showToast(error.message || 'Could not save metadata settings.', 'error');
+            return false;
+        } finally {
+            delete scope.dataset.metadataBusy;
+            renderMetadataScope(scope);
+        }
+    }
+
+    async function clearAcoustidKey(scope) {
+        if (!scope || metadataSettingsState.apiSupport === 'missing') return;
+
+        scope.dataset.metadataBusy = 'true';
+        renderMetadataScope(scope);
+        try {
+            const response = await fetch(metadataEndpoint() + '/acoustid-key', {
+                method: 'DELETE',
+                credentials: 'include'
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (isMissingMetadataEndpoint(response)) {
+                metadataSettingsState.clearKeyUnsupported = true;
+                renderMetadataScopes();
+                showToast('This server does not expose AcoustID key settings.', 'warning');
+                return;
+            }
+            if (!response.ok || data.success === false) {
+                throw new Error(data.error || 'Could not clear the AcoustID key.');
+            }
+
+            metadataSettingsState.apiSupport = 'available';
+            metadataSettingsState.loadFailed = false;
+            metadataSettingsState.clearKeyUnsupported = false;
+            metadataSettingsState.acoustidConfigured = data.acoustid_configured === true;
+            metadataSettingsState.acoustidKeySource = data.acoustid_key_source || null;
+            metadataSettingsState.acoustidStatusKnown = true;
+            if (typeof data.fpcalc_available === 'boolean') {
+                metadataSettingsState.fpcalcAvailable = data.fpcalc_available;
+                metadataSettingsState.fpcalcStatusKnown = true;
+            }
+            clearMetadataKeyInputs();
+            renderMetadataScopes();
+            showToast(metadataSettingsState.acoustidConfigured
+                ? 'Stored key cleared; the environment-provided key remains active.'
+                : 'AcoustID application client key cleared.', 'success');
+        } catch (error) {
+            console.warn('[METADATA SETTINGS] Could not clear key:', error.message);
+            showToast(error.message || 'Could not clear the AcoustID key.', 'error');
+        } finally {
+            delete scope.dataset.metadataBusy;
+            renderMetadataScope(scope);
+        }
+    }
+
+    metadataScopes().forEach(scope => {
+        scope.querySelectorAll('input[type="radio"]').forEach(input => {
+            input.addEventListener('change', () => {
+                scope.dataset.metadataDirty = 'true';
+                renderMetadataScope(scope);
+            });
+        });
+
+        const clearKeyButton = scope.querySelector('[data-clear-acoustid-key]');
+        if (clearKeyButton) clearKeyButton.addEventListener('click', () => clearAcoustidKey(scope));
+    });
+
+    const metadataSettingsForm = document.getElementById('metadata-settings-form');
+    if (metadataSettingsForm) {
+        metadataSettingsForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            await saveMetadataSettings('settings');
+        });
+    }
+
+    renderMetadataScopes();
+
+    const applyOwnerOnlyControls = () => {
+        const isOwner = appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner';
+        const musicDirectoriesSetting = document.getElementById('music-directories-setting');
+        const refreshButton = document.getElementById('refresh-library-btn');
+        const batchEnrichButton = document.getElementById('batch-ai-enrich-btn');
+        const autoFillButton = document.getElementById('ai-autofill-btn');
+        const metadataTab = document.getElementById('metadata-settings-tab');
+        const metadataPane = document.getElementById('pane-metadata');
+        if (musicDirectoriesSetting) musicDirectoriesSetting.classList.toggle('hidden', !isOwner);
+        if (refreshButton) refreshButton.classList.toggle('hidden', !isOwner);
+        if (batchEnrichButton) batchEnrichButton.classList.toggle('hidden', !isOwner);
+        if (autoFillButton) autoFillButton.classList.toggle('hidden', !isOwner);
+        if (metadataTab) metadataTab.classList.toggle('hidden', !isOwner);
+        if (metadataPane) metadataPane.classList.toggle('hidden', !isOwner);
+
+        if (!isOwner && metadataPane && metadataPane.classList.contains('active')) {
+            settingsTabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === 'profile'));
+            settingsPanes.forEach(pane => pane.classList.toggle('active', pane.id === 'pane-profile'));
+        }
+    };
+
+    const openSettings = async () => {
+        if (userMenu) userMenu.classList.remove('show');
+        if (userPill) userPill.setAttribute('aria-expanded', 'false');
         settingsModal.classList.remove('hidden');
+        if (!appCache.user) await fetchCurrentUser();
         populateSettings();
+        const metadataPane = document.getElementById('pane-metadata');
+        const isOwner = appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner';
+        if (isOwner && metadataPane && metadataPane.classList.contains('active')) loadMetadataSettings();
     };
 
     const closeSettings = () => settingsModal && settingsModal.classList.add('hidden');
 
     const populateSettings = () => {
         if (!appCache.user) return;
+        applyOwnerOnlyControls();
         const dispNameInput = document.getElementById('settings-display-name');
         const bioInput = document.getElementById('settings-bio');
         const preview = document.getElementById('settings-avatar-preview');
         const analyticsToggle = document.getElementById('allow-analytics-toggle');
+        const registrationSetting = document.getElementById('registration-setting');
+        const registrationToggle = document.getElementById('allow-registration-toggle');
 
         dispNameInput.value = appCache.user.display_name || appCache.user.username;
         bioInput.value = appCache.user.bio || "";
 
         if (analyticsToggle) {
             analyticsToggle.checked = appCache.user.allow_analytics !== false;
+        }
+
+        if (registrationSetting) {
+            const isOwner = appCache.user.role === 'Owner';
+            registrationSetting.classList.toggle('hidden', !isOwner);
+            if (registrationToggle && isOwner) registrationToggle.checked = appCache.user.allow_registration === true;
         }
 
         if (appCache.user.avatar) {
@@ -253,48 +657,154 @@ document.addEventListener('DOMContentLoaded', () => {
             const pane = document.getElementById(`pane-${target}`);
             if (pane) {
                 pane.classList.add('active');
-                if (target === 'account') loadSessions();
-                if (target === 'storage') loadStorage();
+                if (target === 'account') {
+                    loadSessions();
+                    if (appCache.user && appCache.user.role === 'Owner') loadMusicDirectories();
+                } else if (target === 'metadata' && appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner') {
+                    loadMetadataSettings();
+                }
             }
         });
     });
 
-    async function loadStorage() {
-        const textEl = document.getElementById('settings-storage-text');
-        const barEl = document.getElementById('settings-storage-bar');
-        if (!textEl || !barEl || !appCache.user) return;
-
+    async function loadMusicDirectories() {
+        const listEl = document.getElementById('music-dirs-list');
+        if (!listEl) return;
         try {
-            // Re-fetch /me to get fresh storage stats
-            const res = await fetch(window.API_BASE_URL + '/api/me');
+            const res = await fetch('/api/config/music-directories');
             if (res.ok) {
                 const data = await res.json();
-                appCache.user = data; // update cache
-
-                const usedMB = (data.storage_used / (1024 * 1024)).toFixed(1);
-                const limitMB = (data.storage_limit / (1024 * 1024)).toFixed(0);
-                textEl.textContent = `${usedMB} MB / ${limitMB} MB`;
-                
-                let percentage = (data.storage_used / data.storage_limit) * 100;
-                if (percentage > 100) percentage = 100;
-                
-                barEl.style.width = `${percentage}%`;
-                
-                // Tiered coloring: Blue < 50%, Yellow 50-85%, Red > 85%
-                if (percentage < 50) {
-                    barEl.style.background = '#4169e1'; // Blue
-                    textEl.style.color = '#4169e1';
-                } else if (percentage < 85) {
-                    barEl.style.background = '#f59e0b'; // Yellow
-                    textEl.style.color = '#f59e0b';
-                } else {
-                    barEl.style.background = '#e74c3c'; // Red
-                    textEl.style.color = '#e74c3c';
-                }
+                renderMusicDirectories(data.directories || []);
             }
-        } catch (e) {
-            console.error('[LOAD STORAGE]', e);
+        } catch (err) {
+            console.error('[LOAD MUSIC DIRS]', err);
         }
+    }
+
+    function renderMusicDirectories(directories) {
+        const listEl = document.getElementById('music-dirs-list');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        if (!directories || directories.length === 0) {
+            listEl.innerHTML = '<p style="color:#888; font-size:12px;">No directories configured.</p>';
+            return;
+        }
+        directories.forEach((dir, index) => {
+            const item = document.createElement('div');
+            item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.04); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);';
+            const safeDir = typeof escapeHTML === 'function' ? escapeHTML(dir) : dir;
+            item.innerHTML = `
+                <span style="font-size: 13px; font-family: monospace; color: #eee; word-break: break-all;">${safeDir}</span>
+                ${directories.length > 1 ? `<button type="button" class="btn-remove-dir" style="background: none; border: none; color: #f43f5e; cursor: pointer; padding: 4px; font-size: 16px;"><i class='bx bx-trash'></i></button>` : ''}
+            `;
+            const removeBtn = item.querySelector('.btn-remove-dir');
+            if (removeBtn) {
+                removeBtn.onclick = async () => {
+                    const newDirs = directories.filter((_, i) => i !== index);
+                    await updateMusicDirectories(newDirs);
+                };
+            }
+            listEl.appendChild(item);
+        });
+    }
+
+    async function updateMusicDirectories(directories) {
+        try {
+            const res = await fetch('/api/config/music-directories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ directories })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast('Music directories updated!', 'success');
+                renderMusicDirectories(data.directories);
+                if (typeof fetchLibrary === 'function') fetchLibrary(true);
+                else if (typeof fetchSongs === 'function') fetchSongs();
+            } else {
+                showToast(data.error || 'Failed to update music directories.', 'error');
+            }
+        } catch (err) {
+            console.error('[UPDATE MUSIC DIRS]', err);
+            showToast('Error updating music directories.', 'error');
+        }
+    }
+
+    /* ===================================================
+     * NATIVE FOLDER PICKER (desktop app only)
+     * ===================================================
+     * In a browser there is no way to obtain a real filesystem path, so the
+     * music directory has to be typed by hand. The Electron shell exposes a
+     * native picker via the preload bridge, so when it is available we add a
+     * "Browse" button beside the relevant inputs.
+     *
+     * This is a progressive enhancement: in a normal browser, or on a phone,
+     * nothing changes and the text input keeps working exactly as before.
+     */
+    function attachFolderPicker(inputEl) {
+        if (!inputEl) return;
+        if (!window.streamifyDesktop || typeof window.streamifyDesktop.pickFolder !== 'function') return;
+        if (inputEl.dataset.pickerAttached === '1') return;
+        inputEl.dataset.pickerAttached = '1';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn-secondary folder-picker-btn';
+        btn.innerHTML = "<i class='bx bx-folder-open'></i> Browse";
+        btn.style.cssText =
+            'flex-shrink:0;padding:8px 14px;font-size:13px;border-radius:6px;cursor:pointer;' +
+            'border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.07);color:#fff;' +
+            'display:inline-flex;align-items:center;gap:6px;white-space:nowrap;';
+
+        btn.addEventListener('click', async () => {
+            try {
+                const picked = await window.streamifyDesktop.pickFolder({
+                    title: 'Select your music folder'
+                });
+                if (picked) {
+                    inputEl.value = picked;
+                    // Let any existing listeners react to the change.
+                    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            } catch (err) {
+                console.error('[DESKTOP] Folder picker failed:', err);
+                showToast('Could not open the folder picker.', 'error');
+            }
+        });
+
+        // The settings input sits in a flex row; the OOBE one is full width.
+        // Inserting directly after the input works for both, but the OOBE input
+        // needs its own row so the button does not overflow.
+        const parent = inputEl.parentElement;
+        if (parent && getComputedStyle(parent).display === 'flex') {
+            parent.insertBefore(btn, inputEl.nextSibling);
+        } else {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
+            row.appendChild(btn);
+            inputEl.insertAdjacentElement('afterend', row);
+        }
+    }
+
+    attachFolderPicker(document.getElementById('new-music-dir-input'));
+    attachFolderPicker(document.getElementById('oobe-music-dir-input'));
+
+    const addDirBtn = document.getElementById('add-music-dir-btn');
+    const newDirInput = document.getElementById('new-music-dir-input');
+    if (addDirBtn && newDirInput) {
+        addDirBtn.onclick = async () => {
+            const val = newDirInput.value.trim();
+            if (!val) return;
+            const currentItems = Array.from(document.querySelectorAll('#music-dirs-list span')).map(s => s.textContent);
+            if (currentItems.includes(val)) {
+                showToast('Directory path already exists in list.', 'warning');
+                return;
+            }
+            const updated = [...currentItems, val];
+            await updateMusicDirectories(updated);
+            newDirInput.value = '';
+        };
     }
 
     async function loadSessions() {
@@ -336,7 +846,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="device-details">
                         <div class="device-name">${s.browser} on ${s.os}</div>
-                        <div class="device-meta">${s.ip} • Started ${date}</div>
+                        <div class="device-meta">${s.ip} \u2022 Started ${date}</div>
                     </div>
                 </div>
                 <button class="device-logout-btn" data-id="${s.id}">
@@ -518,9 +1028,37 @@ document.addEventListener('DOMContentLoaded', () => {
     if (analyticsToggle) {
         analyticsToggle.addEventListener('change', async (e) => {
             if (typeof setAnalyticsEnabled === 'function') {
-                await setAnalyticsEnabled(e.target.checked);
-                // Optimistically update cache
-                if (appCache.user) appCache.user.allow_analytics = e.target.checked;
+                const requestedValue = e.target.checked;
+                const previousValue = appCache.user ? appCache.user.allow_analytics !== false : !requestedValue;
+                e.target.disabled = true;
+                const saved = await setAnalyticsEnabled(requestedValue);
+                if (saved) {
+                    if (appCache.user) appCache.user.allow_analytics = requestedValue;
+                } else {
+                    e.target.checked = previousValue;
+                }
+                e.target.disabled = false;
+            }
+        });
+    }
+
+    const registrationToggle = document.getElementById('allow-registration-toggle');
+    if (registrationToggle) {
+        registrationToggle.addEventListener('change', async (e) => {
+            try {
+                const res = await fetch(window.API_BASE_URL + '/api/settings/registration', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ enabled: e.target.checked })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update registration');
+                if (appCache.user) appCache.user.allow_registration = data.allow_registration;
+                showToast(e.target.checked ? 'Registration enabled.' : 'Registration disabled.', 'success');
+            } catch (err) {
+                e.target.checked = !e.target.checked;
+                showToast(err.message, 'error');
             }
         });
     }
@@ -544,83 +1082,107 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeCropBtn = document.getElementById('close-crop-btn');
 
     let cropper = null;
+    let cropTargetType = 'avatar';
+    let cropObjectUrl = null;
 
-    if (triggerBtn && avatarInput) triggerBtn.addEventListener('click', () => avatarInput.click());
-
-    if (avatarInput) {
-        avatarInput.addEventListener('change', e => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                cropImage.src = event.target.result;
-                cropModal.classList.remove('hidden');
-
-                if (cropper) cropper.destroy();
-                cropper = new Cropper(cropImage, {
-                    aspectRatio: 1,
-                    viewMode: 2,
-                    dragMode: 'move',
-                    background: false,
-                    autoCropArea: 1,
-                    responsive: true
-                });
-            };
-            reader.readAsDataURL(file);
-        });
-    }
+    const destroyCropper = () => {
+        const activeCropper = cropper || window.currentCropper;
+        if (activeCropper) activeCropper.destroy();
+        cropper = null;
+        window.currentCropper = null;
+        if (cropObjectUrl) URL.revokeObjectURL(cropObjectUrl);
+        cropObjectUrl = null;
+        if (cropImage) {
+            cropImage.onload = null;
+            cropImage.onerror = null;
+            cropImage.removeAttribute('src');
+        }
+    };
 
     const closeCrop = () => {
-        cropModal.classList.add('hidden');
-        if (cropper) {
-            cropper.destroy();
-            cropper = null;
-        }
-        avatarInput.value = '';
+        if (cropModal) cropModal.classList.add('hidden');
+        destroyCropper();
+        if (avatarInput) avatarInput.value = '';
+        const bannerInput = document.getElementById('banner-upload-input');
+        if (bannerInput) bannerInput.value = '';
     };
+
+    window.openProfileCropper = (file, type = 'avatar') => {
+        if (!file || !file.type.startsWith('image/') || !cropImage || !cropModal) return;
+        destroyCropper();
+        cropTargetType = type === 'banner' ? 'banner' : 'avatar';
+        cropObjectUrl = URL.createObjectURL(file);
+        const sourceUrl = cropObjectUrl;
+        cropImage.onload = () => {
+            if (sourceUrl !== cropObjectUrl) return;
+            cropper = new Cropper(cropImage, {
+                aspectRatio: cropTargetType === 'banner' ? 3 / 1 : 1,
+                viewMode: cropTargetType === 'banner' ? 1 : 2,
+                dragMode: 'move',
+                background: false,
+                autoCropArea: 1,
+                responsive: true
+            });
+            window.currentCropper = cropper;
+        };
+        cropImage.onerror = closeCrop;
+        cropImage.src = sourceUrl;
+        cropModal.classList.remove('hidden');
+    };
+
+    if (triggerBtn && avatarInput) triggerBtn.addEventListener('click', () => avatarInput.click());
+    if (avatarInput) {
+        avatarInput.addEventListener('change', event => {
+            const file = event.target.files[0];
+            if (file) window.openProfileCropper(file, 'avatar');
+        });
+    }
 
     if (cancelCropBtn) cancelCropBtn.addEventListener('click', closeCrop);
     if (closeCropBtn) closeCropBtn.addEventListener('click', closeCrop);
 
     if (applyCropBtn) {
-        applyCropBtn.addEventListener('click', () => {
+        applyCropBtn.addEventListener('click', async () => {
             if (!cropper) return;
 
+            const targetType = cropTargetType;
             applyCropBtn.disabled = true;
             applyCropBtn.textContent = 'Processing...';
 
-            cropper.getCroppedCanvas({
-                width: 400,
-                height: 400
-            }).toBlob((blob) => {
-                const formData = new FormData();
-                formData.append('avatar_file', blob, 'avatar.png');
+            try {
+                const canvas = cropper.getCroppedCanvas(targetType === 'banner'
+                    ? { width: 1500, height: 500 }
+                    : { width: 400, height: 400 });
+                const mimeType = targetType === 'banner' ? 'image/jpeg' : 'image/png';
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, mimeType, 0.92));
+                if (!blob) throw new Error('Could not create cropped image');
 
-                fetch(window.API_BASE_URL + '/api/upload-avatar', {
+                const formData = new FormData();
+                const fieldName = targetType === 'banner' ? 'banner_file' : 'avatar_file';
+                formData.append(fieldName, blob, targetType === 'banner' ? 'banner.jpg' : 'avatar.png');
+                const endpoint = targetType === 'banner' ? '/api/upload-banner' : '/api/upload-avatar';
+                const response = await fetch(window.API_BASE_URL + endpoint, {
                     method: 'POST',
                     body: formData,
                     credentials: 'include'
-                })
-                    .then(r => {
-                        if (r.ok) {
-                            showToast('Avatar updated!', 'success');
-                            closeCrop();
-                            fetchCurrentUser(true); // Refresh cache + UI
-                            populateSettings(); // Update preview in settings modal
-                        } else {
-                            showToast('Upload failed', 'error');
-                        }
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        showToast('Error uploading avatar', 'error');
-                    })
-                    .finally(() => {
-                        applyCropBtn.disabled = false;
-                        applyCropBtn.textContent = 'Apply Crop';
-                    });
-            }, 'image/png');
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || result.success === false) throw new Error(result.error || 'Upload failed');
+
+                showToast(`${targetType === 'banner' ? 'Banner' : 'Avatar'} updated!`, 'success');
+                closeCrop();
+                await fetchCurrentUser(true);
+                populateSettings();
+                if (window.profileContextUser && typeof fetchDetailedProfile === 'function') {
+                    fetchDetailedProfile(window.profileContextUser);
+                }
+            } catch (err) {
+                console.error('[PROFILE IMAGE UPLOAD]', err);
+                showToast(err.message || 'Error uploading image', 'error');
+            } finally {
+                applyCropBtn.disabled = false;
+                applyCropBtn.textContent = 'Apply Crop';
+            }
         });
     }
 
@@ -643,20 +1205,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Global view state for refreshes
-    window.currentActiveView = 'home';
+    window.currentActiveView = 'library';
 
 
-    const feedSection = document.getElementById('feed-section');
     const trendingSection = document.getElementById('trending-section');
-    const peopleSection = document.getElementById('people-section');
     const uploadSection = document.getElementById('upload-section');
     const searchSection = document.getElementById('search-section');
     const aboutSection = document.getElementById('about-section');
     const profileDetailSection = document.getElementById('profile-detail-section');
-    const postDetailSection = document.getElementById('post-detail-section');
     const playlistDetailSection = document.getElementById('playlist-detail-section');
-    const dmSection = document.getElementById('dm-section');
     const playerSection = document.getElementById('player-section'); // Added player section reference
+    const dmSection = null;
 
     function showSection(section) {
         if (!section) return;
@@ -675,13 +1234,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function hideAllSections() {
-        [feedSection, trendingSection, peopleSection, uploadSection, searchSection, aboutSection, profileDetailSection, postDetailSection, playlistDetailSection, dmSection, playerSection].forEach(sec => {
+        if (typeof window.cancelPlaylistDetailRequest === 'function') window.cancelPlaylistDetailRequest();
+        if (window.currentActiveView !== 'playlist') {
+            window.requestedPlaylistId = null;
+            window.currentPlaylistId = null;
+            window.currentPlaylistOwner = null;
+            window.currentPlaylistIsPrivate = null;
+        }
+        if (window.currentActiveView !== 'search' && typeof window.cancelSearchRequest === 'function') {
+            window.cancelSearchRequest(false);
+        }
+        [trendingSection, uploadSection, searchSection, aboutSection, profileDetailSection, playlistDetailSection, playerSection].forEach(sec => {
             if (sec) { sec.classList.add('hidden'); sec.classList.remove('fade-in-animate'); }
         });
         document.querySelector('.main-content')?.classList.remove('no-scroll');
-        document.body.classList.remove('dm-open');
-        document.body.classList.remove('player-section-active'); // ensure bottom player reappears when navigating away
-        [homeLink, libraryLink, peopleLink, uploadLink, aboutLink].forEach(l => l && l.classList.remove('active'));
+        if (typeof window.setDedicatedPlayerActive === 'function') {
+            window.setDedicatedPlayerActive(false);
+        } else {
+            document.body.classList.remove('player-section-active');
+            document.documentElement.classList.remove('player-chrome-active');
+        }
+        // Restore the flat app colour behind the browser toolbars; the
+        // album-tinted value only applies inside the full-screen player.
+        if (typeof setThemeColor === 'function' && typeof DEFAULT_THEME_COLOR !== 'undefined') {
+            setThemeColor(DEFAULT_THEME_COLOR);
+        }
+        [libraryLink, uploadLink, aboutLink].forEach(l => l && l.classList.remove('active'));
         document.querySelectorAll('.sidebar-playlist-link').forEach(l => l.classList.remove('active'));
         // Reset edit modes on view switch to prevent stale UI state
         if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode) {
@@ -700,7 +1278,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pBtn) { pBtn.classList.remove('active'); pBtn.innerHTML = "<i class='bx bx-pencil'></i>"; }
             if (pBar) pBar.classList.add('hidden');
         }
-        const mainContent = document.querySelector('.main-content');
+        const mainContent = window.getAppScrollContainer();
         if (mainContent) mainContent.scrollTop = 0;
         window.scrollTo(0, 0);
     }
@@ -709,37 +1287,10 @@ document.addEventListener('DOMContentLoaded', () => {
     window.hideAllSections = hideAllSections;
     window.showSection = showSection;
 
-    if (homeLink) {
-        homeLink.addEventListener('click', e => {
-            e.preventDefault();
-            if (window.location.pathname !== '/home' || window.location.hash !== '#feed') {
-                history.pushState({ view: 'home' }, '', '/home#feed');
-            }
-            window.currentActiveView = 'home';
-            hideAllSections();
-            homeLink.classList.add('active');
-            showSection(feedSection);
-            document.title = "Streamify | Home";
-
-            // Retry fetching posts if it previously failed or is empty
-            const postsContainer = document.getElementById('posts-container');
-            if (navigator.onLine && postsContainer && (postsContainer.innerHTML.includes('Error') || postsContainer.children.length === 0) && typeof fetchPosts === 'function') {
-                postsContainer.innerHTML = '<div class="loader"></div>';
-                fetchPosts(false);
-            }
-
-            // Restore scroll position if coming back from another view
-            const mainContent = document.querySelector('.main-content');
-            if (mainContent && window.savedScrollPosition !== undefined) {
-                mainContent.scrollTop = window.savedScrollPosition;
-                window.savedScrollPosition = undefined;
-            }
-        });
-    }
-
     if (libraryLink) {
         libraryLink.addEventListener('click', e => {
             e.preventDefault();
+            if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
             if (window.location.pathname !== '/home' || window.location.hash !== '#library') {
                 history.pushState({ view: 'library' }, '', '/home#library');
             }
@@ -752,23 +1303,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (peopleLink) {
-        peopleLink.addEventListener('click', e => {
-            e.preventDefault();
-            if (window.location.pathname !== '/home' || window.location.hash !== '#people') {
-                history.pushState({ view: 'people' }, '', '/home#people');
-            }
-            window.currentActiveView = 'people';
-            hideAllSections();
-            peopleLink.classList.add('active');
-            showSection(peopleSection);
-            fetchPeople();
-        });
-    }
-
     if (uploadLink) {
         uploadLink.addEventListener('click', e => {
             e.preventDefault();
+            if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
             if (window.location.pathname !== '/home' || window.location.hash !== '#upload') {
                 history.pushState({ view: 'upload' }, '', '/home#upload');
             }
@@ -782,6 +1320,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (aboutLink) {
         aboutLink.addEventListener('click', e => {
             e.preventDefault();
+            if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
             if (window.location.pathname !== '/home' || window.location.hash !== '#about') {
                 history.pushState({ view: 'about' }, '', '/home#about');
             }
@@ -813,6 +1352,7 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput.addEventListener('input', e => {
             const query = e.target.value.trim();
             if (searchTimeout) clearTimeout(searchTimeout);
+            if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
             if (query.length > 0) {
                 searchTimeout = setTimeout(() => {
                     window.currentActiveView = 'search';
@@ -821,7 +1361,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     performSearch(query);
                 }, 500);
             } else {
-                if (homeLink) homeLink.click();
+                if (libraryLink) libraryLink.click();
             }
         });
 
@@ -829,6 +1369,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'Enter') {
                 if (searchTimeout) clearTimeout(searchTimeout);
                 const query = searchInput.value.trim();
+                if (!query) {
+                    if (libraryLink) libraryLink.click();
+                    return;
+                }
+                window.currentActiveView = 'search';
                 hideAllSections();
                 showSection(searchSection);
                 performSearch(query);
@@ -881,6 +1426,7 @@ document.addEventListener('DOMContentLoaded', () => {
             feedCropper.destroy();
             feedCropper = null;
         }
+        if (feedCropImg) feedCropImg.removeAttribute('src');
         photoInput.value = '';
     };
 
@@ -1199,33 +1745,39 @@ document.addEventListener('DOMContentLoaded', () => {
             void this.offsetWidth;
             this.classList.add('shake-anim');
 
-            /* locked — no action */
+            /* locked; no action */
         }, true); // Capture phase to preempt other listeners
     });
 
     /* ===================================================
-     * LOGO MORPH TIMER (Every 2 Minutes)
-     * =================================================== */
-    const logoText = document.querySelector('.morph-text');
-
-    if (logoText) {
-        // Function to trigger the animation
-        const triggerMorph = () => {
-            logoText.classList.remove('animate');
-            void logoText.offsetWidth; // "Magic" line to force CSS reflow/reset
-            logoText.classList.add('animate');
-        };
-
-        // Run once on load
-        triggerMorph();
-
-        // Repeat every 2 minutes (120,000 milliseconds)
-        setInterval(triggerMorph, 5000);
-    }
-
-    /* ===================================================
      * LIBRARY MANAGEMENT
      * =================================================== */
+    const refreshLibraryBtn = document.getElementById('refresh-library-btn');
+    if (refreshLibraryBtn) {
+        refreshLibraryBtn.addEventListener('click', async () => {
+            const icon = refreshLibraryBtn.querySelector('i');
+            if (icon) icon.classList.add('bx-spin');
+            refreshLibraryBtn.disabled = true;
+            try {
+                const res = await fetch('/api/library/rescan', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    showToast(`Rescan complete! ${data.syncedCount || 0} song(s) indexed.`, 'success');
+                    if (typeof fetchLibrary === 'function') await fetchLibrary(true);
+                    else if (typeof fetchSongs === 'function') await fetchSongs();
+                } else {
+                    showToast('Failed to rescan music library.', 'error');
+                }
+            } catch (err) {
+                console.error('[RESCAN LIBRARY]', err);
+                showToast('Error rescanning music library.', 'error');
+            } finally {
+                if (icon) icon.classList.remove('bx-spin');
+                refreshLibraryBtn.disabled = false;
+            }
+        });
+    }
+
     const downloadLibraryBtn = document.getElementById('download-library-btn');
     if (downloadLibraryBtn) {
         downloadLibraryBtn.addEventListener('click', () => {
@@ -1255,14 +1807,112 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveSongChangesBtn = document.getElementById('save-song-changes');
     const changeCoverBtn = document.getElementById('change-song-cover-btn');
     const songCoverInput = document.getElementById('song-cover-upload');
+    const aiAutofillBtn = document.getElementById('ai-autofill-btn');
 
-    const closeEditSong = () => editSongModal && editSongModal.classList.add('hidden');
+    // Smart Auto Enrich workspace elements
+    const aiMetadataModal = document.getElementById('ai-metadata-modal');
+    const closeAiModalBtn = document.getElementById('close-ai-metadata-modal');
+    const cancelAiModalBtn = document.getElementById('cancel-ai-metadata');
+    const applyAiModalBtn = document.getElementById('apply-ai-metadata');
+    const pauseAiJobBtn = document.getElementById('ai-pause-job');
+    const cancelAiJobBtn = document.getElementById('ai-cancel-job');
+    let aiModalReturnFocus = null;
+
+    const closeEditSong = () => {
+        if (typeof window.cancelEditSongRequest === 'function') window.cancelEditSongRequest();
+        if (editSongModal) editSongModal.classList.add('hidden');
+    };
+    const restoreAiModalFocus = () => {
+        if (aiMetadataModal && aiMetadataModal.classList.contains('hidden') && aiModalReturnFocus && aiModalReturnFocus.isConnected) {
+            aiModalReturnFocus.focus();
+            aiModalReturnFocus = null;
+        }
+    };
+    const closeAiModal = async () => {
+        if (typeof window.requestCloseSmartMetadataReview === 'function') {
+            await window.requestCloseSmartMetadataReview();
+        } else {
+            if (typeof window.cancelSmartMetadataReview === 'function') window.cancelSmartMetadataReview();
+            if (aiMetadataModal) aiMetadataModal.classList.add('hidden');
+        }
+        restoreAiModalFocus();
+    };
 
     if (closeEditSongBtn) closeEditSongBtn.addEventListener('click', closeEditSong);
     if (cancelEditSongBtn) cancelEditSongBtn.addEventListener('click', closeEditSong);
     if (editSongModal) editSongModal.addEventListener('click', e => { if (e.target === editSongModal) closeEditSong(); });
 
     if (saveSongChangesBtn) saveSongChangesBtn.addEventListener('click', saveSongChanges);
+
+    const batchAiEnrichBtn = document.getElementById('batch-ai-enrich-btn');
+    if (batchAiEnrichBtn) {
+        batchAiEnrichBtn.addEventListener('click', () => {
+            aiModalReturnFocus = batchAiEnrichBtn;
+            if (typeof enrichBatchSongs === 'function') {
+                enrichBatchSongs();
+            }
+        });
+    }
+
+    if (aiAutofillBtn) {
+        aiAutofillBtn.addEventListener('click', () => {
+            aiModalReturnFocus = aiAutofillBtn;
+            if (typeof triggerSmartMetadataAutoFill === 'function') {
+                triggerSmartMetadataAutoFill();
+            }
+        });
+    }
+
+    if (closeAiModalBtn) closeAiModalBtn.addEventListener('click', closeAiModal);
+
+    if (cancelAiModalBtn) cancelAiModalBtn.addEventListener('click', async () => {
+        if (typeof window.skipSmartMetadataItem === 'function') await window.skipSmartMetadataItem();
+        restoreAiModalFocus();
+    });
+
+    if (aiMetadataModal) aiMetadataModal.addEventListener('click', e => { if (e.target === aiMetadataModal) closeAiModal(); });
+
+    if (applyAiModalBtn) {
+        applyAiModalBtn.addEventListener('click', () => {
+            if (typeof applySmartReviewSelections === 'function') {
+                applySmartReviewSelections();
+            }
+        });
+    }
+
+    if (pauseAiJobBtn) pauseAiJobBtn.addEventListener('click', () => {
+        if (typeof window.toggleSmartMetadataPause === 'function') window.toggleSmartMetadataPause();
+    });
+
+    if (cancelAiJobBtn) cancelAiJobBtn.addEventListener('click', () => {
+        if (typeof window.cancelSmartMetadataJob === 'function') window.cancelSmartMetadataJob();
+    });
+
+    if (aiMetadataModal) {
+        aiMetadataModal.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                if (aiMetadataModal.getAttribute('aria-busy') !== 'true') {
+                    event.preventDefault();
+                    closeAiModal();
+                }
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = Array.from(aiMetadataModal.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+                .filter(element => !element.classList.contains('hidden') && element.getClientRects().length > 0);
+            if (!focusable.length) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const workspace = aiMetadataModal.querySelector('.ai-enrich-workspace');
+            if (event.shiftKey && (document.activeElement === first || document.activeElement === workspace)) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    }
 
     if (changeCoverBtn && songCoverInput) {
         changeCoverBtn.addEventListener('click', (e) => { e.stopPropagation(); songCoverInput.click(); });
@@ -1279,12 +1929,12 @@ document.addEventListener('DOMContentLoaded', () => {
     window.navigateToPlaylist = function (playlistId) {
         if (!playlistId) return;
 
+        if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
         window.lastViewBeforePlaylist = window.currentActiveView;
         window.currentActiveView = 'playlist';
-        window.currentPlaylistId = playlistId;
+        window.requestedPlaylistId = playlistId;
+        window.currentPlaylistId = null;
 
-        // Update URL hash (prefer share_id if it's a 16-char hex)
-        const isShareId = typeof playlistId === 'string' && playlistId.length === 16 && /^[0-9a-fA-F]+$/.test(playlistId);
         if (window.location.hash !== `#playlist-${playlistId}`) {
             history.pushState({ view: 'playlist', id: playlistId }, '', `/home#playlist-${playlistId}`);
         }
@@ -1308,9 +1958,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lastView === 'library') {
                 libraryLink && libraryLink.click();
             } else if (lastView === 'people') {
-                peopleLink && peopleLink.click();
+                libraryLink && libraryLink.click();
             } else {
-                homeLink && homeLink.click();
+                libraryLink && libraryLink.click();
             }
         });
     }
@@ -1414,15 +2064,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (confirmRenamePlaylistBtn) {
         confirmRenamePlaylistBtn.addEventListener('click', async () => {
-            const id = document.getElementById('rename-playlist-id').value;
+            const id = Number(document.getElementById('rename-playlist-id').value);
             const name = document.getElementById('rename-playlist-name').value.trim();
             const bio = document.getElementById('rename-playlist-bio') ? document.getElementById('rename-playlist-bio').value.trim() : '';
             const visibility = document.getElementById('rename-playlist-visibility') ? document.getElementById('rename-playlist-visibility').value : 'private';
-            if (!name || !id) return;
+            if (!name || !Number.isSafeInteger(id) || id <= 0) return;
 
             confirmRenamePlaylistBtn.disabled = true;
             try {
                 const res = await renamePlaylist(id, name, bio, visibility);
+                if (window.currentPlaylistId !== id) return;
                 if (res.success) {
                     closeRenamePlaylist();
                     if (typeof navigateToPlaylist === 'function') navigateToPlaylist(id);
@@ -1441,18 +2092,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const playlistDetailCover = document.getElementById('playlist-detail-cover');
     if (playlistDetailCover && playlistCoverUpload) {
         playlistDetailCover.addEventListener('click', () => {
-            if (window.currentPlaylistOwner === (appCache.user ? appCache.user.username : window.currentUser)) {
+            if (appCache.user && window.currentPlaylistOwner === appCache.user.username) {
                 playlistCoverUpload.click();
             }
         });
         playlistCoverUpload.addEventListener('change', async (e) => {
             const file = e.target.files[0];
-            const playlistId = window.currentPlaylistId;
-            if (file && playlistId) {
+            const playlistId = Number(window.currentPlaylistId);
+            if (file && Number.isSafeInteger(playlistId) && playlistId > 0) {
                 try {
                     const res = await uploadPlaylistCover(playlistId, file);
-                    if (res.success && res.cover) {
-                        playlistDetailCover.style.backgroundImage = `url(${res.cover})`;
+                    if (window.currentPlaylistId !== playlistId) return;
+                    const coverUrl = res.success ? safeImageURL(res.cover) : '';
+                    if (coverUrl) {
+                        playlistDetailCover.style.backgroundImage = `url(${JSON.stringify(coverUrl)})`;
                         playlistDetailCover.querySelector('.bx-music').style.display = 'none';
                         if (typeof fetchPlaylists === 'function') fetchPlaylists(true);
                     } else {
@@ -1476,18 +2129,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const deletePlaylistBtn = document.getElementById('delete-playlist-btn');
     if (deletePlaylistBtn) {
         deletePlaylistBtn.addEventListener('click', async () => {
-            const playlistId = window.currentPlaylistId;
-            if (!playlistId) return;
+            const playlistId = Number(window.currentPlaylistId);
+            if (!Number.isSafeInteger(playlistId) || playlistId <= 0) return;
 
             try {
                 const res = await deletePlaylist(playlistId);
+                if (window.currentPlaylistId !== playlistId) return;
                 if (res.success) {
                     if (typeof fetchPlaylists === 'function') fetchPlaylists(true);
                     const lastView = window.lastViewBeforePlaylist || 'home';
                     if (lastView === 'library') {
                         libraryLink && libraryLink.click();
                     } else {
-                        homeLink && homeLink.click();
+                        libraryLink && libraryLink.click();
                     }
                 } else {
                     showToast(res.error || 'Failed to delete playlist', 'error');
@@ -1510,26 +2164,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (playlistShareId) {
             // Handle Share Link
-            if (typeof window.hideAllSections === 'function') window.hideAllSections();
-            if (typeof window.showSection === 'function' && playlistDetailSection) {
-                window.showSection(playlistDetailSection);
-                if (typeof renderPlaylistDetail === 'function') {
-                    renderPlaylistDetail(playlistShareId);
-                }
+            window.lastViewBeforePlaylist = 'library';
+            window.currentActiveView = 'playlist';
+            window.requestedPlaylistId = playlistShareId;
+            window.currentPlaylistId = null;
+            hideAllSections();
+            showSection(playlistDetailSection);
+            document.title = "Streamify | Playlist";
+            if (typeof renderPlaylistDetail === 'function') {
+                renderPlaylistDetail(playlistShareId);
             }
             return;
         }
 
         // Handle Hashes
         if (hash) {
-            if (hash === '#feed') {
-                if (homeLink) homeLink.click();
+            if (hash === '#feed' || hash === '#people') {
+                if (libraryLink) libraryLink.click();
                 return;
             } else if (hash === '#library') {
                 if (libraryLink) libraryLink.click();
-                return;
-            } else if (hash === '#people') {
-                if (peopleLink) peopleLink.click();
                 return;
             } else if (hash === '#upload') {
                 if (uploadLink) uploadLink.click();
@@ -1559,8 +2213,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (path.startsWith('/profile/')) {
-            const username = path.split('/profile/')[1];
+            let username = path.slice('/profile/'.length);
+            try { username = decodeURIComponent(username); } catch (err) { /* use raw path segment */ }
             if (username) {
+                window.currentActiveView = 'profile';
+                window.profileContextUser = username;
                 hideAllSections();
                 showSection(profileDetailSection);
                 if (typeof fetchDetailedProfile === 'function') {
@@ -1568,12 +2225,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         } else {
-            // Default to home if on /home or root
-            if (homeLink && (path === '/home' || path === '/')) {
-                // Already handled by potential initial state or manual trigger
-                // but let's ensure feed is shown
-                if (feedSection && feedSection.classList.contains('hidden')) {
-                    homeLink.click();
+            // Default to the personal library on /home or root.
+            if (libraryLink && (path === '/home' || path === '/')) {
+                if (trendingSection && trendingSection.classList.contains('hidden')) {
+                    libraryLink.click();
                 }
             }
         }
@@ -1583,12 +2238,13 @@ document.addEventListener('DOMContentLoaded', () => {
     window.navigateToProfile = function (username) {
         if (!username) return;
 
+        if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(false);
         // Remember where we came from if we're not already on a profile
         if (window.currentActiveView !== 'profile') {
             window.lastViewBeforeProfile = window.currentActiveView;
         }
         // Save scroll position before leaving current view
-        const mainContent = document.querySelector('.main-content');
+        const mainContent = window.getAppScrollContainer();
         if (mainContent) {
             window.savedScrollPosition = mainContent.scrollTop;
         }
@@ -1598,6 +2254,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         window.currentActiveView = 'profile';
+        window.profileContextUser = username;
 
         const profileModal = document.getElementById('profile-modal');
         if (profileModal) {
@@ -1607,7 +2264,7 @@ document.addEventListener('DOMContentLoaded', () => {
             profileModal.style.transition = '';
         }
 
-        history.pushState({ view: 'profile', username }, '', `/profile/${username}`);
+        history.pushState({ view: 'profile', username }, '', `/profile/${encodeURIComponent(username)}`);
         hideAllSections();
         showSection(profileDetailSection);
         if (mainContent) mainContent.scrollTop = 0;
@@ -1617,7 +2274,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Profile Detail Tabs
+    // Profile Detail Tabs (Cleaned up for single-view profile)
     const profileTabBtns = document.querySelectorAll('.profile-detail-section .tab-btn');
     const profilePanes = document.querySelectorAll('.profile-detail-section .profile-pane');
 
@@ -1639,9 +2296,9 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ===================================================
      * INITIAL DATA FETCH
      * =================================================== */
-    fetchCurrentUser();
+    const currentUserPromise = fetchCurrentUser();
     fetchPlaylists(true); // Force refresh to bypass in-memory JS cache on page load
-    handleRouting();
+    Promise.resolve(currentUserPromise).then(applyOwnerOnlyControls).finally(handleRouting);
     window.addEventListener('hashchange', handleRouting);
 
     /* ===================================================
@@ -1902,8 +2559,244 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => initDmSocketListeners(), 1000);
     }
 
-    // Fetch DM unread count on load
-    if (typeof fetchDmUnreadCount === 'function') {
-        setTimeout(() => fetchDmUnreadCount(), 2000);
+    /* ===================================================
+     * FIRST TIME EXPERIENCE / OOBE WIZARD MODAL
+     * =================================================== */
+    async function initOOBEWizard() {
+        const modal = document.getElementById('oobe-modal');
+        if (!modal) return;
+
+        const closeBtn = document.getElementById('close-oobe-modal-btn');
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                if (modal.dataset.busy !== 'true') modal.classList.add('hidden');
+            };
+        }
+        modal.onclick = (e) => {
+            if (e.target === modal && modal.dataset.busy !== 'true') modal.classList.add('hidden');
+        };
+
+        try {
+            const user = await fetchCurrentUser();
+            if (!user) return;
+
+            // Only the Owner can configure host filesystem paths.
+            const isOwner = user.role === 'Owner';
+            const isCompleted = user.oobe_completed === true;
+            if (isOwner && !isCompleted) {
+                // Prefill existing music directories
+                const dirInput = document.getElementById('oobe-music-dir-input');
+                if (dirInput) {
+                    try {
+                        const dirRes = await fetch('/api/config/music-directories');
+                        if (dirRes.ok) {
+                            const dirData = await dirRes.json();
+                            if (dirData.directories && dirData.directories.length > 0) {
+                                dirInput.value = dirData.directories[0];
+                            } else {
+                                dirInput.value = '../MusicLibrary/uploads';
+                            }
+                        }
+                    } catch (e) {
+                        dirInput.value = '../MusicLibrary/uploads';
+                    }
+                }
+
+                // Metadata API support is optional; load it without delaying basic setup.
+                loadMetadataSettings();
+
+                // Show modal
+                modal.classList.remove('hidden');
+                setupOOBESteps();
+            }
+        } catch (err) {
+            console.error('[OOBE INIT ERROR]', err);
+        }
     }
+
+    function setupOOBESteps() {
+        let currentStep = 1;
+        const totalSteps = 5;
+
+        const nextBtn = document.getElementById('oobe-next-btn');
+        const prevBtn = document.getElementById('oobe-prev-btn');
+        const titleEl = document.getElementById('oobe-title');
+        const subtitleEl = document.getElementById('oobe-subtitle');
+        const badgeIcon = document.getElementById('oobe-badge-icon');
+
+        const stepHeaders = {
+            1: {
+                badge: "<i class='bx bxs-party'></i>",
+                title: "Welcome to Streamify!",
+                subtitle: "Streamify will scan this path for Audio files, and this path will be default."
+            },
+            2: {
+                badge: "<i class='bx bx-fingerprint'></i>",
+                title: "Identify Music Your Way",
+                subtitle: "Choose whether identification stays local or uses online metadata services."
+            },
+            3: {
+                badge: "<i class='bx bx-slider-alt'></i>",
+                title: "Managing Music Folders",
+                subtitle: "Learn where to manage your music directories."
+            },
+            4: {
+                badge: "<i class='bx bx-rocket'></i>",
+                title: "How Streamify Works",
+                subtitle: "Discover the features of your new music server."
+            },
+            5: {
+                badge: "<i class='bx bxs-check-shield'></i>",
+                title: "Setup Complete!",
+                subtitle: "Streamify setup is complete and it's ready."
+            }
+        };
+
+        function updateStepUI() {
+            // Update step panes
+            for (let i = 1; i <= totalSteps; i++) {
+                const pane = document.getElementById(`oobe-step-${i}`);
+                if (pane) {
+                    if (i === currentStep) {
+                        pane.classList.add('active');
+                    } else {
+                        pane.classList.remove('active');
+                    }
+                }
+            }
+
+            // Update step dots
+            document.querySelectorAll('.oobe-step-dot').forEach(dot => {
+                const stepNum = parseInt(dot.getAttribute('data-step'), 10);
+                dot.classList.remove('active', 'completed');
+                if (stepNum === currentStep) {
+                    dot.classList.add('active');
+                } else if (stepNum < currentStep) {
+                    dot.classList.add('completed');
+                }
+            });
+
+            // Update Header
+            if (stepHeaders[currentStep]) {
+                if (badgeIcon) badgeIcon.innerHTML = stepHeaders[currentStep].badge;
+                if (titleEl) titleEl.textContent = stepHeaders[currentStep].title;
+                if (subtitleEl) subtitleEl.textContent = stepHeaders[currentStep].subtitle;
+            }
+
+            // Update Prev Button
+            if (prevBtn) {
+                prevBtn.style.visibility = currentStep > 1 ? 'visible' : 'hidden';
+            }
+
+            // Update Next Button text
+            if (nextBtn) {
+                if (currentStep === totalSteps) {
+                    nextBtn.innerHTML = `Finish & Launch Streamify <i class='bx bx-check'></i>`;
+                } else {
+                    nextBtn.innerHTML = `Continue <i class='bx bx-right-arrow-alt'></i>`;
+                }
+            }
+        }
+
+        if (prevBtn) {
+            prevBtn.onclick = () => {
+                if (currentStep > 1) {
+                    currentStep--;
+                    updateStepUI();
+                }
+            };
+        }
+
+        if (nextBtn) {
+            nextBtn.onclick = async () => {
+                if (currentStep === 1) {
+                    // Save Music Directory
+                    const dirInput = document.getElementById('oobe-music-dir-input');
+                    const dirValue = dirInput ? dirInput.value.trim() : '';
+                    const finalDir = dirValue || '../MusicLibrary/uploads';
+
+                    nextBtn.disabled = true;
+                    nextBtn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Saving...`;
+                    const modal = document.getElementById('oobe-modal');
+                    if (modal) modal.dataset.busy = 'true';
+
+                    try {
+                        const res = await fetch('/api/config/music-directories', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ directories: [finalDir] })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data.success) throw new Error(data.error || 'Could not save the music directory.');
+                        if (typeof showToast === 'function') showToast('Default music directory saved!', 'success');
+                        currentStep++;
+                    } catch (e) {
+                        console.error('[OOBE DIR SAVE ERROR]', e);
+                        if (typeof showToast === 'function') showToast(e.message || 'Could not save the music directory.', 'error');
+                    } finally {
+                        nextBtn.disabled = false;
+                        if (modal) delete modal.dataset.busy;
+                        updateStepUI();
+                    }
+                } else if (currentStep === 2) {
+                    nextBtn.disabled = true;
+                    nextBtn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Saving...`;
+                    const modal = document.getElementById('oobe-modal');
+                    if (modal) modal.dataset.busy = 'true';
+
+                    try {
+                        const saved = await saveMetadataSettings('oobe', { allowLocalFallback: true });
+                        if (saved) currentStep++;
+                    } finally {
+                        nextBtn.disabled = false;
+                        if (modal) delete modal.dataset.busy;
+                        updateStepUI();
+                    }
+                } else if (currentStep < totalSteps) {
+                    currentStep++;
+                    updateStepUI();
+                } else if (currentStep === totalSteps) {
+                    // Complete OOBE
+                    nextBtn.disabled = true;
+                    nextBtn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Completing...`;
+                    const modal = document.getElementById('oobe-modal');
+                    if (modal) modal.dataset.busy = 'true';
+
+                    try {
+                        const res = await fetch('/api/config/oobe', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ completed: true })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data.success) throw new Error(data.error || 'Could not complete setup.');
+                        if (appCache.user) appCache.user.oobe_completed = true;
+
+                        if (modal) modal.classList.add('hidden');
+
+                        if (typeof showToast === 'function') {
+                            showToast('Welcome to Streamify! Your library is ready.', 'success');
+                        }
+                        if (typeof fetchLibrary === 'function') {
+                            fetchLibrary(true);
+                        } else if (typeof fetchSongs === 'function') {
+                            fetchSongs();
+                        }
+                    } catch (e) {
+                        console.error('[OOBE COMPLETE ERROR]', e);
+                        if (typeof showToast === 'function') showToast(e.message || 'Could not complete setup.', 'error');
+                    } finally {
+                        nextBtn.disabled = false;
+                        if (modal) delete modal.dataset.busy;
+                        updateStepUI();
+                    }
+                }
+            };
+        }
+
+        updateStepUI();
+    }
+
+    // Trigger OOBE Check on Load
+    initOOBEWizard();
 });

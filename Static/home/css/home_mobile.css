@@ -3,6 +3,10 @@
 /* Only for screens smaller than 768px */
 @media screen and (max-width: 768px) {
 
+    :root {
+        --mobile-top-bar-height: calc(50px + max(10px, env(safe-area-inset-top, 0px)));
+    }
+
     /* --- PREVENT HORIZONTAL SWIPE --- */
     html,
     body {
@@ -30,9 +34,13 @@
         box-shadow: none;
     }
 
+    /* The drawer spans the full screen height under viewport-fit=cover, so its
+       scrollable contents need both insets: clear of the status bar at the top,
+       and clear of the floating browser bar / home indicator at the bottom. */
     .sidebar-scroll-area {
         padding: 0 16px 16px;
-        padding-bottom: calc(var(--player-height) + 16px);
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: calc(var(--player-height) + 16px + env(safe-area-inset-bottom, 0px));
     }
 
     .sidebar.mobile-active {
@@ -46,10 +54,23 @@
     }
 
     /* --- TOP BAR --- */
+    /* viewport-fit=cover extends the page under the status bar / notch, so the
+       top inset has to be added back here or the search field and avatar end up
+       underneath the clock. max() keeps the original 10px when the inset is 0
+       (e.g. landscape, or a device with no notch). */
     .top-bar {
         padding: 10px 15px;
+        padding-top: max(10px, env(safe-area-inset-top, 0px));
+        padding-left: max(15px, env(safe-area-inset-left, 0px));
+        padding-right: max(15px, env(safe-area-inset-right, 0px));
         gap: 10px;
-        position: relative;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: var(--mobile-top-bar-height);
+        z-index: 100;
     }
 
     #menu-btn {
@@ -97,16 +118,34 @@
     .main-content {
         margin-left: 0;
         width: 100%;
-        padding-bottom: 260px;
+        padding-bottom: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
 
     .content-container {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: clip;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
         padding: 12px;
-        padding-bottom: 40px;
+        padding-bottom: 300px;
+        padding-top: calc(var(--mobile-top-bar-height) + 12px);
+        /* Keep content clear of rounded corners in landscape */
+        padding-left: max(12px, env(safe-area-inset-left, 0px));
+        padding-right: max(12px, env(safe-area-inset-right, 0px));
+    }
+
+    .main-content.no-scroll .content-container {
+        overflow: hidden;
     }
 
     body.player-section-active .content-container {
         padding: 0 !important;
+        overflow: hidden;
     }
 
     /* Hide top bar for true full-screen player experience on mobile */
@@ -114,13 +153,77 @@
         display: none !important;
     }
 
-    /* Fill the entire viewport — no black gap at the bottom */
+    /* Fill the entire screen, including the area behind the browser toolbar.
+       lvh not dvh: dvh stops at the visible viewport edge, which is what left
+       a solid band under the toolbar instead of the artwork showing through. */
     body.player-section-active .main-content {
         display: flex;
         flex-direction: column;
         min-height: 100vh;
-        min-height: 100dvh;
+        min-height: 100lvh;
         padding-bottom: 0 !important;
+    }
+
+    /* Safari 26 only composites real page pixels through the full browser
+       chrome once the root document has a non-zero scroll position. The
+       matching margin and scroll offset cancel visually. */
+    @supports (-webkit-touch-callout: none) {
+        html.player-chrome-active {
+            --safari-player-scroll-offset: 64px;
+            min-height: 100%;
+            overflow-y: scroll;
+            overscroll-behavior: none;
+        }
+
+        html.player-chrome-active body.player-section-active {
+            height: auto;
+            min-height: calc(100dvh + var(--safari-player-scroll-offset));
+            overflow-y: visible;
+            position: relative;
+            isolation: isolate;
+        }
+
+        /* Paint the cover on the root scrolling canvas rather than inside the
+           clipped app shell. Pseudo-elements are ignored by Safari's toolbar
+           tint sampler, but their pixels remain available to Liquid Glass. */
+        html.player-chrome-active body.player-section-active::before {
+            content: '';
+            position: absolute;
+            inset: -120px -120px -200px;
+            z-index: -1;
+            background-color: var(--player-tint, var(--bg-color));
+            background-image: var(--player-backdrop-image, none);
+            background-position: center;
+            background-size: cover;
+            filter: blur(100px) brightness(0.4) saturate(1.8);
+            opacity: 0.85;
+            pointer-events: none;
+        }
+
+        html.player-chrome-active .dedicated-player-backdrop {
+            display: none;
+        }
+
+        html.player-chrome-active body.player-section-active .main-content {
+            flex: 0 0 100%;
+            height: 100dvh;
+            min-height: 100dvh;
+            margin-top: var(--safari-player-scroll-offset);
+            overflow: hidden;
+            overscroll-behavior: none;
+        }
+
+        html.player-chrome-active body.player-section-active:not(.lyrics-view-active) .dedicated-player-view,
+        html.player-chrome-active body.player-section-active.lyrics-view-active .dedicated-header,
+        html.player-chrome-active body.player-section-active.lyrics-view-active .lyrics-header {
+            touch-action: none;
+        }
+
+        html.player-chrome-active body.player-section-active.lyrics-view-active .lyrics-scroll-area {
+            touch-action: pan-y;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+        }
     }
 
     body.player-section-active .content-container {
@@ -613,9 +716,335 @@
     font-size: 12px;
 }
 
+/* --- SMART AUTO ENRICH WORKSPACE --- */
+#ai-metadata-modal {
+    align-items: flex-end;
+    padding: 0;
+}
+
+#ai-metadata-modal .ai-enrich-workspace {
+    width: 100%;
+    height: calc(100dvh - max(8px, env(safe-area-inset-top, 0px)));
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top, 0px)));
+    border-radius: 18px 18px 0 0;
+}
+
+.ai-workspace-header {
+    gap: 10px;
+    padding: 16px 15px 13px;
+}
+
+.ai-workspace-mark {
+    flex-basis: 38px;
+    height: 38px;
+    border-radius: 11px;
+}
+
+.ai-workspace-title-line h2 {
+    font-size: 17px;
+}
+
+.ai-workspace-heading p {
+    max-width: 260px;
+    font-size: 11px;
+}
+
+.ai-job-overview {
+    padding: 11px 15px 12px;
+}
+
+.ai-progress-counts {
+    gap: 6px 12px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+}
+
+.ai-progress-counts::-webkit-scrollbar {
+    display: none;
+}
+
+.ai-progress-counts span {
+    flex: none;
+}
+
+.ai-provider-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+}
+
+.ai-provider-statuses {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+}
+
+.ai-provider-statuses::-webkit-scrollbar {
+    display: none;
+}
+
+.ai-provider-chip {
+    flex: none;
+}
+
+.ai-review-content {
+    gap: 11px;
+    padding: 14px 12px 18px;
+}
+
+.ai-item-header {
+    align-items: flex-start;
+}
+
+.ai-item-header h3 {
+    max-width: 235px;
+    font-size: 15px;
+}
+
+.ai-panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.ai-panel-heading > span {
+    text-align: left;
+}
+
+.ai-comparison-head {
+    display: none;
+}
+
+.ai-review-row {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 8px 10px;
+    min-height: 0;
+    padding: 11px 12px;
+}
+
+.ai-review-label {
+    grid-column: 1;
+}
+
+.ai-review-current,
+.ai-review-suggested-wrap {
+    grid-column: 1 / -1;
+    padding-left: 21px;
+}
+
+.ai-review-current::before,
+.ai-review-suggested-wrap::before {
+    display: block;
+    margin-bottom: 2px;
+    color: rgba(255, 255, 255, 0.38);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.ai-review-current::before {
+    content: 'Current';
+}
+
+.ai-review-suggested-wrap::before {
+    content: 'Suggested';
+}
+
+.ai-review-row .ai-check-control {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.ai-cover-comparison {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 8px;
+}
+
+.ai-cover-comparison figure {
+    align-items: center;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.ai-cover-comparison figcaption {
+    writing-mode: initial;
+    transform: none;
+}
+
+.ai-cover-comparison img {
+    width: min(92px, 25vw);
+    height: min(92px, 25vw);
+}
+
+.ai-cover-check {
+    grid-column: 1 / -1;
+    justify-self: center;
+    margin-top: 4px;
+}
+
+.ai-suggestions-list {
+    grid-template-columns: 1fr;
+}
+
+.ai-workspace-state {
+    min-height: 250px;
+    padding: 30px 18px;
+}
+
+.ai-workspace-footer {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 64px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+
+.ai-job-controls,
+.ai-review-actions {
+    flex: 1 1 auto;
+}
+
+.ai-review-actions {
+    justify-content: flex-end;
+}
+
+.ai-workspace-footer .btn {
+    min-height: 42px;
+}
+
+.ai-apply-button {
+    flex: 1;
+}
+
+/* --- OWNER METADATA SETTINGS / OOBE --- */
+.metadata-mode-option {
+    padding: 11px !important;
+}
+
+.metadata-option-title-line {
+    align-items: flex-start;
+}
+
+.metadata-status-grid {
+    gap: 7px;
+}
+
+.metadata-status-item {
+    padding: 9px 10px;
+}
+
+.metadata-privacy-note {
+    padding: 11px;
+}
+
+#oobe-modal {
+    align-items: flex-end;
+    padding: 8px;
+}
+
+#oobe-modal .oobe-modal-box {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 8px);
+    padding: 22px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 18px 18px 0 0;
+}
+
+#oobe-modal .oobe-header {
+    margin-bottom: 14px;
+}
+
+#oobe-modal .oobe-badge {
+    width: 50px;
+    height: 50px;
+    margin-bottom: 10px;
+    border-radius: 15px;
+    font-size: 25px;
+}
+
+#oobe-modal .oobe-stepper {
+    gap: 5px;
+    margin-bottom: 14px;
+}
+
+#oobe-modal .oobe-step-dot {
+    width: 20px;
+}
+
+#oobe-modal .oobe-step-dot.active {
+    width: 32px;
+}
+
+#oobe-modal .oobe-body {
+    overscroll-behavior: contain;
+}
+
+#oobe-modal .modal-actions {
+    gap: 8px;
+    margin-top: 14px !important;
+}
+
+#oobe-modal .modal-actions .btn {
+    padding: 10px 12px;
+    font-size: 12px;
+}
+
 .sidebar-playlist-list {
     max-height: 150px;
 }
+
+}
+
+@media screen and (max-width: 430px) {
+    .metadata-status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .metadata-option-title-line {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .ai-workspace-mark,
+    .ai-workspace-heading p,
+    .ai-progress-percent {
+        display: none;
+    }
+
+    .ai-workspace-header {
+        align-items: center;
+    }
+
+    .ai-workspace-title-line {
+        gap: 6px;
+    }
+
+    .ai-stage-badge {
+        padding: 3px 6px;
+        font-size: 9px;
+    }
+
+    .ai-evidence-panel,
+    .ai-cover-panel,
+    .ai-candidates-panel {
+        padding: 11px;
+    }
+
+    .ai-job-controls,
+    .ai-review-actions {
+        width: 100%;
+    }
+
+    .ai-job-controls .btn,
+    .ai-review-actions .btn {
+        flex: 1;
+    }
+}
+
+@media screen and (max-width: 768px) {
 
 /* Add-to-playlist modal items */
 .add-to-playlist-item {

@@ -450,20 +450,21 @@ if (youtubeImportBtn) {
             }
 
             const resp = await fetch(window.API_BASE_URL + '/api/youtube-ratelimit-status');
+            if (resp.status === 410) {
+                if (infoEl) infoEl.style.display = 'none';
+                return;
+            }
             if (!resp.ok) throw new Error(`Status check failed: ${resp.status}`);
 
             const data = await resp.json();
             if (data && data.success) {
                 updateRateLimitDisplay(data);
             } else {
-                // Fallback to default if somehow API fails but returns 200
                 updateRateLimitDisplay({ remaining: window.YOUTUBE_LIMIT_MAX || 2, resetSeconds: 0 });
             }
         } catch (e) {
-            console.error("[YOUTUBE UI] Could not init ratelimit status:", e);
-            // If we have an element, clear the "Checking..." text so it's not stuck
             if (infoEl) {
-                updateRateLimitDisplay({ remaining: window.YOUTUBE_LIMIT_MAX || 2, resetSeconds: 0 });
+                infoEl.style.display = 'none';
             }
         }
     }
@@ -670,10 +671,6 @@ if (youtubeImportBtn) {
                 if (typeof fetchPlaylists === 'function') fetchPlaylists(true);
                 if (typeof fetchLibrary === 'function') fetchLibrary(true);
             }
-        });
-
-        socket.on('storage_update', () => {
-            if (typeof loadStorage === 'function') loadStorage();
         });
     }
 

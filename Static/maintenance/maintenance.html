@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Streamify - Maintenance</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@900&family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="/Static/vendor/fonts/outfit.css" rel="stylesheet">
     <style>
         :root {
             --bg-color: #000;
@@ -26,7 +26,7 @@
 
         body {
             background-color: var(--bg-color);
-            background-image: 
+            background-image:
                 radial-gradient(circle at 15% 50%, rgba(30, 30, 35, 0.9), transparent 25%),
                 radial-gradient(circle at 85% 30%, rgba(20, 20, 25, 0.9), transparent 25%);
             color: var(--text-primary);
@@ -172,9 +172,8 @@
         // Automatically check if maintenance is over every 5 seconds
         setInterval(async () => {
             try {
-                const response = await fetch('/api/me');
-                // If we get a 200 OK, it means we are authorized and maintenance is off (or we are admin)
-                if (response.ok) {
+                const response = await fetch('/api/config/public', { cache: 'no-store' });
+                if (response.ok && (await response.json()).maintenance_mode !== true) {
                     window.location.href = '/home';
                 }
             } catch (err) {
@@ -186,4 +185,4 @@
         loadMaintenanceInfo();
     </script>
 </body>
-</html>
+</html>

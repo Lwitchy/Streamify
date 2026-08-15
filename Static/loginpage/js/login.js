@@ -8,6 +8,26 @@ const showRegisterBtn = document.getElementById('showRegister');
 const showLoginBtn = document.getElementById('showLogin');
 const loadingSpinner = document.getElementById('loadingSpinner');
 
+fetch('/api/config/public')
+  .then(res => res.json())
+  .then(config => {
+    if (config.is_fresh_install || config.user_count === 0) {
+      // Direct fresh install straight to Registration page to create the Owner account
+      loginWrapper.classList.add('hidden');
+      loginWrapper.classList.remove('active');
+      registerWrapper.classList.remove('hidden');
+      registerWrapper.classList.add('active');
+      const subHeader = document.querySelector('#registerWrapper .wrapper-header p');
+      if (subHeader) {
+        subHeader.innerHTML = 'Create the <strong style="color:var(--accent);">Owner account</strong> to set up your server.';
+      }
+    } else if (config.allow_registration !== true && showRegisterBtn) {
+      const registrationLink = showRegisterBtn.closest('.toggle-link');
+      if (registrationLink) registrationLink.style.display = 'none';
+    }
+  })
+  .catch(() => {});
+
 function toggleForms(showRegister) {
   const current = showRegister ? loginWrapper : registerWrapper;
   const next = showRegister ? registerWrapper : loginWrapper;
@@ -76,12 +96,19 @@ if (loginForm) {
 if (registerForm) {
   registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const username = document.getElementById('regUsername').value;
     const password = document.getElementById('regPassword').value;
     const confirm = document.getElementById('regConfirmPassword').value;
     const errorText = document.getElementById('regFailedText');
 
+    if (!/^[A-Za-z0-9_-]{3,32}$/.test(username)) {
+      errorText.innerText = 'Username must be 3-32 characters using only letters, numbers, underscores, or hyphens.';
+      errorText.style.display = 'block';
+      return;
+    }
+
     if (password !== confirm) {
-      errorText.innerText = "check ur pass buddy";
+      errorText.innerText = 'Passwords do not match.';
       errorText.style.display = "block";
       return;
     }
@@ -101,15 +128,7 @@ if (registerForm) {
       const data = await res.json();
       
       if (res.ok && data.success) {
-        // success
-        loadingSpinner.style.display = 'none';
-        toggleForms(false);
-        const failedText = document.getElementById('failedText');
-        if (failedText) {
-          failedText.style.display = 'block';
-          failedText.style.color = '#4CAF50';
-          failedText.innerHTML = 'Account created! Please sign in.';
-        }
+        window.location.href = '/home';
       } else {
         registerWrapper.classList.remove('hidden');
         loadingSpinner.style.display = 'none';

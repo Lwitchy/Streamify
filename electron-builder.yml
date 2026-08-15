@@ -1,0 +1,79 @@
+appId: com.streamify.desktop
+productName: Streamify
+copyright: Copyright © Streamify
+afterPack: Scripts/after-pack.js
+
+directories:
+  output: dist-electron
+  buildResources: build
+
+# ---------------------------------------------------------------------------
+# What goes into the app bundle.
+# The server, its runtime assets and the frontend all ship; developer-only
+# material and the user's local data do not.
+# ---------------------------------------------------------------------------
+files:
+  - electron/**/*
+  - Server/**/*
+  - Static/**/*
+  - vendor/fpcalc/**/*
+  - package.json
+  - LICENSE
+  - "!Server/config.json"          # machine-specific; regenerated on first run
+  - "!Static/covers/**"            # user data, lives in userData at runtime
+  - "!Static/avatars/**"
+  - "!Static/banners/**"
+  - "!**/*.map"
+  - "!**/.git/**"
+  - "!Screenshots/**"
+  - "!PoC/**"
+  - "!Scripts/**"
+  - "!Database/**"                 # never ship a database
+  - "!MusicLibrary/**"             # never ship the user's music
+  - "!SSL/**"                      # never ship private keys
+
+# ---------------------------------------------------------------------------
+# asar unpacking.
+#
+# Everything inside app.asar is a virtual filesystem. The OS cannot exec a
+# binary that has no real path on disk, so any native executable must be
+# unpacked. Server/runtime.js rewrites app.asar -> app.asar.unpacked at runtime
+# (see unpackPath()) to match.
+#
+# Getting this wrong is the single most common cause of "works in dev, broken
+# after packaging" — ffmpeg and yt-dlp fail silently.
+# ---------------------------------------------------------------------------
+asar: true
+asarUnpack:
+  - "vendor/fpcalc/**"
+  - "**/node_modules/@ffmpeg-installer/**"
+  - "**/node_modules/ffmpeg-static/**"
+  - "**/node_modules/yt-dlp-exec/**"
+  - "**/node_modules/sqlite3/**"     # native .node binding
+  - "**/*.node"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # electron-builder converts this 512x512 PNG into a multi-resolution .ico
+  icon: build/icon.png
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false                # per-user install: no UAC prompt required
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Streamify
+  deleteAppDataOnUninstall: false   # never destroy the user's music library
+  runAfterFinish: true
+
+portable:
+  artifactName: ${productName}-Portable-${version}.${ext}
+
+# Native modules are rebuilt explicitly with `npm run rebuild`; normal server
+# installs do not require electron-builder to be present.
+npmRebuild: false

@@ -1,6 +1,6 @@
-/**
+﻿/**
  * ============================================================================
- * STREAMIFY — player.js
+ * STREAMIFY - player.js
  * ============================================================================
  * Audio engine: playback, seek, volume, shuffle, repeat, MediaSession.
  * Depends on: config.js (globals)
@@ -65,6 +65,9 @@ const lyricsSelectionEmpty = document.getElementById('lyrics-selection-empty');
 let isLyricEditMode = false;
 let tempLyricsData = [];
 let originalLyricsData = []; // To restore on cancel
+let _lyricsFetchAbort = null;
+let _lyricsSearchAbort = null;
+let _lyricsSelectionAbort = null;
 
 /* Set gradient placeholder until a song is playing */
 if (playerImg) playerImg.src = COVER_PLACEHOLDER;
@@ -78,11 +81,12 @@ let lastWidgetUpdateTime = 0;
 let telemetrySongId = null;
 let lastTimeUpdateValue = 0;
 let accumulatedTelemetryTime = 0;
+let totalTelemetryTime = 0;
 let hasCountedPlay = false;
 
 function flushTelemetry() {
     if (accumulatedTelemetryTime > 0 && telemetrySongId) {
-        const isPlay = accumulatedTelemetryTime >= 30 && !hasCountedPlay;
+        const isPlay = totalTelemetryTime >= 30 && !hasCountedPlay;
         if (isPlay) hasCountedPlay = true;
 
         if (typeof window.reportTelemetry === 'function') {
@@ -117,8 +121,12 @@ function updateMarquee(element) {
 
 function getQualityBadgeHTML(song) {
     if (!song) return '';
-    let bitrate = song.bitrate;
-    let extension = song.extension || '';
+    let bitrate = Number(song.bitrate);
+    if (!Number.isFinite(bitrate) || bitrate <= 0) bitrate = 0;
+    if (bitrate && bitrate > 1000) {
+        bitrate = Math.round(bitrate / 1000);
+    }
+    let extension = typeof song.extension === 'string' ? song.extension : '';
     
     if (!bitrate && !extension.toLowerCase().includes('flac')) {
         bitrate = 128; 
@@ -135,10 +143,12 @@ function loadSong(song) {
     telemetrySongId = song.id;
     hasCountedPlay = false;
     lastTimeUpdateValue = 0;
+    totalTelemetryTime = 0;
 
     playerTitle.textContent = song.title;
     playerArtist.textContent = song.artist; // No badge in mini player
-    playerImg.src = song.cover;
+    const coverUrl = safeImageURL(song.cover, COVER_PLACEHOLDER);
+    playerImg.src = coverUrl;
     audio.src = song.url;
 
     // Sync Dedicated Player
@@ -155,13 +165,14 @@ function loadSong(song) {
             updateMarquee(dedicatedArtist);
         }
     }
-    if (dedicatedImg) dedicatedImg.src = song.cover;
-    if (dedicatedBackdrop) dedicatedBackdrop.style.backgroundImage = `url('${song.cover}')`;
+    if (dedicatedImg) dedicatedImg.src = coverUrl;
+    document.documentElement.style.setProperty('--player-backdrop-image', `url(${JSON.stringify(coverUrl)})`);
+    syncThemeColorToCover(coverUrl);
 
     // Trigger animation for dedicated player if active
     if (document.body.classList.contains('player-section-active')) {
         const animTargets = [
-            document.querySelector('.dedicated-art-container'),
+            document.querySelector('.dedicated-art-wrapper'),
             document.querySelector('.dedicated-info-container'),
             document.getElementById('dedicated-lyrics-container')
         ];
@@ -204,57 +215,63 @@ function loadSong(song) {
         }
     }
 
-    /* OS / lock-screen media session — update metadata only */
+    /* OS / lock-screen media session: update metadata only */
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
             title: song.title,
             artist: song.artist,
             album: song.album || 'Streamify',
             artwork: [96, 128, 192, 256, 384, 512].map(s => ({
-                src: song.cover, sizes: `${s}x${s}`, type: 'image/jpeg'
+                src: coverUrl, sizes: `${s}x${s}`, type: 'image/jpeg'
             }))
         });
     }
 
     /* Update iOS Widget */
     if (typeof updateWidgetNowPlaying === 'function') {
-        updateWidgetNowPlaying(song.title, song.artist, song.cover, false, 0);
+        updateWidgetNowPlaying(song.title, song.artist, coverUrl, false, 0);
+    }
+}
+
+function syncPlaybackUI(playing) {
+    isPlaying = playing;
+    btnPlay.innerHTML = playing
+        ? "<i class='bx bx-pause' style='margin-left:0;'></i>"
+        : "<i class='bx bx-play' style='margin-left:2px;'></i>";
+    if (dedicatedBtnPlay) {
+        dedicatedBtnPlay.innerHTML = playing
+            ? "<i class='bx bx-pause' style='margin-left:0;'></i>"
+            : "<i class='bx bx-play' style='margin-left:4px;'></i>";
+    }
+
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+
+    if (typeof updateWidgetNowPlaying === 'function') {
+        updateWidgetNowPlaying(playerTitle.textContent, playerArtist.textContent, playerImg.src, playing, audio.currentTime);
     }
 }
 
 function playSong() {
-    isPlaying = true;
-    audio.play().catch(() => { });
-    btnPlay.innerHTML = "<i class='bx bx-pause' style='margin-left:0;'></i>";
-    if (dedicatedBtnPlay) dedicatedBtnPlay.innerHTML = "<i class='bx bx-pause' style='margin-left:0;'></i>";
-
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-
-    /* Update iOS Widget */
-    if (typeof updateWidgetNowPlaying === 'function') {
-        updateWidgetNowPlaying(playerTitle.textContent, playerArtist.textContent, playerImg.src, true, audio.currentTime);
-    }
+    if (!audio.currentSrc && !audio.src) return Promise.resolve(false);
+    return audio.play()
+        .then(() => true)
+        .catch(err => {
+            syncPlaybackUI(false);
+            console.warn('[PLAYBACK] Play request rejected:', err);
+            showToast('Playback could not start.', 'error');
+            return false;
+        });
 }
 
 function pauseSong() {
-    isPlaying = false;
     audio.pause();
-    btnPlay.innerHTML = "<i class='bx bx-play' style='margin-left:2px;'></i>";
-    if (dedicatedBtnPlay) dedicatedBtnPlay.innerHTML = "<i class='bx bx-play' style='margin-left:4px;'></i>";
-
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-
-    /* Update iOS Widget */
-    if (typeof updateWidgetNowPlaying === 'function') {
-        updateWidgetNowPlaying(playerTitle.textContent, playerArtist.textContent, playerImg.src, false, audio.currentTime);
-    }
 }
 
 function togglePlay() {
     if (isPlaying) pauseSong(); else playSong();
 }
 
-/* Register MediaSession action handlers ONCE at startup — re-registering on every track
+/* Register MediaSession action handlers ONCE at startup; re-registering on every track
    change causes iOS/Android to briefly tear down the Dynamic Island / lock screen widget. */
 (function initMediaSession() {
     if (!('mediaSession' in navigator)) return;
@@ -273,12 +290,20 @@ function togglePlay() {
 
 /* ========== PLAYLIST NAVIGATION ========== */
 
+let _songSelectionSeq = 0;
+let _songSelectionAbort = null;
+
 /**
  * Internal: plays a song at `index` from the given `pl` playlist and `sh` shuffle order.
  * All autoplay (next/prev) routes through here using the activePlaylist snapshot.
  */
 function _playSongFromPlaylist(index, pl, sh) {
     if (index < 0 || index >= pl.length) return;
+
+    const selectionSeq = ++_songSelectionSeq;
+    if (_songSelectionAbort) _songSelectionAbort.abort();
+    const controller = new AbortController();
+    _songSelectionAbort = controller;
 
     if (isShuffle) {
         const shufflePos = sh.indexOf(index);
@@ -290,8 +315,10 @@ function _playSongFromPlaylist(index, pl, sh) {
     const song = pl[index];
 
     const loadAndPlay = (songData) => {
-        if (songData.cover) song.cover = songData.cover;
-        const cover = song.cover || COVER_PLACEHOLDER;
+        if (selectionSeq !== _songSelectionSeq || controller.signal.aborted) return;
+        const responseCover = safeImageURL(songData.cover);
+        if (responseCover) song.cover = responseCover;
+        const cover = safeImageURL(song.cover, COVER_PLACEHOLDER);
         loadSong({
             id: song.id,
             title: song.title,
@@ -300,42 +327,37 @@ function _playSongFromPlaylist(index, pl, sh) {
             url: songData.url,
             cover: cover,
             bitrate: songData.bitrate || song.bitrate,
-            extension: songData.extension || song.extension
+            extension: songData.extension || song.extension,
+            playlistOwner: song.playlistOwner
         });
         playSong();
 
-        if (!song.cover) {
-            fetchWebCover(song.artist, song.title).then(url => {
-                if (url) {
-                    playerImg.src = url;
-                    if (typeof dedicatedImg !== 'undefined' && dedicatedImg) dedicatedImg.src = url;
-                    if (typeof dedicatedBackdrop !== 'undefined' && dedicatedBackdrop) dedicatedBackdrop.style.backgroundImage = `url('${url}')`;
-                    song.cover = url; // update directly on the song object (shared reference)
-                    saveCoverToServer(song.title, url);
-                    const expandImg = document.getElementById('cover-expand-img');
-                    if (expandImg && document.getElementById('cover-expand-overlay') && document.getElementById('cover-expand-overlay').classList.contains('show'))
-                        expandImg.src = url;
-                }
-            });
-        }
     };
 
     if (!navigator.onLine && window.OfflineStore) {
-        window.OfflineStore.getOfflineSongs().then(songs => {
-            const cachedSong = songs.find(s => s.id === song.id);
+        window.OfflineStore.getOfflineSong(song.id).then(cachedSong => {
+            if (selectionSeq !== _songSelectionSeq || controller.signal.aborted) return;
             if (cachedSong) {
                 loadAndPlay(cachedSong);
             } else {
                 showToast("Song not available offline", "error");
             }
+        }).catch(err => {
+            if (selectionSeq !== _songSelectionSeq || controller.signal.aborted) return;
+            console.error('[OFFLINE PLAYBACK]', err);
+            showToast("Song not available offline", "error");
         });
         return;
     }
 
-    fetch(song.url)
-        .then(r => r.json())
+    fetch(song.url, { signal: controller.signal })
+        .then(r => {
+            if (!r.ok) throw new Error(`Song request failed: ${r.status}`);
+            return r.json();
+        })
         .then(loadAndPlay)
         .catch(err => {
+            if (err.name === 'AbortError') return;
             console.error(err);
             if (!navigator.onLine) showToast("Song not available offline", "error");
         });
@@ -358,18 +380,21 @@ function getCurrentRealIndex() {
 }
 
 function nextSong() {
-    if (activePlaylist.length === 0) return;
+    if (activePlaylist.length === 0) return false;
 
     if (isShuffle) {
         if (currentIndex >= activeShuffledPlaylist.length - 1) {
-            if (repeatMode === 1) currentIndex = 0; else return;
+            if (repeatMode === 1) currentIndex = 0;
+            else return false;
         } else { currentIndex++; }
     } else {
         if (currentIndex >= activePlaylist.length - 1) {
-            if (repeatMode === 1) currentIndex = 0; else return;
+            if (repeatMode === 1) currentIndex = 0;
+            else return false;
         } else { currentIndex++; }
     }
     _playSongFromPlaylist(getCurrentRealIndex(), activePlaylist, activeShuffledPlaylist);
+    return true;
 }
 
 function prevSong() {
@@ -390,8 +415,10 @@ function prevSong() {
 /* ========== SHUFFLE / REPEAT ========== */
 
 function toggleShuffle() {
+    const realIndex = currentIndex >= 0 ? getCurrentRealIndex() : -1;
     isShuffle = !isShuffle;
     btnShuffle.style.color = isShuffle ? 'var(--accent)' : '#b3b3b3';
+    btnShuffle.classList.toggle('active', isShuffle);
 
     shuffledPlaylist = [...Array(currentPlaylist.length).keys()];
     activeShuffledPlaylist = [...Array(activePlaylist.length).keys()];
@@ -406,10 +433,16 @@ function toggleShuffle() {
             const j = Math.floor(Math.random() * (i + 1));
             [activeShuffledPlaylist[i], activeShuffledPlaylist[j]] = [activeShuffledPlaylist[j], activeShuffledPlaylist[i]];
         }
-        if (currentIndex !== -1) currentIndex = 0;
+        if (realIndex >= 0) {
+            const shuffledPosition = activeShuffledPlaylist.indexOf(realIndex);
+            if (shuffledPosition > 0) {
+                activeShuffledPlaylist.splice(shuffledPosition, 1);
+                activeShuffledPlaylist.unshift(realIndex);
+            }
+            currentIndex = 0;
+        }
     } else {
-        if (currentIndex !== -1 && activePlaylist.length > 0)
-            currentIndex = activeShuffledPlaylist[currentIndex];
+        if (realIndex >= 0 && activePlaylist.length > 0) currentIndex = realIndex;
     }
 
     // Sync Dedicated Shuffle button style
@@ -463,8 +496,20 @@ btnRepeat.addEventListener('click', toggleRepeat);
 /* ========== AUDIO EVENTS ========== */
 
 audio.addEventListener('ended', () => {
-    if (repeatMode === 2) { audio.currentTime = 0; audio.play(); }
-    else nextSong();
+    flushTelemetry();
+    if (repeatMode === 2) {
+        audio.currentTime = 0;
+        playSong();
+    } else if (!nextSong()) {
+        syncPlaybackUI(false);
+    }
+});
+
+audio.addEventListener('play', () => syncPlaybackUI(true));
+audio.addEventListener('pause', () => syncPlaybackUI(false));
+audio.addEventListener('error', () => {
+    syncPlaybackUI(false);
+    if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
 });
 
 const fmt = t => { const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${m}:${s < 10 ? '0' + s : s}`; };
@@ -490,7 +535,7 @@ audio.addEventListener('seeking', () => {
         // One-shot: restore position once the new src has metadata
         audio.addEventListener('loadedmetadata', () => {
             audio.currentTime = t;
-            if (wasPlaying) audio.play().catch(() => {});
+            if (wasPlaying) playSong();
         }, { once: true });
         // Cache-bust forces a fresh network fetch, bypassing HTTP cache
         audio.src = baseSrc + '?_t=' + Date.now();
@@ -507,9 +552,11 @@ audio.addEventListener('timeupdate', e => {
     const { duration, currentTime } = e.srcElement;
 
     // Telemetry time accumulation
-    if (currentTime > lastTimeUpdateValue && (currentTime - lastTimeUpdateValue) < 2) {
+    if (!audio.paused && currentTime > lastTimeUpdateValue && (currentTime - lastTimeUpdateValue) < 2) {
         // Accumulate delta if playback is normal (not seeking backwards, not seeking far forward)
-        accumulatedTelemetryTime += (currentTime - lastTimeUpdateValue);
+        const delta = currentTime - lastTimeUpdateValue;
+        accumulatedTelemetryTime += delta;
+        totalTelemetryTime += delta;
     }
     lastTimeUpdateValue = currentTime;
 
@@ -601,9 +648,110 @@ if (dedicatedProgressContainer) {
     }, { passive: false });
 }
 
+/* ========== BROWSER CHROME TINTING ==========
+ *
+ * iOS Safari tints the strip behind its toolbars using <meta name="theme-color">
+ * (falling back to the page background colour). With a static dark value, the
+ * bottom of the dedicated player showed a flat black band under the URL bar
+ * that visibly did not belong to the blurred artwork above it.
+ *
+ * Here we sample the average colour of the current cover, darken it to roughly
+ * match the backdrop's own brightness(0.4) filter, and use it as a fallback
+ * behind the full-screen artwork. Older Safari versions also use theme-color.
+ *
+ * Entirely cosmetic and fully optional: any failure (a tainted canvas from
+ * cross-origin artwork, a missing cover, an unsupported browser) silently falls
+ * back to the default. Desktop browsers ignore theme-color, so this is a no-op
+ * there.
+ */
+const DEFAULT_THEME_COLOR = '#121212';
+let _themeColorToken = 0;
+
+function setThemeColor(color) {
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+        meta = document.createElement('meta');
+        meta.name = 'theme-color';
+        document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', color);
+
+    // iOS 26 Safari no longer uses theme-color for browser UI while browsing
+    // (only for installed web apps). Instead it samples the background-color
+    // of <body> or of a qualifying fixed element at the screen edge.
+    //
+    // Publish the color as a CSS fallback. The fixed backdrop itself remains
+    // transparent so Safari can composite the absolute artwork layer instead
+    // of extending a solid sampled color behind its toolbar.
+    if (color === DEFAULT_THEME_COLOR) {
+        document.documentElement.style.removeProperty('--player-tint');
+    } else {
+        document.documentElement.style.setProperty('--player-tint', color);
+    }
+}
+
+function syncThemeColorToCover(coverUrl) {
+    // Only tint while the full-screen player is showing; the library view keeps
+    // the flat app background, so a tinted bar there would look wrong.
+    if (!document.body.classList.contains('player-section-active')) {
+        setThemeColor(DEFAULT_THEME_COLOR);
+        return;
+    }
+    // Reflect the current artwork immediately if it has already been sampled,
+    // so re-entering the player does not flash the default colour.
+    if (!coverUrl) {
+        setThemeColor(DEFAULT_THEME_COLOR);
+        return;
+    }
+
+    // Guard against a slow load for track A resolving after track B started.
+    const token = ++_themeColorToken;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // required for getImageData on remote art
+    img.onload = () => {
+        if (token !== _themeColorToken) return;
+        try {
+            const SIZE = 16; // plenty for an average, and effectively free
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = SIZE;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(img, 0, 0, SIZE, SIZE);
+
+            const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
+            let r = 0, g = 0, b = 0, count = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i + 3] < 128) continue; // ignore transparent pixels
+                r += data[i]; g += data[i + 1]; b += data[i + 2];
+                count++;
+            }
+            if (!count) return;
+
+            // Match the backdrop filter: blur(100px) brightness(0.4) saturate(1.8)
+            const DARKEN = 0.4;
+            r = Math.round((r / count) * DARKEN);
+            g = Math.round((g / count) * DARKEN);
+            b = Math.round((b / count) * DARKEN);
+
+            const hex = '#' + [r, g, b]
+                .map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0'))
+                .join('');
+            setThemeColor(hex);
+        } catch (err) {
+            // Tainted canvas (cross-origin artwork without CORS headers) etc.
+            setThemeColor(DEFAULT_THEME_COLOR);
+        }
+    };
+    img.onerror = () => {
+        if (token === _themeColorToken) setThemeColor(DEFAULT_THEME_COLOR);
+    };
+    img.src = coverUrl;
+}
+
 /* ========== VOLUME ========== */
 
-let lastVolume = parseFloat(localStorage.getItem('streamify_volume')) || 0.7;
+const savedVolume = parseFloat(localStorage.getItem('streamify_volume'));
+let lastVolume = Number.isFinite(savedVolume) ? Math.max(0, Math.min(1, savedVolume)) : 0.7;
 
 // Initialize volume on load
 audio.volume = lastVolume;
@@ -655,6 +803,8 @@ if (btnCancelLyrics) btnCancelLyrics.addEventListener('click', cancelLyricEdit);
 /* --- Lyrics Selection Listeners --- */
 function openLyricsSearchModal() {
     if (!window.currentlyPlayingSongId) return;
+    if (_lyricsFetchAbort) _lyricsFetchAbort.abort();
+    _lyricsFetchAbort = null;
     const currentTitle = document.getElementById('dedicated-player-title')?.textContent || '';
     const currentArtist = document.getElementById('dedicated-player-artist')?.textContent || '';
 
@@ -680,6 +830,8 @@ if (btnFindLyrics) {
 
 if (closeLyricsSelectionModal) {
     closeLyricsSelectionModal.addEventListener('click', () => {
+        if (_lyricsSearchAbort) _lyricsSearchAbort.abort();
+        _lyricsSearchAbort = null;
         lyricsSelectionModal.classList.add('hidden');
     });
 }
@@ -701,8 +853,13 @@ if (lyricsSearchArtist) {
 async function performLyricsSearch() {
     const title = lyricsSearchTitle.value.trim();
     const artist = lyricsSearchArtist.value.trim();
+    const songId = window.currentlyPlayingSongId;
 
-    if (!title) return;
+    if (!title || !songId) return;
+
+    if (_lyricsSearchAbort) _lyricsSearchAbort.abort();
+    const controller = new AbortController();
+    _lyricsSearchAbort = controller;
 
     lyricsSelectionLoading.classList.remove('hidden');
     lyricsSelectionResults.innerHTML = '';
@@ -712,13 +869,15 @@ async function performLyricsSearch() {
         const url = new URL('https://lrclib.net/api/search');
         url.searchParams.append('q', `${title} ${artist}`.trim());
 
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: controller.signal });
+        if (_lyricsSearchAbort !== controller || songId !== window.currentlyPlayingSongId || lyricsSelectionModal.classList.contains('hidden')) return;
         if (response.ok) {
             const results = await response.json();
+            if (_lyricsSearchAbort !== controller || songId !== window.currentlyPlayingSongId || lyricsSelectionModal.classList.contains('hidden')) return;
             lyricsSelectionLoading.classList.add('hidden');
 
             if (results && results.length > 0) {
-                renderLyricsSelectionResults(results);
+                renderLyricsSelectionResults(results, songId);
             } else {
                 lyricsSelectionEmpty.classList.remove('hidden');
             }
@@ -727,13 +886,16 @@ async function performLyricsSearch() {
             lyricsSelectionEmpty.classList.remove('hidden');
         }
     } catch (e) {
+        if (e.name === 'AbortError' || _lyricsSearchAbort !== controller) return;
         console.error("Lyrics search failed:", e);
         lyricsSelectionLoading.classList.add('hidden');
         lyricsSelectionEmpty.classList.remove('hidden');
+    } finally {
+        if (_lyricsSearchAbort === controller) _lyricsSearchAbort = null;
     }
 }
 
-function renderLyricsSelectionResults(results) {
+function renderLyricsSelectionResults(results, songId) {
     lyricsSelectionResults.innerHTML = '';
 
     results.forEach(result => {
@@ -757,7 +919,7 @@ function renderLyricsSelectionResults(results) {
         artistSpan.style.fontSize = '12px';
         artistSpan.style.color = '#b3b3b3';
         const durationStr = result.duration ? Math.floor(result.duration / 60) + ':' + String(result.duration % 60).padStart(2, '0') : '?';
-        artistSpan.textContent = `${result.artistName || 'Unknown Artist'} • ${result.albumName || 'Unknown Album'} (${durationStr})`;
+        artistSpan.textContent = `${result.artistName || 'Unknown Artist'} \u2022 ${result.albumName || 'Unknown Album'} (${durationStr})`;
 
         const typeSpan = document.createElement('div');
         typeSpan.style.fontSize = '11px';
@@ -779,7 +941,7 @@ function renderLyricsSelectionResults(results) {
         selectBtn.className = 'btn btn-sm';
         selectBtn.style.cssText = 'background: var(--accent); color: #000; font-weight: bold; padding: 6px 12px; border-radius: 30px;';
         selectBtn.textContent = 'Select';
-        selectBtn.onclick = () => selectLyricsResult(result);
+        selectBtn.addEventListener('click', () => selectLyricsResult(result, songId));
 
         if (!result.syncedLyrics && !result.plainLyrics) {
             selectBtn.disabled = true;
@@ -793,12 +955,18 @@ function renderLyricsSelectionResults(results) {
     });
 }
 
-function selectLyricsResult(result) {
+function selectLyricsResult(result, expectedSongId = window.currentlyPlayingSongId) {
     const songId = window.currentlyPlayingSongId;
-    if (!songId) return;
-
+    if (!songId || String(songId) !== String(expectedSongId)) return;
     const lyricsToSave = result.syncedLyrics || result.plainLyrics;
     const isSynced = !!result.syncedLyrics;
+    if (typeof lyricsToSave !== 'string' || !lyricsToSave) return;
+
+    if (_lyricsSearchAbort) _lyricsSearchAbort.abort();
+    _lyricsSearchAbort = null;
+    if (_lyricsSelectionAbort) _lyricsSelectionAbort.abort();
+    const controller = new AbortController();
+    _lyricsSelectionAbort = controller;
 
     // Apply locally immediately
     lyricsData = [];
@@ -820,9 +988,10 @@ function selectLyricsResult(result) {
     lyricsSelectionModal.classList.add('hidden');
 
     // Attempt to save to our server
-    fetch(`/api/lyrics/${songId}`, {
+    fetch(`/api/lyrics/${encodeURIComponent(songId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
             lyrics: lyricsToSave,
             is_synced: isSynced
@@ -837,7 +1006,10 @@ function selectLyricsResult(result) {
             }
         }
     }).catch(err => {
+        if (err.name === 'AbortError') return;
         console.error("Failed to save selected lyrics:", err);
+    }).finally(() => {
+        if (_lyricsSelectionAbort === controller) _lyricsSelectionAbort = null;
     });
 }
 
@@ -867,6 +1039,8 @@ function toggleMute() {
     } else {
         const targetVol = lastVolume > 0 ? lastVolume : 0.7;
         audio.volume = targetVol;
+        lastVolume = targetVol;
+        localStorage.setItem('streamify_volume', targetVol);
         updateVolumeUI(targetVol);
     }
 }
@@ -886,6 +1060,42 @@ if (dedicatedBtnRepeat) dedicatedBtnRepeat.addEventListener('click', toggleRepea
 let previousSectionId = null;
 let previousSidebarActiveEl = null; // snapshot of the active sidebar link (nav or playlist)
 
+function setDedicatedPlayerActive(active) {
+    document.body.classList.toggle('player-section-active', active);
+    document.documentElement.classList.toggle('player-chrome-active', active);
+
+    if (!active) {
+        _themeColorToken++;
+        deactivateLyricsView();
+        const restoreRootScroll = () => {
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+            window.scrollTo(0, 0);
+        };
+
+        restoreRootScroll();
+        requestAnimationFrame(() => {
+            if (document.documentElement.classList.contains('player-chrome-active')) return;
+            restoreRootScroll();
+            requestAnimationFrame(() => {
+                if (!document.documentElement.classList.contains('player-chrome-active')) {
+                    restoreRootScroll();
+                }
+            });
+        });
+        return;
+    }
+
+    requestAnimationFrame(() => {
+        if (!document.documentElement.classList.contains('player-chrome-active')) return;
+        const offset = parseFloat(getComputedStyle(document.documentElement)
+            .getPropertyValue('--safari-player-scroll-offset')) || 0;
+        if (offset > 0) window.scrollTo(0, offset);
+    });
+}
+
+window.setDedicatedPlayerActive = setDedicatedPlayerActive;
+
 if (playerImg) {
     playerImg.addEventListener('click', () => {
         // Remember which section we were on before opening the player
@@ -902,7 +1112,8 @@ if (playerImg) {
         if (typeof window.hideAllSections === 'function' && playerSection) {
             window.hideAllSections();
             window.showSection(playerSection);
-            document.body.classList.add('player-section-active');
+            setDedicatedPlayerActive(true);
+            syncThemeColorToCover(dedicatedImg ? dedicatedImg.src : null);
             updateMarquee(dedicatedTitle);
             updateMarquee(dedicatedArtist);
         } else {
@@ -916,7 +1127,8 @@ if (playerImg) {
 
             if (playerSection) {
                 playerSection.classList.remove('hidden');
-                document.body.classList.add('player-section-active');
+                setDedicatedPlayerActive(true);
+                syncThemeColorToCover(dedicatedImg ? dedicatedImg.src : null);
                 updateMarquee(dedicatedTitle);
                 updateMarquee(dedicatedArtist);
             }
@@ -928,7 +1140,8 @@ if (playerImg) {
 const btnCloseDedicated = document.getElementById('close-dedicated-player');
 if (btnCloseDedicated) {
     btnCloseDedicated.addEventListener('click', () => {
-        document.body.classList.remove('player-section-active');
+        setDedicatedPlayerActive(false);
+        setThemeColor(DEFAULT_THEME_COLOR);
 
         if (typeof window.hideAllSections === 'function' && previousSectionId) {
             const prevSec = document.getElementById(previousSectionId);
@@ -938,9 +1151,7 @@ if (btnCloseDedicated) {
 
                 // Re-highlight the correct sidebar nav link
                 const navMap = {
-                    'feed-section':       'home-link',
                     'trending-section':   'library-link',
-                    'people-section':     'people-link',
                     'upload-section':     'upload-link',
                     'about-section':      'about-link',
                     'playlist-detail-section': null,
@@ -979,10 +1190,17 @@ let userScrollingLyricsTimeout = null;
 let _wakeLockSentinel = null;
 
 async function _acquireWakeLock() {
-    if (!('wakeLock' in navigator)) return;
+    if (!('wakeLock' in navigator) || _wakeLockSentinel) return;
     try {
-        _wakeLockSentinel = await navigator.wakeLock.request('screen');
-        _wakeLockSentinel.addEventListener('release', () => { _wakeLockSentinel = null; });
+        const sentinel = await navigator.wakeLock.request('screen');
+        if (!isLyricsActive || !document.body.classList.contains('player-section-active')) {
+            await sentinel.release();
+            return;
+        }
+        _wakeLockSentinel = sentinel;
+        sentinel.addEventListener('release', () => {
+            if (_wakeLockSentinel === sentinel) _wakeLockSentinel = null;
+        });
     } catch (err) {
         console.warn('[WAKELOCK] Could not acquire:', err.message);
     }
@@ -997,16 +1215,20 @@ async function _releaseWakeLock() {
 
 // Re-acquire if page becomes visible again while lyrics are still open
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && isLyricsActive) {
+    if (document.visibilityState === 'visible' && isLyricsActive && document.body.classList.contains('player-section-active')) {
         _acquireWakeLock();
+    } else if (document.visibilityState === 'hidden') {
+        _releaseWakeLock();
     }
 });
+window.addEventListener('pagehide', _releaseWakeLock);
 
 const btnCloseLyrics = document.getElementById('close-lyrics-btn');
 const standardContainer = document.getElementById('dedicated-standard-container');
 const lyricsContainer = document.getElementById('dedicated-lyrics-container');
 
 function handleLyricsInteraction() {
+    if (!isLyricsActive) return;
     isUserScrollingLyrics = true;
     if (userScrollingLyricsTimeout) clearTimeout(userScrollingLyricsTimeout);
     userScrollingLyricsTimeout = setTimeout(() => {
@@ -1018,8 +1240,6 @@ if (lyricsScrollArea) {
     lyricsScrollArea.addEventListener('wheel', handleLyricsInteraction, { passive: true });
     lyricsScrollArea.addEventListener('touchmove', handleLyricsInteraction, { passive: true });
 }
-window.addEventListener('wheel', handleLyricsInteraction, { passive: true });
-window.addEventListener('touchmove', handleLyricsInteraction, { passive: true });
 
 if (btnLyrics) {
     btnLyrics.addEventListener('click', () => {
@@ -1035,19 +1255,37 @@ if (btnLyrics) {
     });
 }
 
+function deactivateLyricsView() {
+    isLyricsActive = false;
+    isUserScrollingLyrics = false;
+    if (userScrollingLyricsTimeout) {
+        clearTimeout(userScrollingLyricsTimeout);
+        userScrollingLyricsTimeout = null;
+    }
+    if (lyricsContainer) lyricsContainer.classList.add('hidden');
+    if (standardContainer) standardContainer.classList.remove('hidden');
+    const contentArea = document.querySelector('.dedicated-player-content');
+    if (contentArea) contentArea.classList.remove('lyrics-active-view');
+    document.body.classList.remove('lyrics-view-active');
+    _releaseWakeLock();
+}
+
 if (btnCloseLyrics) {
     btnCloseLyrics.addEventListener('click', () => {
-        isLyricsActive = false;
-        lyricsContainer.classList.add('hidden');
-        standardContainer.classList.remove('hidden');
-        const contentArea = document.querySelector('.dedicated-player-content');
-        if (contentArea) contentArea.classList.remove('lyrics-active-view');
-        document.body.classList.remove('lyrics-view-active');
-        _releaseWakeLock(); // Allow screen to sleep again
+        deactivateLyricsView();
     });
 }
 
 function resetLyrics() {
+    if (_lyricsFetchAbort) _lyricsFetchAbort.abort();
+    if (_lyricsSearchAbort) _lyricsSearchAbort.abort();
+    if (_lyricsSelectionAbort) _lyricsSelectionAbort.abort();
+    _lyricsFetchAbort = null;
+    _lyricsSearchAbort = null;
+    _lyricsSelectionAbort = null;
+    if (lyricsSelectionModal) lyricsSelectionModal.classList.add('hidden');
+    if (lyricsSelectionLoading) lyricsSelectionLoading.classList.add('hidden');
+
     lyricsData = [];
     if (lyricsContent) lyricsContent.innerHTML = '';
     if (btnLyrics) btnLyrics.classList.remove('show-lyrics-btn');
@@ -1065,13 +1303,7 @@ function resetLyrics() {
 
     // If lyrics view is active but we reset, go back to standard view
     if (isLyricsActive) {
-        isLyricsActive = false;
-        _releaseWakeLock(); // Song changed — release wake lock
-        document.body.classList.remove('lyrics-view-active');
-        if (lyricsContainer) lyricsContainer.classList.add('hidden');
-        if (standardContainer) standardContainer.classList.remove('hidden');
-        const contentArea = document.querySelector('.dedicated-player-content');
-        if (contentArea) contentArea.classList.remove('lyrics-active-view');
+        deactivateLyricsView();
     }
 }
 
@@ -1183,19 +1415,24 @@ function cleanMetadata(title, artist) {
 }
 
 async function fetchLyrics(title, artist, songId, preferUser = null) {
+    if (_lyricsFetchAbort) _lyricsFetchAbort.abort();
     if (!title || !navigator.onLine) return;
     if (songId !== window.currentlyPlayingSongId) return;
+
+    const controller = new AbortController();
+    _lyricsFetchAbort = controller;
 
     try {
         // Try fetching from our server first
         if (songId) {
-            let lyricsUrl = `/api/lyrics/${songId}`;
+            let lyricsUrl = `/api/lyrics/${encodeURIComponent(songId)}`;
             if (preferUser) lyricsUrl += `?prefer=${encodeURIComponent(preferUser)}`;
-            const serverResponse = await fetch(lyricsUrl);
-            if (songId !== window.currentlyPlayingSongId) return; // Verify again after await
+            const serverResponse = await fetch(lyricsUrl, { signal: controller.signal });
+            if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
 
             if (serverResponse.ok) {
                 const cachedData = await serverResponse.json();
+                if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
                 if (cachedData && cachedData.lyrics) {
                     console.log(`[LYRICS] Serving cached lyrics for song ID: ${songId}`);
                     if (cachedData.is_synced) {
@@ -1227,7 +1464,7 @@ async function fetchLyrics(title, artist, songId, preferUser = null) {
             url.searchParams.append('q', `${t} ${a}`.trim());
 
             try {
-                const response = await fetch(url);
+                const response = await fetch(url, { signal: controller.signal });
                 if (response.ok) {
                     const results = await response.json();
                     if (results && results.length > 0) {
@@ -1246,13 +1483,13 @@ async function fetchLyrics(title, artist, songId, preferUser = null) {
 
         // Try 1: Fully Cleaned Title + Artist
         let data = await tryFetch(searchTitle, searchArtist);
-        if (songId !== window.currentlyPlayingSongId) return;
+        if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
 
         // Try 2: Title only (sometimes artist name in metadata vs LRCLIB differs)
         if (!data && searchArtist) {
             console.log(`[LYRICS] Stage 1 failed. Trying Stage 2 (Title only): "${searchTitle}"`);
             data = await tryFetch(searchTitle, '');
-            if (songId !== window.currentlyPlayingSongId) return;
+            if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
         }
 
         // Try 3: Aggressive stripping (remove all non-alphanumeric)
@@ -1261,6 +1498,7 @@ async function fetchLyrics(title, artist, songId, preferUser = null) {
             if (ultraCleanTitle && ultraCleanTitle !== searchTitle) {
                 console.log(`[LYRICS] Stage 2 failed. Trying Stage 3 (Aggressive): "${ultraCleanTitle}"`);
                 data = await tryFetch(ultraCleanTitle, '');
+                if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
             }
         }
 
@@ -1270,6 +1508,7 @@ async function fetchLyrics(title, artist, songId, preferUser = null) {
             if (beforeBrackets && beforeBrackets.length > 2) {
                 console.log(`[LYRICS] Stage 3 failed. Trying Stage 4 (Before Brackets): "${beforeBrackets}"`);
                 data = await tryFetch(beforeBrackets, searchArtist);
+                if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
             }
         }
 
@@ -1286,9 +1525,10 @@ async function fetchLyrics(title, artist, songId, preferUser = null) {
         console.log(`[LYRICS] Found lyrics from lrclib.net for ${title}`);
 
         // Cache them on our server for future
-        fetch(`/api/lyrics/${songId}`, {
+        fetch(`/api/lyrics/${encodeURIComponent(songId)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
                 lyrics: data.syncedLyrics || data.plainLyrics,
                 is_synced: !!data.syncedLyrics
@@ -1310,12 +1550,15 @@ async function fetchLyrics(title, artist, songId, preferUser = null) {
             }
         }
     } catch (err) {
+        if (err.name === 'AbortError' || _lyricsFetchAbort !== controller) return;
         console.error("Failed to fetch lyrics:", err);
         if (songId === window.currentlyPlayingSongId && btnFindLyrics) {
             if (btnLyrics) btnLyrics.classList.remove('show-lyrics-btn');
             btnFindLyrics.classList.add('show-lyrics-btn');
             btnFindLyrics.parentElement.classList.add('has-lyrics');
         }
+    } finally {
+        if (_lyricsFetchAbort === controller) _lyricsFetchAbort = null;
     }
 }
 
@@ -1355,7 +1598,7 @@ function renderLyrics() {
     data.forEach((line, index) => {
         const lineEl = document.createElement('div');
         lineEl.className = 'lyric-line';
-        if (line.text === '♪') lineEl.classList.add('instrumental');
+        if (line.text === '\u266a') lineEl.classList.add('instrumental');
 
         if (isLyricEditMode) {
             lineEl.classList.add('editing');
@@ -1394,7 +1637,10 @@ function renderLyrics() {
 
         } else {
             // Standard View Mode
-            lineEl.innerHTML = line.text.replace(/\n/g, '<br>');
+            String(line.text || '').split('\n').forEach((part, partIndex) => {
+                if (partIndex > 0) lineEl.appendChild(document.createElement('br'));
+                lineEl.appendChild(document.createTextNode(part));
+            });
             lineEl.dataset.index = index;
             lineEl.dataset.time = line.time;
 
@@ -1402,7 +1648,7 @@ function renderLyrics() {
             lineEl.addEventListener('click', () => {
                 if (audio && isFinite(line.time)) {
                     audio.currentTime = line.time;
-                    audio.play();
+                    playSong();
                     isUserScrollingLyrics = false;
                 }
             });
@@ -1418,13 +1664,16 @@ function renderLyrics() {
         footer.innerHTML = `
             <div class="offset-controls">
                 <span>Shift All:</span>
-                <button class="offset-btn" onclick="shiftAllLyrics(-500)">-0.5s</button>
-                <button class="offset-btn" onclick="shiftAllLyrics(-100)">-0.1s</button>
-                <button class="offset-btn" onclick="shiftAllLyrics(100)">+0.1s</button>
-                <button class="offset-btn" onclick="shiftAllLyrics(500)">+0.5s</button>
+                <button type="button" class="offset-btn" data-offset="-500">-0.5s</button>
+                <button type="button" class="offset-btn" data-offset="-100">-0.1s</button>
+                <button type="button" class="offset-btn" data-offset="100">+0.1s</button>
+                <button type="button" class="offset-btn" data-offset="500">+0.5s</button>
             </div>
             <div style="font-size: 11px; color: #666;">Tip: Press 'S' to sync active line</div>
         `;
+        footer.querySelectorAll('.offset-btn').forEach(button => {
+            button.addEventListener('click', () => shiftAllLyrics(Number(button.dataset.offset)));
+        });
         lyricsContent.appendChild(footer);
     }
 }
@@ -1475,7 +1724,7 @@ async function saveLyricsToServer() {
             lyricsPayload = tempLyricsData[0]?.text || "";
         }
 
-        const res = await fetch(`/api/lyrics/${songId}`, {
+        const res = await fetch(`/api/lyrics/${encodeURIComponent(songId)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1484,6 +1733,7 @@ async function saveLyricsToServer() {
             })
         });
 
+        if (String(songId) !== String(window.currentlyPlayingSongId)) return;
         if (res.ok) {
             lyricsData = JSON.parse(JSON.stringify(tempLyricsData));
             isLyricEditMode = false;
@@ -1506,14 +1756,15 @@ async function clearLyricsFromServer() {
     if (!confirm("Are you sure you want to delete the cached lyrics for this song? This will revert to fetching from external APIs.")) return;
 
     try {
-        const res = await fetch(`/api/lyrics/${songId}`, {
+        const res = await fetch(`/api/lyrics/${encodeURIComponent(songId)}`, {
             method: 'DELETE'
         });
 
+        if (String(songId) !== String(window.currentlyPlayingSongId)) return;
         if (res.ok) {
             console.log("[LYRICS] Cache cleared.");
             isLyricEditMode = false;
-            btnEditLyrics.classList.remove('active');
+            btnEditLyrics.classList.remove('hidden', 'active');
             editorControls.classList.add('hidden');
 
             // Reload lyrics (will trigger external fetch)
@@ -1679,9 +1930,8 @@ volSlider.addEventListener('input', e => {
 });
 */
 
-/* ========== COVER EXPAND OVERLAY (DEPRECATED) ========== */
+/* ========== COVER EXPAND OVERLAY ========== */
 
-/*
 const coverOverlay    = document.getElementById('cover-expand-overlay');
 const coverExpandImg  = document.getElementById('cover-expand-img');
 const coverExpandTitle  = document.querySelector('.cover-expand-title');
@@ -1689,9 +1939,9 @@ const coverExpandArtist = document.querySelector('.cover-expand-artist');
 
 function openCoverExpand() {
     if (!coverOverlay || !coverExpandImg) return;
-    coverExpandImg.src = playerImg.src;
-    if (coverExpandTitle)  coverExpandTitle.textContent  = playerTitle.textContent;
-    if (coverExpandArtist) coverExpandArtist.textContent = playerArtist.textContent;
+    coverExpandImg.src = dedicatedImg ? dedicatedImg.src : playerImg.src;
+    if (coverExpandTitle)  coverExpandTitle.textContent  = dedicatedTitle ? dedicatedTitle.textContent : playerTitle.textContent;
+    if (coverExpandArtist) coverExpandArtist.textContent = dedicatedArtist ? dedicatedArtist.textContent : playerArtist.textContent;
     coverOverlay.classList.add('show');
 }
 
@@ -1699,8 +1949,53 @@ function closeCoverExpand() {
     if (coverOverlay) coverOverlay.classList.remove('show');
 }
 
-if (playerImg) {
-    playerImg.addEventListener('click', openCoverExpand);
+if (dedicatedImg) {
+    dedicatedImg.addEventListener('click', openCoverExpand);
+
+    // Dynamic 3D tilt and shine based on mouse position.
+    //
+    // Desktop only. Touch devices synthesise a mousemove on tap, which would
+    // apply the tilt transform and leave it stuck (mouseleave often never
+    // fires from a touch), so the artwork would sit permanently rotated and
+    // scaled. The matching CSS is gated behind the same media query.
+    const supportsHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    const dedicatedArtContainer = dedicatedImg.closest('.dedicated-art-container');
+    if (dedicatedArtContainer && supportsHover) {
+        let tiltRect = null;
+        let tiltFrame = null;
+        let pointerX = 0;
+        let pointerY = 0;
+
+        dedicatedArtContainer.addEventListener('mouseenter', () => {
+            tiltRect = dedicatedArtContainer.getBoundingClientRect();
+        });
+        dedicatedArtContainer.addEventListener('mousemove', (e) => {
+            pointerX = e.clientX;
+            pointerY = e.clientY;
+            if (tiltFrame) return;
+            tiltFrame = requestAnimationFrame(() => {
+                tiltFrame = null;
+                const rect = tiltRect || dedicatedArtContainer.getBoundingClientRect();
+                const x = pointerX - rect.left;
+                const y = pointerY - rect.top;
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const rotateX = ((y - centerY) / centerY) * -8;
+                const rotateY = ((x - centerX) / centerX) * 8;
+                const angle = Math.atan2(y - centerY, x - centerX) * (180 / Math.PI) - 90;
+
+                dedicatedArtContainer.style.setProperty('--shine-deg', `${angle}deg`);
+                dedicatedArtContainer.style.transform = `scale(1.03) perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+            });
+        });
+
+        dedicatedArtContainer.addEventListener('mouseleave', () => {
+            tiltRect = null;
+            if (tiltFrame) cancelAnimationFrame(tiltFrame);
+            tiltFrame = null;
+            dedicatedArtContainer.style.transform = '';
+        });
+    }
 }
 
 if (coverOverlay) {
@@ -1712,7 +2007,6 @@ if (coverOverlay) {
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeCoverExpand();
 });
-*/
 
 /* ========== EQUALIZER (Simple 3-band) ========== */
 

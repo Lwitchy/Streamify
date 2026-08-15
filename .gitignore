@@ -1,5 +1,9 @@
 # --- PROJECT SPECIFIC SETTINGS ---
 
+# 0. Local runtime config (contains machine-specific absolute paths).
+#    Seeded automatically from Server/config.example.json on first run.
+Server/config.json
+
 # 1. SSL Security
 SSL/*
 !SSL/.gitkeep
@@ -7,9 +11,6 @@ SSL/*
 # 2. Database Data
 Database/Dev/Music/*
 !Database/Dev/Music/.gitkeep
-
-Database/Dev/Social/*
-!Database/Dev/Social/.gitkeep
 
 Database/Dev/Users/*
 !Database/Dev/Users/.gitkeep
@@ -26,9 +27,6 @@ Static/covers/*
 
 Static/banners/*
 !Static/banners/.gitkeep
-
-Static/uploads/feed/*
-!Static/uploads/feed/.gitkeep
 
 # 4. Music Library 
 MusicLibrary/*
@@ -57,9 +55,18 @@ __pycache__/
 # C extensions
 *.so
 
+# --- DESKTOP APP (Electron) ---
+# Build output and native rebuild artifacts
+dist-electron/
+release/
+*.nsis.7z
+
+# NOTE: `build/` is deliberately NOT ignored. It holds the application icon that
+# electron-builder needs at package time. The Python-era `build/` rule that used
+# to live in the section below was removed for this reason.
+
 # Distribution / packaging
 .Python
-build/
 develop-eggs/
 dist/
 downloads/

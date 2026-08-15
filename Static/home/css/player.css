@@ -1,4 +1,4 @@
-/* === MUSIC PLAYER - Fixed bottom player bar === */
+﻿/* === MUSIC PLAYER - Fixed bottom player bar === */
 
 /* Main player container - always visible at bottom */
 .music-player {
@@ -547,6 +547,8 @@
 }
 
 .dedicated-player-backdrop {
+    background-color: var(--bg-color);
+    background-image: var(--player-backdrop-image, none);
     position: absolute;
     top: 50%;
     left: 50%;
@@ -616,13 +618,65 @@
     position: relative;
     z-index: 2;
     background: rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease;
+}
+
+/* The 3D tilt + directional shine is a pointer-driven desktop effect.
+   It is gated behind (hover: hover) because on touch screens iOS latches
+   :hover after a tap and never releases it, leaving the artwork permanently
+   scaled up with a white ring and a gloss overlay stuck across it.
+   The matching mousemove handler in player.js is gated the same way. */
+@media (hover: hover) and (pointer: fine) {
+    .dedicated-art-container:hover {
+        transition: transform 0.1s ease-out, box-shadow 0.4s ease;
+        box-shadow:
+            -10px 20px 40px rgba(0, 0, 0, 0.6),
+            0 0 0 2px rgba(255, 255, 255, 0.2),
+            inset 0 0 20px rgba(255, 255, 255, 0.3);
+    }
+
+    .dedicated-art-container::after {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        border-radius: inherit;
+        /* Use CSS variables for dynamic linear tracking */
+        background: linear-gradient(
+            var(--shine-deg, 135deg),
+            rgba(255, 255, 255, 0.15) 0%,
+            transparent 50%
+        );
+        opacity: 0;
+        transition: opacity 0.4s ease;
+        pointer-events: none;
+    }
+
+    .dedicated-art-container:hover::after {
+        opacity: 1;
+    }
+
+    #dedicated-player-img {
+        transition: transform 0.4s ease;
+    }
+
+    .dedicated-art-container:hover #dedicated-player-img {
+        transform: scale(1.05);
+    }
 }
 
 #dedicated-player-img {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    transition: transform 0.3s ease;
+}
+
+/* Touch devices: no tilt, no shine, no scale; just the artwork. */
+@media (hover: none) {
+    .dedicated-art-container {
+        transition: none;
+        transform: none !important;
+    }
 }
 
 .dedicated-right-panel {
@@ -844,7 +898,7 @@
     color: rgba(255, 255, 255, 0.8);
 }
 
-/* On touch screens :hover gets stuck after tap — reset it */
+/* On touch screens :hover gets stuck after tap; reset it. */
 @media (hover: none) {
     .lyric-line:hover {
         color: rgba(255, 255, 255, 0.4);
@@ -929,6 +983,19 @@
     transform: scale(1);
 }
 
+/* iOS reports volume as read-only, so the slider can never do anything there.
+   config.js feature-tests this and sets .no-volume-control on <html>.
+   The bottom row keeps a minimum height because the lyrics button inside it is
+   absolutely positioned and would otherwise have no row to sit in. */
+html.no-volume-control .dedicated-volume-wrapper,
+html.no-volume-control .volume-wrapper {
+    display: none !important;
+}
+
+html.no-volume-control .dedicated-bottom-actions {
+    min-height: 44px;
+}
+
 .dedicated-volume-wrapper {
     display: flex;
     align-items: center;
@@ -956,11 +1023,24 @@
     height: 4px;
 }
 
-/* Hide Bottom Player when Player Section is shown */
+/* Fallback color when Safari cannot composite player pixels behind its chrome. */
+body.player-section-active {
+    background-color: var(--player-tint, var(--bg-color));
+}
+
+/* display:none matters on Safari 26: transformed fixed elements can still be
+   sampled and extended as a solid color behind the browser toolbar. */
 body.player-section-active .music-player {
-    transform: translateY(100%);
-    opacity: 0;
-    pointer-events: none;
+    display: none;
+}
+
+/* Hide Sidebar on Desktop when Player Section is shown */
+@media (min-width: 901px) {
+    body.player-section-active .sidebar {
+        margin-left: calc(var(--sidebar-width) * -1);
+        opacity: 0;
+        pointer-events: none;
+    }
 }
 
 /* Responsive adjustments */
@@ -980,6 +1060,11 @@ body.player-section-active .music-player {
     .player-section {
         border-radius: 0;
         box-shadow: none;
+        /* The desktop rule centres its child vertically. On a phone the child
+           is shorter than the viewport, so centring leaves black bars above
+           and below it. Stretch instead so the player fills the screen. */
+        align-items: stretch;
+        justify-content: flex-start;
     }
 
     .dedicated-player-view {
@@ -987,27 +1072,46 @@ body.player-section-active .music-player {
         overflow: hidden;
         /* nothing scrolls except the lyrics-scroll-area */
         width: 100%;
-        height: 100%;
+        /* `height: 100%` resolves unreliably against a flex parent with no
+           definite height (notably in Safari), which collapsed this box and
+           produced the black bars. Growing as a flex item is deterministic. */
+        flex: 1 1 auto;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         position: relative;
     }
 
-    /* Make backdrop full-screen on mobile/tablet — use dvh so it covers dynamic chrome on iOS */
+    /* Keep the fixed viewport layer transparent. Safari 26 extends the
+       background color of fixed edge elements behind its toolbar as a solid
+       strip, so the artwork is painted by the absolute pseudo-element instead. */
     .dedicated-player-backdrop {
         position: fixed;
         top: 0;
         left: 0;
         width: 100vw;
         height: 100vh;
-        height: 100dvh;
+        height: 100lvh;
         transform: none;
         border-radius: 0;
         z-index: -2;
-        /* Even further back */
-        filter: blur(100px) brightness(0.4) saturate(1.8);
+        background-color: transparent;
+        background-image: none;
+        filter: none;
+        pointer-events: none;
+    }
+
+    .dedicated-player-backdrop::before {
+        content: '';
+        /* Fixed positioning lets the paint layer escape the player's
+           overflow-clipped layout box and cover the full obscured inset. */
+        position: fixed;
+        inset: -120px -120px -200px;
+        background-color: var(--player-tint, var(--bg-color));
+        background-image: var(--player-backdrop-image, none);
         background-size: cover;
         background-position: center;
+        filter: blur(100px) brightness(0.4) saturate(1.8);
         pointer-events: none;
     }
 
@@ -1017,12 +1121,27 @@ body.player-section-active .music-player {
         flex-direction: column;
         gap: 30px;
         padding: 24px;
+        /* Keep the controls clear of the iOS home indicator and Safari's
+           bottom toolbar. Falls back to plain 24px where env() is unsupported. */
+        padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
         box-sizing: border-box;
         align-self: stretch;
         margin: 0 auto;
         justify-content: center;
         position: relative;
         z-index: 1;
+        width: 100%;
+        min-height: 0;
+    }
+
+    /* The desktop layout pins this to a fixed 380px so the box does not resize
+       when switching to the lyrics view. In the mobile single-column layout
+       that fixed height is taller than the actual content, and the leftover
+       space rendered as a black bar under the controls. */
+    .dedicated-right-panel {
+        height: auto;
+        flex: 0 0 auto;
+        justify-content: flex-start;
     }
 
     /* Force extreme visibility for controls on mobile to prevent graying out */
@@ -1049,29 +1168,32 @@ body.player-section-active .music-player {
         color: #000000 !important;
     }
 
-    /* Staggered entry animations for mobile/tablet only */
+    /* Staggered entry animations for mobile/tablet only.
+       Kept short deliberately: at the original 0.8s duration plus delays up
+       to 0.25s the controls took over a second to finish appearing, which
+       felt like the player was loading slowly rather than animating. */
     .dedicated-art-container {
-        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation: dedicatedViewFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
 
     .dedicated-info-container {
-        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-        animation-delay: 0.1s;
+        animation: dedicatedViewFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: 0.03s;
     }
 
     .dedicated-progress-container {
-        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-        animation-delay: 0.15s;
+        animation: dedicatedViewFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: 0.06s;
     }
 
     .dedicated-controls {
-        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-        animation-delay: 0.2s;
+        animation: dedicatedViewFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: 0.09s;
     }
 
     .dedicated-bottom-actions {
-        animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-        animation-delay: 0.25s;
+        animation: dedicatedViewFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: 0.12s;
     }
 
     .lyric-line {
@@ -1158,7 +1280,7 @@ body.player-section-active .music-player {
         animation-delay: 1s;
     }
 
-    /* Lyrics active: desktop-style flex chain — only the scroll area scrolls */
+    /* Lyrics active: desktop-style flex chain; only the scroll area scrolls. */
     .dedicated-player-content.lyrics-active-view {
         flex: 1;
         min-height: 0;
@@ -1177,16 +1299,6 @@ body.player-section-active .music-player {
     /* Backdrop stays visible even when art wrapper is collapsed */
     .dedicated-player-content.lyrics-active-view .dedicated-player-backdrop {
         visibility: visible;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        height: 100dvh;
-        transform: none;
-        background-size: cover;
-        border-radius: 0;
-        filter: blur(80px) brightness(0.4) saturate(1.5);
     }
 
     .dedicated-player-content.lyrics-active-view .dedicated-right-panel {
@@ -1212,7 +1324,7 @@ body.player-section-active .music-player {
         padding-top: 5px;
     }
 
-    /* THE only element that scrolls — same as desktop */
+    /* The only element that scrolls, matching desktop. */
     .dedicated-player-content.lyrics-active-view .lyrics-scroll-area {
         flex: 1;
         min-height: 0;
@@ -1288,6 +1400,7 @@ body.player-section-active .music-player {
 
     .dedicated-player-content {
         padding: 16px;
+        padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
         gap: 20px;
         justify-content: center;
     }
@@ -1297,7 +1410,13 @@ body.player-section-active .music-player {
         width: calc(100% - 32px);
         margin-left: auto;
         margin-right: auto;
-        margin-top: max(env(safe-area-inset-top, 0px), 60px);
+        /* In Safari's normal browsing mode safe-area-inset-top is 0, so the
+           old `max(inset, 60px)` always resolved to a hard 60px gap under the
+           status bar. A 12px floor keeps some breathing room while still
+           honouring the real inset when installed as a standalone PWA, where
+           the inset is ~47-59px on notched devices. */
+        margin-top: max(env(safe-area-inset-top, 0px), 12px);
+        flex-shrink: 0;
     }
 
 
@@ -1305,7 +1424,7 @@ body.player-section-active .music-player {
     .dedicated-player-content.lyrics-active-view {
         justify-content: flex-start;
         height: auto;
-        min-height: 100%;
+        min-height: 0;
         gap: 15px;
     }
 
@@ -1357,7 +1476,7 @@ body.player-section-active .music-player {
     }
 }
 
-/* Player album art — clickable */
+/* Player album art is clickable. */
 .now-playing-img {
     cursor: pointer;
     transition: transform 0.18s ease, box-shadow 0.18s ease;

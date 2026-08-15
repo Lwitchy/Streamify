@@ -11,6 +11,7 @@
     display: flex;
     flex-direction: column;
     z-index: 10;
+    transition: var(--transition);
 }
 
 .morph-logo {
@@ -186,9 +187,12 @@
     margin: 20px 0;
 }
 
+html {
+    height: 100%;
+}
+
 html,
 body {
-    height: 100%;
     background-color: var(--bg-color);
     color: var(--text-primary);
     overflow-x: hidden;
@@ -223,6 +227,24 @@ body {
     -webkit-backdrop-filter: blur(40px);
     z-index: 5;
     border-bottom: 1px solid var(--glass-border);
+}
+
+/* Top bar dynamic logo when sidebar is hidden */
+.top-bar-logo {
+    width: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin-right: 0;
+    display: flex;
+    align-items: center;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+body.player-section-active .top-bar-logo {
+    width: 140px;
+    opacity: 1;
+    margin-right: 24px;
 }
 
 /* Navigation arrow buttons (back/forward) */

@@ -103,6 +103,7 @@ const Auth = {
         if (attempt && attempt.blockedUntil && attempt.blockedUntil > Date.now()) {
             return true;
         }
+        if (attempt && attempt.blockedUntil) delete loginAttempts[ip];
         return false;
     },
 
@@ -126,14 +127,9 @@ const Auth = {
     },
 
     // Password Checks
-    hashPassword: (password) => {
-        const salt = bcrypt.genSaltSync(10);
-        return bcrypt.hashSync(password, salt);
-    },
+    hashPassword: (password) => bcrypt.hash(password, 10),
 
-    comparePassword: (password, hash) => {
-        return bcrypt.compareSync(password, hash);
-    }
+    comparePassword: (password, hash) => bcrypt.compare(password, hash)
 };
 
 module.exports = Auth;
