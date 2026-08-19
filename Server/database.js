@@ -113,7 +113,7 @@ const allQuery = (db, query, params = []) => {
 
 const SONG_AVAILABILITIES = new Set(['available', 'missing', 'removed']);
 const METADATA_STATUSES = new Set(['unreviewed', 'identified', 'review', 'unknown', 'conflict', 'error']);
-const ENRICHMENT_METADATA_FIELDS = new Set(['songname', 'artist', 'album', 'genre', 'year', 'cover_path']);
+const ENRICHMENT_METADATA_FIELDS = new Set(['songname', 'artist', 'album', 'genre', 'year', 'cover_path', 'cover_source_url']);
 
 const metadataValueToJson = value => JSON.stringify(value === undefined ? null : value);
 
@@ -753,23 +753,39 @@ const HandleDatabase = {
 
     recalculateAllStorageUsed: async () => {
         const users = await allQuery(usersDb, `SELECT username FROM users`);
-        const songs = await allQuery(musicDb, `SELECT filepath, uploaded_by FROM songs`);
-        
-        for (const user of users) {
-            let totalBytes = 0;
-            const userSongs = songs.filter(s => s.uploaded_by === user.username);
-            for (const song of userSongs) {
-                const fullPath = path.join(RT.DATA_ROOT, song.filepath);
-                try {
-                    if (fs.existsSync(fullPath)) {
-                        const stats = fs.statSync(fullPath);
-                        totalBytes += stats.size;
-                    }
-                } catch (e) {
-                    console.error(`[DB] Error calculating size for ${fullPath}:`, e);
+        const usageRows = await allQuery(musicDb, `
+            SELECT uploaded_by,
+                   COALESCE(SUM(CASE WHEN file_size_bytes > 0 THEN file_size_bytes ELSE 0 END), 0) AS total_bytes
+            FROM songs
+            WHERE COALESCE(availability, 'available') = 'available'
+            GROUP BY uploaded_by
+        `);
+        const totals = new Map(usageRows.map(row => [row.uploaded_by, Number(row.total_bytes) || 0]));
+
+        // Legacy rows may predate persisted file sizes. Only those exceptional
+        // rows need filesystem I/O; normal startup uses the indexed byte count.
+        const legacyRows = await allQuery(musicDb, `
+            SELECT filepath, uploaded_by
+            FROM songs
+            WHERE COALESCE(availability, 'available') = 'available'
+              AND COALESCE(file_size_bytes, 0) <= 0
+        `);
+        for (const song of legacyRows) {
+            const fullPath = path.isAbsolute(song.filepath)
+                ? song.filepath
+                : path.join(RT.DATA_ROOT, song.filepath);
+            try {
+                if (fs.existsSync(fullPath)) {
+                    const stats = fs.statSync(fullPath);
+                    totals.set(song.uploaded_by, (totals.get(song.uploaded_by) || 0) + stats.size);
                 }
+            } catch (e) {
+                console.error(`[DB] Error calculating size for ${fullPath}:`, e);
             }
-            await runQuery(usersDb, `UPDATE users SET storage_used = ? WHERE username = ?`, [totalBytes, user.username]);
+        }
+
+        for (const user of users) {
+            await runQuery(usersDb, `UPDATE users SET storage_used = ? WHERE username = ?`, [totals.get(user.username) || 0, user.username]);
         }
         console.log("[DB] Recalculated storage_used for all users.");
     },
@@ -973,6 +989,7 @@ const HandleDatabase = {
                 is_favorite INTEGER DEFAULT 0,
                 play_count INTEGER DEFAULT 0,
                 cover_path TEXT,
+                cover_source_url TEXT,
                 youtube_id TEXT,
                 file_hash TEXT,
                 bitrate INTEGER DEFAULT 128,
@@ -1011,7 +1028,13 @@ const HandleDatabase = {
             ['metadata_revision', 'INTEGER DEFAULT 0'],
             ['metadata_updated_at', 'TEXT'],
             ['metadata_pipeline_version', 'TEXT'],
-            ['metadata_source', 'TEXT']
+            ['metadata_source', 'TEXT'],
+            // Public HTTPS URL the cover art came from (Apple CDN / Cover Art
+            // Archive). cover_path is a LAN-only path that no external service
+            // can reach, so anything that needs a publicly fetchable cover -
+            // Discord Rich Presence today - reads this instead and avoids a
+            // fresh provider lookup. NULL means "unknown", not "no cover".
+            ['cover_source_url', 'TEXT']
         ];
         for (const [column, definition] of migrations) {
             if (!columnNames.includes(column)) {
@@ -1394,7 +1417,99 @@ const HandleDatabase = {
         if (fields.length === 0) return { changes: 0 };
         const values = fields.map(field => normalizedUpdates[field]);
         const setClause = fields.map(f => `${f} = ?`).join(', ');
-        return await runQuery(musicDb, `UPDATE songs SET ${setClause} WHERE id = ?`, [...values, id]);
+        const result = await runQuery(musicDb, `UPDATE songs SET ${setClause} WHERE id = ?`, [...values, id]);
+        if (fields.some(field => ['songname', 'artist', 'duration', 'duration_ms', 'cover_path', 'cover_source_url'].includes(field))) {
+            await runQuery(musicDb, 'DELETE FROM discord_artwork_cache WHERE song_id = ?', [id]);
+        }
+        return result;
+    },
+
+    /* --- Public cover source URL -------------------------------------------
+     * songs.cover_path points at /Static/covers/..., which only resolves on the
+     * LAN. Discord's media proxy fetches artwork server-side, so it needs a
+     * publicly reachable HTTPS URL instead.
+     *
+     * Smart Auto already resolves exactly such a URL (Apple CDN or the Cover Art
+     * Archive) before it downloads the image, so we record it and never have to
+     * ask a provider again. Callers must pass an already-validated URL - the
+     * trust check lives in AIMetadata.isTrustedCoverUrl and stays there so there
+     * is a single allowlist. Pass null to clear a stale value. */
+    setSongCoverSourceUrl: async (id, url) => {
+        const value = typeof url === 'string' && url.trim() ? url.trim().slice(0, 2048) : null;
+        const result = await runQuery(musicDb, 'UPDATE songs SET cover_source_url = ? WHERE id = ?', [value, id]);
+        await runQuery(musicDb, 'DELETE FROM discord_artwork_cache WHERE song_id = ?', [id]);
+        return result;
+    },
+
+    getSongCoverSourceUrl: async (id) => {
+        const row = await getQuery(musicDb, 'SELECT cover_source_url FROM songs WHERE id = ?', [id]);
+        return row && row.cover_source_url ? row.cover_source_url : null;
+    },
+
+    createDiscordArtworkCacheTable: async () => {
+        await runQuery(musicDb, `
+            CREATE TABLE IF NOT EXISTS discord_artwork_cache (
+                song_id INTEGER PRIMARY KEY,
+                status TEXT NOT NULL,
+                lookup_mode TEXT NOT NULL,
+                source TEXT,
+                artwork_url TEXT,
+                video_id TEXT,
+                matched_title TEXT,
+                matched_duration INTEGER,
+                confidence REAL,
+                reason TEXT,
+                checked_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+            )
+        `);
+        await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_discord_artwork_expiry ON discord_artwork_cache(expires_at)');
+    },
+
+    getDiscordArtworkCache: async songId => {
+        return await getQuery(musicDb, 'SELECT * FROM discord_artwork_cache WHERE song_id = ?', [songId]);
+    },
+
+    setDiscordArtworkCache: async (songId, entry = {}) => {
+        const checkedAt = entry.checkedAt || new Date().toISOString();
+        const expiresAt = entry.expiresAt || checkedAt;
+        await runQuery(musicDb, `
+            INSERT INTO discord_artwork_cache (
+                song_id, status, lookup_mode, source, artwork_url, video_id, matched_title,
+                matched_duration, confidence, reason, checked_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(song_id) DO UPDATE SET
+                status = excluded.status,
+                lookup_mode = excluded.lookup_mode,
+                source = excluded.source,
+                artwork_url = excluded.artwork_url,
+                video_id = excluded.video_id,
+                matched_title = excluded.matched_title,
+                matched_duration = excluded.matched_duration,
+                confidence = excluded.confidence,
+                reason = excluded.reason,
+                checked_at = excluded.checked_at,
+                expires_at = excluded.expires_at
+        `, [
+            songId,
+            entry.status || 'miss',
+            entry.lookupMode || 'stored_only',
+            entry.source || null,
+            entry.artworkUrl || null,
+            entry.videoId || null,
+            entry.matchedTitle || null,
+            Number.isFinite(entry.matchedDuration) ? Math.round(entry.matchedDuration) : null,
+            Number.isFinite(entry.confidence) ? entry.confidence : null,
+            entry.reason || null,
+            checkedAt,
+            expiresAt
+        ]);
+        return await getQuery(musicDb, 'SELECT * FROM discord_artwork_cache WHERE song_id = ?', [songId]);
+    },
+
+    clearDiscordArtworkCache: async songId => {
+        return await runQuery(musicDb, 'DELETE FROM discord_artwork_cache WHERE song_id = ?', [songId]);
     },
 
     updateSongScanEvidence: async (id, updates, { evidenceChanged = false } = {}) => {
@@ -2587,14 +2702,28 @@ const HandleDatabase = {
                         const field = normalizeMetadataField(rawField);
                         if (ENRICHMENT_METADATA_FIELDS.has(field)) metadataUpdates[field] = value;
                     }
-                    const setters = Object.keys(metadataUpdates).map(field => `${field} = ?`);
-                    const values = Object.values(metadataUpdates);
+                    const lockedRows = await allQuery(musicDb, `
+                        SELECT DISTINCT field_name FROM metadata_provenance
+                        WHERE song_id = ? AND is_locked = 1
+                    `, [item.song_id]);
+                    const locked = new Set(lockedRows.map(row => normalizeMetadataField(row.field_name)));
                     const normalizedIdentifiers = normalizeExternalIdentifiers(identifiers);
                     const cleanRecordingUid = await resolveCanonicalRecordingUid(
                         item.song_id,
                         normalizedIdentifiers,
                         candidate
                     );
+                    const lockedFields = Object.keys(metadataUpdates).filter(field => locked.has(normalizeMetadataField(field)));
+                    if (locked.has('recording_uid') && song.recording_uid && cleanRecordingUid !== song.recording_uid) {
+                        lockedFields.push('recording_uid');
+                    }
+                    if (lockedFields.length) {
+                        await runQuery(musicDb, 'ROLLBACK');
+                        inTransaction = false;
+                        return { decided: false, lockedFields };
+                    }
+                    const setters = Object.keys(metadataUpdates).map(field => `${field} = ?`);
+                    const values = Object.values(metadataUpdates);
                     setters.push('recording_uid = ?');
                     values.push(cleanRecordingUid);
                     setters.push(
@@ -2796,7 +2925,7 @@ const HandleDatabase = {
             await runQuery(musicDb, `
                 UPDATE enrichment_job_items
                 SET status = 'cancelled', completed_at = ?, error = NULL
-                WHERE job_id = ? AND status IN ('queued', 'processing', 'review', 'unidentified', 'error')
+                WHERE job_id = ? AND status IN ('queued', 'processing')
             `, [now, job.id]);
             await runQuery(musicDb, 'COMMIT');
             inTransaction = false;
@@ -3773,8 +3902,342 @@ const HandleDatabase = {
         );
     },
 
+    updateMetadataSystemConfig: serializeTransaction(usersDb, async ({
+        mode,
+        acoustidKey,
+        updateKey = false,
+        requireAcoustidKey = false,
+        environmentKeyConfigured = false
+    }) => {
+        let inTransaction = false;
+        try {
+            await runQuery(usersDb, 'BEGIN IMMEDIATE');
+            inTransaction = true;
+            if (updateKey) {
+                await runQuery(usersDb, `
+                    INSERT INTO system_config (key, value) VALUES ('acoustid_client_key', ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                `, [JSON.stringify(acoustidKey || '')]);
+            }
+            if (requireAcoustidKey && !environmentKeyConfigured) {
+                const storedRow = await getQuery(usersDb, "SELECT value FROM system_config WHERE key = 'acoustid_client_key'");
+                const storedKey = storedRow ? parseMetadataValue(storedRow.value) : '';
+                if (typeof storedKey !== 'string' || storedKey.length === 0) {
+                    await runQuery(usersDb, 'ROLLBACK');
+                    inTransaction = false;
+                    return { updated: false, missingAcoustidKey: true };
+                }
+            }
+            await runQuery(usersDb, `
+                INSERT INTO system_config (key, value) VALUES ('metadata_lookup_mode', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            `, [JSON.stringify(mode)]);
+            await runQuery(usersDb, 'COMMIT');
+            inTransaction = false;
+            return { updated: true };
+        } catch (error) {
+            if (inTransaction) {
+                try { await runQuery(usersDb, 'ROLLBACK'); } catch { /* preserve original error */ }
+            }
+            throw error;
+        }
+    }),
+
     deleteSystemConfig: async (key) => {
         return await runQuery(usersDb, 'DELETE FROM system_config WHERE key = ?', [key]);
+    },
+
+    /* =====================================================================
+     * Download queue
+     * ---------------------------------------------------------------------
+     * Acquiring music from Soulseek is slow, network-bound and easy to
+     * interrupt (a Spotify album is 15 sequential downloads). The queue is
+     * therefore persisted rather than held in memory, so a restart mid-import
+     * resumes instead of silently losing the remaining tracks.
+     * ===================================================================== */
+
+    createDownloadQueueTable: async () => {
+        await runQuery(musicDb, `
+            CREATE TABLE IF NOT EXISTS download_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                queue_uid TEXT UNIQUE NOT NULL,
+                batch_uid TEXT,
+                batch_label TEXT,
+                status TEXT NOT NULL DEFAULT 'queued',
+                stage TEXT,
+                requested_source TEXT NOT NULL DEFAULT 'auto',
+                resolved_source TEXT,
+                title TEXT NOT NULL,
+                artist TEXT,
+                album TEXT,
+                duration_seconds INTEGER,
+                search_query TEXT,
+                source_url TEXT,
+                source_payload TEXT,
+                artwork_url TEXT,
+                dedupe_key TEXT,
+                progress REAL NOT NULL DEFAULT 0,
+                eta_seconds INTEGER,
+                transferred_bytes INTEGER NOT NULL DEFAULT 0,
+                total_bytes INTEGER NOT NULL DEFAULT 0,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                file_path TEXT,
+                song_id INTEGER,
+                error TEXT,
+                requested_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT
+            )
+        `);
+
+        await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_download_queue_status ON download_queue(status, id)');
+        await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_download_queue_batch ON download_queue(batch_uid, id)');
+        await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_download_queue_created ON download_queue(created_at)');
+        // Partial uniqueness only over live rows: the same track may legitimately
+        // be downloaded again later, but must never sit in the queue twice.
+        await runQuery(musicDb, `
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_download_queue_active_dedupe
+            ON download_queue(dedupe_key)
+            WHERE dedupe_key IS NOT NULL AND status IN ('queued', 'running')
+        `);
+
+        console.log("[DB] Talking: Creating download_queue table is done!");
+    },
+
+    enqueueDownloads: serializeTransaction(musicDb, async (items, requestedBy) => {
+        if (!Array.isArray(items) || items.length === 0) return { accepted: [], skipped: [] };
+
+        const createdAt = new Date().toISOString();
+        const accepted = [];
+        const skipped = [];
+        let inTransaction = false;
+
+        try {
+            await runQuery(musicDb, 'BEGIN IMMEDIATE');
+            inTransaction = true;
+
+            for (const item of items) {
+                // A duplicate is not an error: bulk imports overlap constantly.
+                // Report it back so the UI can say "already queued" per track.
+                if (item.dedupeKey) {
+                    const clash = await getQuery(musicDb, `
+                        SELECT id FROM download_queue
+                        WHERE dedupe_key = ? AND status IN ('queued', 'running')
+                    `, [item.dedupeKey]);
+                    if (clash) {
+                        skipped.push({ title: item.title, reason: 'already_queued' });
+                        continue;
+                    }
+                }
+
+                const queueUid = crypto.randomUUID();
+                const result = await runQuery(musicDb, `
+                    INSERT INTO download_queue (
+                        queue_uid, batch_uid, batch_label, status, stage, requested_source,
+                        title, artist, album, duration_seconds, search_query, source_url,
+                        source_payload, artwork_url, dedupe_key, requested_by, created_at
+                    ) VALUES (?, ?, ?, 'queued', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    queueUid,
+                    item.batchUid || null,
+                    item.batchLabel || null,
+                    item.requestedSource || 'auto',
+                    item.title,
+                    item.artist || null,
+                    item.album || null,
+                    Number.isFinite(item.durationSeconds) ? Math.round(item.durationSeconds) : null,
+                    item.searchQuery || null,
+                    item.sourceUrl || null,
+                    item.sourcePayload ? JSON.stringify(item.sourcePayload) : null,
+                    item.artworkUrl || null,
+                    item.dedupeKey || null,
+                    requestedBy,
+                    createdAt
+                ]);
+
+                accepted.push(await getQuery(musicDb, 'SELECT * FROM download_queue WHERE id = ?', [result.lastID]));
+            }
+
+            await runQuery(musicDb, 'COMMIT');
+            inTransaction = false;
+            return { accepted, skipped };
+        } catch (error) {
+            if (inTransaction) {
+                try { await runQuery(musicDb, 'ROLLBACK'); } catch { /* preserve original error */ }
+            }
+            throw error;
+        }
+    }),
+
+    getDownloadQueue: async ({ limit = 200 } = {}) => {
+        const safeLimit = Math.min(Math.max(Number(limit) || 200, 1), 500);
+        return await allQuery(musicDb, `
+            SELECT * FROM download_queue
+            ORDER BY
+                CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,
+                CASE WHEN status IN ('running', 'queued') THEN id ELSE -id END
+            LIMIT ?
+        `, [safeLimit]);
+    },
+
+    getDownloadItem: async (identifier) => {
+        const isNumeric = /^\d+$/.test(String(identifier));
+        return await getQuery(
+            musicDb,
+            isNumeric ? 'SELECT * FROM download_queue WHERE id = ?' : 'SELECT * FROM download_queue WHERE queue_uid = ?',
+            [isNumeric ? Number(identifier) : String(identifier)]
+        );
+    },
+
+    /** Public thumbnail retained by an explicit YouTube download made before
+     * cover_source_url was populated correctly. Callers still validate it. */
+    getCompletedYoutubeArtworkForSong: async (songId) => {
+        const row = await getQuery(musicDb, `
+            SELECT artwork_url FROM download_queue
+            WHERE song_id = ? AND status = 'completed'
+              AND requested_source = 'youtube' AND resolved_source = 'youtube'
+              AND artwork_url IS NOT NULL
+            ORDER BY id DESC LIMIT 1
+        `, [songId]);
+        return row && row.artwork_url ? row.artwork_url : null;
+    },
+
+    /**
+     * Atomically moves the oldest queued row to 'running'.
+     * The UPDATE ... WHERE status = 'queued' guard is what makes this safe if a
+     * second worker is ever introduced.
+     */
+    claimNextDownload: serializeTransaction(musicDb, async () => {
+        const next = await getQuery(musicDb, `
+            SELECT * FROM download_queue WHERE status = 'queued' ORDER BY id ASC LIMIT 1
+        `);
+        if (!next) return null;
+
+        const claimed = await runQuery(musicDb, `
+            UPDATE download_queue
+            SET status = 'running', stage = 'preparing', started_at = ?, attempts = attempts + 1,
+                error = NULL, progress = 0, eta_seconds = NULL, transferred_bytes = 0
+            WHERE id = ? AND status = 'queued'
+        `, [new Date().toISOString(), next.id]);
+
+        if (!claimed.changes) return null;
+        return await getQuery(musicDb, 'SELECT * FROM download_queue WHERE id = ?', [next.id]);
+    }),
+
+    updateDownloadItem: async (id, updates = {}) => {
+        const allowed = new Set([
+            'status', 'stage', 'resolved_source', 'progress', 'eta_seconds',
+            'transferred_bytes', 'total_bytes', 'file_path', 'song_id', 'error',
+            'title', 'artist', 'album', 'duration_seconds', 'artwork_url',
+            'source_url', 'source_payload', 'completed_at', 'dedupe_key'
+        ]);
+        const fields = Object.keys(updates).filter(field => allowed.has(field));
+        if (fields.length === 0) return null;
+
+        await runQuery(
+            musicDb,
+            `UPDATE download_queue SET ${fields.map(field => `${field} = ?`).join(', ')} WHERE id = ?`,
+            [...fields.map(field => updates[field]), id]
+        );
+        return await getQuery(musicDb, 'SELECT * FROM download_queue WHERE id = ?', [id]);
+    },
+
+    /**
+     * Only a row still marked 'running' may be finished. Without that guard a
+     * cancel that lands mid-transfer would be silently overwritten by the
+     * worker's completion write, resurrecting a download the user stopped.
+     */
+    finishDownloadItem: async (id, { status, error = null, filePath = null, songId = null, resolvedSource = null }) => {
+        await runQuery(musicDb, `
+            UPDATE download_queue
+            SET status = ?, stage = NULL, error = ?, file_path = COALESCE(?, file_path),
+                song_id = COALESCE(?, song_id), resolved_source = COALESCE(?, resolved_source),
+                progress = CASE WHEN ? = 'completed' THEN 1 ELSE progress END,
+                eta_seconds = NULL, completed_at = ?
+            WHERE id = ? AND status = 'running'
+        `, [status, error, filePath, songId, resolvedSource, status, new Date().toISOString(), id]);
+        return await getQuery(musicDb, 'SELECT * FROM download_queue WHERE id = ?', [id]);
+    },
+
+    cancelDownloadItem: async (id) => {
+        const result = await runQuery(musicDb, `
+            UPDATE download_queue
+            SET status = 'cancelled', stage = NULL, eta_seconds = NULL, completed_at = ?
+            WHERE id = ? AND status IN ('queued', 'running')
+        `, [new Date().toISOString(), id]);
+        return result.changes > 0;
+    },
+
+    cancelDownloadBatch: async (batchUid) => {
+        const result = await runQuery(musicDb, `
+            UPDATE download_queue
+            SET status = 'cancelled', stage = NULL, eta_seconds = NULL, completed_at = ?
+            WHERE batch_uid = ? AND status IN ('queued', 'running')
+        `, [new Date().toISOString(), batchUid]);
+        return result.changes;
+    },
+
+    cancelAllPendingDownloads: async () => {
+        const result = await runQuery(musicDb, `
+            UPDATE download_queue
+            SET status = 'cancelled', stage = NULL, eta_seconds = NULL, completed_at = ?
+            WHERE status IN ('queued', 'running')
+        `, [new Date().toISOString()]);
+        return result.changes;
+    },
+
+    retryDownloadItem: async (id) => {
+        const result = await runQuery(musicDb, `
+            UPDATE download_queue
+            SET status = 'queued', stage = 'pending', error = NULL, progress = 0,
+                eta_seconds = NULL, transferred_bytes = 0, started_at = NULL, completed_at = NULL
+            WHERE id = ? AND status IN ('failed', 'cancelled')
+              AND requested_source != 'youtube'
+        `, [id]);
+        if (!result.changes) return null;
+        return await getQuery(musicDb, 'SELECT * FROM download_queue WHERE id = ?', [id]);
+    },
+
+    clearFinishedDownloads: async () => {
+        const result = await runQuery(
+            musicDb,
+            "DELETE FROM download_queue WHERE status IN ('completed', 'failed', 'cancelled')"
+        );
+        return result.changes;
+    },
+
+    /**
+     * Boot recovery. A row left in 'running' means the process died mid-transfer,
+     * so its temp file is gone and it must start over rather than hang forever.
+     */
+    recoverDownloadQueue: async () => {
+        const result = await runQuery(musicDb, `
+            UPDATE download_queue
+            SET status = 'queued', stage = 'pending', progress = 0, eta_seconds = NULL,
+                transferred_bytes = 0, started_at = NULL
+            WHERE status = 'running'
+        `);
+        return result.changes;
+    },
+
+    retireYoutubeDownloads: async () => {
+        const result = await runQuery(musicDb, `
+            UPDATE download_queue
+            SET status = 'failed', stage = NULL, eta_seconds = NULL,
+                error = 'YouTube downloads are no longer supported.', completed_at = ?
+            WHERE status IN ('queued', 'running')
+              AND (requested_source = 'youtube' OR resolved_source = 'youtube')
+        `, [new Date().toISOString()]);
+        return result.changes;
+    },
+
+    countPendingDownloads: async () => {
+        const row = await getQuery(
+            musicDb,
+            "SELECT COUNT(*) AS total FROM download_queue WHERE status IN ('queued', 'running')"
+        );
+        return row ? Number(row.total) || 0 : 0;
     },
 
     allQuery: async (dbName, query, params = []) => {

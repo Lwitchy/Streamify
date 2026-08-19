@@ -128,7 +128,7 @@
     color: #fff;
     background: rgba(255, 255, 255, 0.1);
     transform: scale(1.1);
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+    box-shadow: none;
 }
 
 .control-btn:active {
@@ -281,13 +281,46 @@
     background: #fff;
     border-radius: 50%;
     cursor: pointer;
-    transition: all 0.2s;
+    transition:
+        transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+        width 420ms cubic-bezier(0.16, 1, 0.3, 1),
+        box-shadow 0.2s ease;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
 .volume-slider::-webkit-slider-thumb:hover {
     transform: scale(1.2);
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+/* Slight springy growth while the slider is being dragged. */
+.volume-slider:active::-webkit-slider-thumb {
+    width: 18px;
+    transform: scaleY(1.08);
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    transition:
+        transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+        width 420ms cubic-bezier(0.16, 1, 0.3, 1),
+        box-shadow 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.volume-slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.volume-slider:active::-moz-range-thumb {
+    width: 18px;
+    transform: scaleY(1.08);
 }
 
 /* EQ Popup */
@@ -388,11 +421,41 @@
     border-radius: 50%;
     cursor: pointer;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    transition: transform 0.2s;
+    transition:
+        transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+        width 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .eq-slider::-webkit-slider-thumb:hover {
     transform: scale(1.2);
+}
+
+/* Slight springy growth while the slider is being dragged. */
+.eq-slider:active::-webkit-slider-thumb {
+    width: 18px;
+    transform: scaleY(1.08);
+}
+
+.eq-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    transition:
+        transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+        width 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.eq-slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+}
+
+.eq-slider:active::-moz-range-thumb {
+    width: 18px;
+    transform: scaleY(1.08);
 }
 
 .eq-slider.disabled::-webkit-slider-thumb {
@@ -520,7 +583,8 @@
  * DEDICATED PLAYER VIEW (Big Mode Page)
  * ============================================================ */
 
-/* Remove the fixed overlay styles */
+/* Remove the fixed overlay styles. The player is edge-to-edge with no outer
+   box: no border, no rounded card, no lift shadow. */
 .player-section {
     width: 100%;
     height: 100%;
@@ -529,8 +593,10 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 32px;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background-color: var(--player-tint, var(--bg-color));
 }
 
 .dedicated-player-view {
@@ -552,16 +618,16 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 150%;
-    height: 150%;
+    width: 165%;
+    height: 165%;
     transform: translate(-50%, -50%);
     background-size: cover;
     background-position: center;
-    filter: blur(80px) brightness(0.6) saturate(1.5);
-    border-radius: 50%;
+    filter: blur(105px) brightness(0.42) saturate(1.6);
+    border-radius: 0;
     z-index: 0;
     transition: background-image 0.5s ease;
-    opacity: 0.85;
+    opacity: 0.95;
     pointer-events: none;
 }
 
@@ -875,27 +941,173 @@
     gap: 15px;
     text-align: left;
     /* Left align lyrics */
-    padding-bottom: 100px;
-    /* Allows last line to scroll to center */
-    padding-top: 40px;
-    /* Allows first line to start near center but not too far down */
+    padding: var(--lyrics-scroll-padding, 100px) 6px;
 }
 
 .lyric-line {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     font-size: 18px;
     font-weight: 700;
     color: rgba(255, 255, 255, 0.4);
     cursor: pointer;
-    transition: color 0.3s ease, transform 0.3s ease, text-shadow 0.3s ease;
-    transform-origin: left center;
+    transition: color 0.3s ease, text-shadow 0.3s ease;
     line-height: 1.4;
     white-space: normal;
-    word-break: break-word;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
 }
 
 .lyric-line:hover {
     color: rgba(255, 255, 255, 0.8);
+}
+
+.lyric-line.active {
+    color: #fff;
+    font-size: 19px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Desktop-only Apple Music-style lyric motion.
+   The first control point creates a quick takeoff. The second control point's
+   Y value of 1.56 deliberately travels beyond the final value, then the 0.64/1
+   endpoint pulls it back into place. Reusing this curve for position, scale,
+   blur, opacity, and color makes the entire handoff feel like one physical
+   spring rather than a stack of unrelated fades. The short durations retain
+   that weight without making lyric changes lag behind playback. */
+@media (min-width: 901px) {
+    .lyrics-scroll-area {
+        --lyrics-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        --lyrics-spring-duration: 400ms;
+        overflow: hidden;
+        padding: 0;
+        scroll-behavior: auto;
+    }
+
+    .lyrics-content {
+        position: relative;
+        gap: 24px;
+        padding: 0 8px;
+        transform: translateY(0);
+        transform-origin: center top;
+        transition: transform var(--lyrics-spring-duration) var(--lyrics-spring);
+        will-change: transform;
+        backface-visibility: hidden;
+    }
+
+    /* Used only to establish the first centered position when the view opens
+       or changes breakpoint; normal lyric changes always use the spring. */
+    .lyrics-content.lyrics-position-immediate {
+        transition: none;
+    }
+
+    .lyric-line {
+        width: calc(100% / 1.1);
+        max-width: calc(100% / 1.1);
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+        font-size: clamp(18px, 1.8vw, 21px);
+        color: #fff;
+        opacity: 0.08;
+        filter: blur(6px);
+        transform: translateZ(0) scale(0.78);
+        transform-origin: left center;
+        transition:
+            transform var(--lyrics-spring-duration) var(--lyrics-spring),
+            filter var(--lyrics-spring-duration) var(--lyrics-spring),
+            opacity var(--lyrics-spring-duration) var(--lyrics-spring),
+            color var(--lyrics-spring-duration) var(--lyrics-spring),
+            text-shadow var(--lyrics-spring-duration) var(--lyrics-spring);
+        line-height: 1.45;
+        backface-visibility: hidden;
+    }
+
+    .lyric-line[data-distance="0"] {
+        color: #fff;
+        font-size: clamp(18px, 1.8vw, 21px);
+        opacity: 1;
+        filter: blur(0px);
+        transform: translateZ(0) scale(1.1);
+        text-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+        position: relative;
+        z-index: 2;
+        will-change: transform, filter, opacity;
+    }
+
+    .lyric-line[data-distance="-1"],
+    .lyric-line[data-distance="1"] {
+        opacity: 0.5;
+        filter: blur(2px);
+        transform: translateZ(0) scale(0.95);
+        will-change: transform, filter, opacity;
+    }
+
+    .lyric-line[data-distance="-2"],
+    .lyric-line[data-distance="2"] {
+        opacity: 0.2;
+        filter: blur(4px);
+        transform: translateZ(0) scale(0.85);
+    }
+
+    .lyric-line[data-distance="-3"],
+    .lyric-line[data-distance="3"] {
+        opacity: 0.08;
+        filter: blur(6px);
+        transform: translateZ(0) scale(0.78);
+    }
+
+    /* Lines beyond the visible depth stack retain their layout position, but
+       are not rasterized through expensive text filters. They become visible
+       one step before entering the ±2 depth states, so no motion is removed. */
+    .lyric-line.lyric-line-far {
+        visibility: hidden;
+        pointer-events: none;
+        opacity: 0;
+        filter: blur(0px);
+    }
+
+    /* Editing remains conventionally scrollable; the transformed track is
+       exclusively for lyric playback, not the timestamp editor. */
+    .lyrics-scroll-area.lyrics-editing {
+        overflow-y: auto;
+    }
+
+    .lyrics-content.lyrics-editing {
+        padding: 28px 8px var(--lyrics-scroll-padding, 100px);
+        transform: none !important;
+        transition: none;
+        will-change: auto;
+    }
+}
+
+/* A tiny, nearly transparent layer used once during idle time to make Chromium
+   compile the same transform/filter/backdrop-filter pipeline before the first
+   real player or lyric animation. It never participates in app layout. */
+.player-pipeline-warmup {
+    position: fixed;
+    right: 2px;
+    bottom: 2px;
+    z-index: 0;
+    width: 32px;
+    height: 32px;
+    overflow: hidden;
+    contain: strict;
+    pointer-events: none;
+    color: rgba(255, 255, 255, 0.01);
+    background: linear-gradient(135deg, #391326, #1c1024);
+    opacity: 0.01;
+    filter: blur(8px) brightness(0.6) saturate(1.5);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transform: translateZ(0) scale(0.96);
+    will-change: transform, opacity, filter;
+}
+
+@media (min-width: 901px) and (hover: hover) {
+    .lyric-line:not([data-distance="0"]):hover {
+        color: #fff;
+        opacity: 0.72;
+    }
 }
 
 /* On touch screens :hover gets stuck after tap; reset it. */
@@ -907,12 +1119,6 @@
     .lyric-line.active:hover {
         color: #fff;
     }
-}
-
-.lyric-line.active {
-    color: #fff;
-    transform: scale(1.05);
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
 .lyric-line.instrumental {
@@ -1040,6 +1246,152 @@ body.player-section-active .music-player {
         margin-left: calc(var(--sidebar-width) * -1);
         opacity: 0;
         pointer-events: none;
+    }
+
+    /* The desktop player is retained as a fixed compositor layer instead of
+       being destroyed with display:none on every open/close. Its visible
+       entrance is still driven by the original 500ms fadeInUp keyframes from
+       JavaScript; these declarations only define the parked/final states. */
+body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
+        display: flex !important;
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 4;
+        width: auto;
+        height: auto;
+        opacity: 0;
+        transform: translate3d(0, 40px, 0);
+        pointer-events: none;
+        animation: none !important;
+        contain: layout paint style;
+        isolation: isolate;
+        backface-visibility: hidden;
+        will-change: transform, opacity;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background-color: var(--player-tint, var(--bg-color));
+        background-image: none;
+    }
+
+    body.desktop-player-overlay-enabled #player-section.player-overlay-mounted.player-overlay-active {
+        z-index: 1500;
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+        pointer-events: auto;
+    }
+
+    /* Raster the real viewport-sized player under the startup surface. A tiny
+       non-zero opacity prevents Chromium from skipping paint allocation. */
+    body.desktop-player-overlay-enabled #player-section.player-overlay-mounted.player-overlay-prime {
+        opacity: 0.002;
+        transform: translate3d(0, 0, 0);
+        pointer-events: none;
+    }
+
+    body.desktop-player-overlay-enabled .dedicated-art-container,
+    body.desktop-player-overlay-enabled .dedicated-right-panel {
+        backface-visibility: hidden;
+        transform: translateZ(0);
+        will-change: transform, opacity;
+    }
+
+    body.desktop-player-overlay-enabled .dedicated-player-backdrop {
+        backface-visibility: hidden;
+        transform: translate3d(-50%, -50%, 0);
+        will-change: transform, opacity;
+        contain: paint;
+    }
+
+/* Keep the routed page mounted below the opaque player. It can return with
+       the existing fadeInUp motion without rebuilding its DOM or image layers. */
+    body.desktop-player-overlay-enabled .player-underlay-suspended {
+        opacity: 0 !important;
+        pointer-events: none !important;
+        animation: none !important;
+    }
+
+    /* Full-bleed player layout: the artwork stays the focal card while the
+       header floats at the top of the viewport instead of a boxed card. */
+    body.desktop-player-overlay-enabled .dedicated-player-view {
+        padding: 30px 56px;
+    }
+
+    body.desktop-player-overlay-enabled .dedicated-header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        margin: 0;
+        padding: 28px 32px;
+    }
+
+    body.desktop-player-overlay-enabled .dedicated-player-content {
+        max-width: 1120px;
+        gap: 72px;
+        padding: 88px 56px 48px;
+    }
+
+    body.desktop-player-overlay-enabled .dedicated-art-wrapper {
+        max-width: 430px;
+    }
+
+    /* The final shell geometry is committed once. WAAPI applies the original
+       300ms motion as compositor transforms, so margin/width do not animate and
+       trigger layout on every frame. */
+    body.desktop-player-overlay-enabled .sidebar,
+    body.desktop-player-overlay-enabled .top-bar-logo {
+        transition: none !important;
+    }
+
+    body.desktop-player-overlay-enabled .sidebar,
+    body.desktop-player-overlay-enabled .top-bar > * {
+        backface-visibility: hidden;
+        will-change: transform, opacity;
+    }
+
+    /* Retain the expensive 50px-blurred footer layer while the full player is
+       open. It remains visually absent, matching the previous display:none. */
+    body.desktop-player-overlay-enabled .music-player,
+    body.desktop-player-overlay-enabled.player-section-active .music-player {
+        display: flex !important;
+        transition: none !important;
+    }
+
+    body.desktop-player-overlay-enabled.player-section-active .music-player {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* The retained overlay owns the tinted surface on desktop. Avoid repainting
+       the full document canvas when the tint changes. */
+    body.desktop-player-overlay-enabled.player-section-active {
+        background-color: var(--bg-color);
+    }
+}
+
+/* Tablet routed player: occupy the viewport rather than an inset content box. */
+@media (min-width: 769px) and (max-width: 900px) {
+    body.player-section-active :is(.sidebar, .top-bar) {
+        display: none;
+    }
+
+    body.player-section-active .main-content {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100dvh;
+        padding: 0;
+    }
+
+    body.player-section-active .content-container,
+    body.player-section-active #player-section {
+        width: 100%;
+        height: 100%;
+        padding: 0;
     }
 }
 
@@ -1200,85 +1552,26 @@ body.player-section-active .music-player {
         animation: dedicatedViewFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
 
-    .lyric-line:nth-child(1) {
-        animation-delay: 0.05s;
-    }
-
-    .lyric-line:nth-child(2) {
-        animation-delay: 0.1s;
-    }
-
-    .lyric-line:nth-child(3) {
-        animation-delay: 0.15s;
-    }
-
-    .lyric-line:nth-child(4) {
-        animation-delay: 0.2s;
-    }
-
-    .lyric-line:nth-child(5) {
-        animation-delay: 0.25s;
-    }
-
-    .lyric-line:nth-child(6) {
-        animation-delay: 0.3s;
-    }
-
-    .lyric-line:nth-child(7) {
-        animation-delay: 0.35s;
-    }
-
-    .lyric-line:nth-child(8) {
-        animation-delay: 0.4s;
-    }
-
-    .lyric-line:nth-child(9) {
-        animation-delay: 0.45s;
-    }
-
-    .lyric-line:nth-child(10) {
-        animation-delay: 0.5s;
-    }
-
-    .lyric-line:nth-child(11) {
-        animation-delay: 0.55s;
-    }
-
-    .lyric-line:nth-child(12) {
-        animation-delay: 0.6s;
-    }
-
-    .lyric-line:nth-child(13) {
-        animation-delay: 0.65s;
-    }
-
-    .lyric-line:nth-child(14) {
-        animation-delay: 0.7s;
-    }
-
-    .lyric-line:nth-child(15) {
-        animation-delay: 0.75s;
-    }
-
-    .lyric-line:nth-child(16) {
-        animation-delay: 0.8s;
-    }
-
-    .lyric-line:nth-child(17) {
-        animation-delay: 0.85s;
-    }
-
-    .lyric-line:nth-child(18) {
-        animation-delay: 0.9s;
-    }
-
-    .lyric-line:nth-child(19) {
-        animation-delay: 0.95s;
-    }
-
-    .lyric-line:nth-child(20) {
-        animation-delay: 1s;
-    }
+    .lyric-line:nth-child(1) { animation-delay: 0.05s; }
+    .lyric-line:nth-child(2) { animation-delay: 0.1s; }
+    .lyric-line:nth-child(3) { animation-delay: 0.15s; }
+    .lyric-line:nth-child(4) { animation-delay: 0.2s; }
+    .lyric-line:nth-child(5) { animation-delay: 0.25s; }
+    .lyric-line:nth-child(6) { animation-delay: 0.3s; }
+    .lyric-line:nth-child(7) { animation-delay: 0.35s; }
+    .lyric-line:nth-child(8) { animation-delay: 0.4s; }
+    .lyric-line:nth-child(9) { animation-delay: 0.45s; }
+    .lyric-line:nth-child(10) { animation-delay: 0.5s; }
+    .lyric-line:nth-child(11) { animation-delay: 0.55s; }
+    .lyric-line:nth-child(12) { animation-delay: 0.6s; }
+    .lyric-line:nth-child(13) { animation-delay: 0.65s; }
+    .lyric-line:nth-child(14) { animation-delay: 0.7s; }
+    .lyric-line:nth-child(15) { animation-delay: 0.75s; }
+    .lyric-line:nth-child(16) { animation-delay: 0.8s; }
+    .lyric-line:nth-child(17) { animation-delay: 0.85s; }
+    .lyric-line:nth-child(18) { animation-delay: 0.9s; }
+    .lyric-line:nth-child(19) { animation-delay: 0.95s; }
+    .lyric-line:nth-child(20) { animation-delay: 1s; }
 
     /* Lyrics active: desktop-style flex chain; only the scroll area scrolls. */
     .dedicated-player-content.lyrics-active-view {
@@ -1511,8 +1804,8 @@ body.player-section-active .music-player {
 }
 
 .lyric-line.editing.active-edit {
-    background: rgba(29, 185, 84, 0.1);
-    border: 1px solid rgba(29, 185, 84, 0.3);
+    background: rgba(var(--accent-rgb), 0.1);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
 }
 
 .lyric-edit-time {
@@ -1554,7 +1847,7 @@ body.player-section-active .music-player {
 
 .lyric-sync-btn:hover {
     background: var(--accent);
-    color: #000;
+    color: var(--on-accent);
     transform: scale(1.1);
 }
 
@@ -1564,7 +1857,7 @@ body.player-section-active .music-player {
 
 #edit-lyrics-btn.active {
     color: var(--accent);
-    background: rgba(29, 185, 84, 0.1);
+    background: rgba(var(--accent-rgb), 0.1);
     border-color: var(--accent);
 }
 

@@ -200,12 +200,21 @@ window.downloadAllSongs = async function (songs, btnElement) {
 
 /* ========== RENDER HELPERS ========== */
 
-function renderSongList(songs, listContainer) {
+const songListRenderTokens = new WeakMap();
+
+function renderSongList(songs, listContainer, options = {}) {
     if (!listContainer) return;
+    const {
+        allowHiddenInitialBatch = false,
+        deferSecondaryWork = false,
+        deferRemainingBatches = false
+    } = options;
 
     const header = listContainer.querySelector('.header-row');
-    listContainer.innerHTML = '';
-    if (header) listContainer.appendChild(header);
+    listContainer.replaceChildren(...(header ? [header] : []));
+
+    const renderToken = {};
+    songListRenderTokens.set(listContainer, renderToken);
 
     const renderedPlaylist = (songs || []).map(s => ({
         id: s.id,
@@ -222,11 +231,30 @@ function renderSongList(songs, listContainer) {
         url: `/api/play/${s.id || encodeURIComponent(s.name || s.title || s)}`
     }));
     currentPlaylist = renderedPlaylist;
-    const downloadedIdsPromise = getDownloadedSongIdSet();
-
     shuffledPlaylist = buildPlaylistOrder(currentPlaylist.length);
 
-    currentPlaylist.forEach((song, index) => {
+    let downloadedIds = null;
+    const markDownloaded = row => {
+        if (!downloadedIds || !downloadedIds.has(String(row.dataset.id))) return;
+        const icon = row.querySelector('.row-download-btn i');
+        if (!icon) return;
+        icon.className = 'bx bxs-check-circle';
+        icon.parentElement.classList.add('downloaded');
+        icon.parentElement.style.color = '#4CAF50';
+    };
+
+    const loadDownloadedState = () => getDownloadedSongIdSet().then(ids => {
+        if (songListRenderTokens.get(listContainer) !== renderToken) return;
+        downloadedIds = ids;
+        listContainer.querySelectorAll('.song-row[data-id]').forEach(markDownloaded);
+    });
+    if (deferSecondaryWork && typeof window.streamifyAfterStartupMotion === 'function') {
+        window.streamifyAfterStartupMotion(loadDownloadedState);
+    } else {
+        loadDownloadedState();
+    }
+
+    const createSongRow = (song, index) => {
         const duration = song.duration || '--:--';
         const hasCover = !!(song.cover);
         const cover = safeImageURL(hasCover ? song.cover : COVER_PLACEHOLDER, COVER_PLACEHOLDER);
@@ -246,6 +274,10 @@ function renderSongList(songs, listContainer) {
         if (selectedSongIds.has(song.id)) row.classList.add('selected');
 
         row.dataset.id = song.id;
+        row.dataset.index = index;
+        if (isPlaying && String(window.currentlyPlayingSongId) === String(song.id)) {
+            row.classList.add('playing');
+        }
 
         const isOwner = appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner';
         const canEdit = !!appCache.user && (isOwner || (song.source !== 'folder' && appCache.user.username === song.uploaded_by));
@@ -276,19 +308,7 @@ function renderSongList(songs, listContainer) {
             });
         }
 
-        // Async offline check
-        if (window.OfflineStore) {
-            downloadedIdsPromise.then(downloadedIds => {
-                if (downloadedIds.has(String(song.id)) && row.isConnected) {
-                    const btn = row.querySelector('.row-download-btn i');
-                    if (btn) {
-                        btn.className = 'bx bxs-check-circle';
-                        btn.parentElement.classList.add('downloaded');
-                        btn.parentElement.style.color = '#4CAF50';
-                    }
-                }
-            });
-        }
+        markDownloaded(row);
 
         /* Touch & Click handling */
         let isScrolling = false, startX = 0, startY = 0, touchHandled = false;
@@ -348,11 +368,50 @@ function renderSongList(songs, listContainer) {
             }
         });
 
-        listContainer.appendChild(row);
-    });
+        return row;
+    };
 
-    // Re-apply playing indicator after render
-    highlightCurrentSong(listContainer);
+    // Paint the first viewport quickly, then yield between larger batches. The
+    // section animation is unchanged; this only prevents one long DOM task from
+    // blocking its frames when a library contains hundreds of songs.
+    let nextIndex = 0;
+    let remainingBatchesDeferred = false;
+    const appendBatch = (batchSize, allowHidden = false) => {
+        if (songListRenderTokens.get(listContainer) !== renderToken) return;
+        const section = listContainer.closest('section');
+        if (!allowHidden && section && section.classList.contains('hidden')) {
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(() => appendBatch(batchSize, true), { timeout: 500 });
+            } else {
+                setTimeout(() => appendBatch(batchSize, true), 100);
+            }
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        const end = Math.min(renderedPlaylist.length, nextIndex + batchSize);
+        for (; nextIndex < end; nextIndex++) {
+            fragment.appendChild(createSongRow(renderedPlaylist[nextIndex], nextIndex));
+        }
+        listContainer.appendChild(fragment);
+
+        if (nextIndex < renderedPlaylist.length) {
+            if (
+                deferRemainingBatches &&
+                !remainingBatchesDeferred &&
+                typeof window.streamifyAfterStartupMotion === 'function'
+            ) {
+                remainingBatchesDeferred = true;
+                window.streamifyAfterStartupMotion(() => appendBatch(48, true));
+            } else {
+                requestAnimationFrame(() => appendBatch(48));
+            }
+        } else {
+            highlightCurrentSong(listContainer);
+        }
+    };
+
+    appendBatch(24, allowHiddenInitialBatch);
 }
 
 function highlightCurrentSong(listContainer) {
@@ -476,6 +535,7 @@ function openEditSongModal(index) {
 
     const modal = document.getElementById('edit-song-modal');
     document.getElementById('edit-song-id').value = song.id;
+    document.getElementById('edit-song-metadata-revision').value = song.metadata_revision || 0;
     document.getElementById('edit-song-name').value = song.title;
     document.getElementById('edit-song-artist').value = song.artist;
     document.getElementById('edit-song-album').value = song.album;
@@ -496,8 +556,13 @@ function openEditSongModal(index) {
         .then(fullData => {
             if (_editSongAbort !== controller || document.getElementById('edit-song-id').value !== String(song.id)) return;
             document.getElementById('edit-song-visibility').value = fullData.is_private === 'private' ? 'private' : 'public';
-            if (genreInput && fullData.genre) genreInput.value = fullData.genre;
-            if (yearInput && fullData.year) yearInput.value = fullData.year;
+            document.getElementById('edit-song-name').value = fullData.name || '';
+            document.getElementById('edit-song-artist').value = fullData.artist || '';
+            document.getElementById('edit-song-album').value = fullData.album || '';
+            document.getElementById('edit-song-metadata-revision').value = fullData.metadata_revision || 0;
+            if (genreInput) genreInput.value = fullData.genre || '';
+            if (yearInput) yearInput.value = fullData.year || '';
+            if (coverImg) coverImg.src = safeImageURL(fullData.cover, COVER_PLACEHOLDER);
         })
         .catch(err => {
             if (err.name !== 'AbortError') console.warn('[EDIT SONG DETAILS]', err);
@@ -518,12 +583,13 @@ function saveSongChanges() {
     const genre = document.getElementById('edit-song-genre') ? document.getElementById('edit-song-genre').value : undefined;
     const year = document.getElementById('edit-song-year') ? document.getElementById('edit-song-year').value : undefined;
     const is_private = document.getElementById('edit-song-visibility').value;
+    const expectedRevision = Number(document.getElementById('edit-song-metadata-revision').value) || 0;
 
     fetch(window.API_BASE_URL + `/api/songs/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ songname, artist, album, genre, year, is_private })
+        body: JSON.stringify({ songname, artist, album, genre, year, is_private, expectedRevision })
     })
         .then(r => r.json())
         .then(data => {
@@ -539,7 +605,7 @@ function saveSongChanges() {
 }
 
 // ============================================
-// SMART AUTO ENRICH JOB / REVIEW SYSTEM
+// SMART METADATA REVIEW JOB / REVIEW SYSTEM
 // ============================================
 
 let _aiReviewState = null;
@@ -553,17 +619,17 @@ window._enrichmentQueue = null;
 window._enrichmentTotal = 0;
 
 const AI_STAGE_INFO = Object.freeze({
-    idle: { badge: 'Idle', label: 'Ready', title: 'Ready to review', message: 'No enrichment job is running.' },
-    preparing: { badge: 'Preparing', label: 'Preparing review', title: 'Preparing your library', message: 'Creating a safe review session. Nothing is changed without a decision.' },
+    idle: { badge: 'Ready', label: 'Before you start', title: 'Ready to review', message: 'Check the review scope and lookup method before starting.' },
+    preparing: { badge: 'Preparing', label: 'Preparing review', title: 'Preparing your library', message: 'Starting the metadata scan. Strong acoustic matches may fill safe, missing fields automatically.' },
     local_analysis: { badge: 'Local analysis', label: 'Reading local metadata', title: 'Analyzing local metadata', message: 'Reading embedded tags and filename hints without changing the song.' },
     fingerprinting: { badge: 'Fingerprinting', label: 'Fingerprinting audio', title: 'Fingerprinting audio', message: 'Building an audio identity for a more reliable lookup.' },
     registry_lookup: { badge: 'Registry lookup', label: 'Checking music registries', title: 'Checking music registries', message: 'Comparing returned catalogue records and source evidence.' },
-    auto_matched: { badge: 'Auto matched', label: 'Strong match found', title: 'Match ready', message: 'Review the returned evidence and choose which fields to apply.' },
-    needs_review: { badge: 'Needs review', label: 'Owner decision needed', title: 'Review needed', message: 'Review the current and suggested values before applying anything.' },
+    auto_matched: { badge: 'Strong match', label: 'Strong match found', title: 'Match ready', message: 'Choose which suggested fields belong in your library.' },
+    needs_review: { badge: 'Review', label: 'Your decision is needed', title: 'Review needed', message: 'Compare the suggestion with your current library metadata.' },
     unidentified: { badge: 'Unidentified', label: 'No reliable match', title: 'No reliable match', message: 'Current metadata has been preserved.' },
     provider_error: { badge: 'Source error', label: 'Source problem', title: 'A source could not complete the lookup', message: 'Current metadata has been preserved. You can skip this item and continue.' },
     applying: { badge: 'Applying', label: 'Applying approved fields', title: 'Applying your decision', message: 'Saving only the fields you selected.' },
-    paused: { badge: 'Paused', label: 'Job paused', title: 'Enrichment paused', message: 'Resume when you are ready to continue.' },
+    paused: { badge: 'Paused', label: 'Scan paused', title: 'Metadata scan paused', message: 'Resume when you are ready to continue.' },
     completed: { badge: 'Completed', label: 'Review complete', title: 'Review complete', message: 'All available review items have been handled.' }
 });
 
@@ -576,6 +642,7 @@ const FIELD_CONFIG = [
 ];
 
 const AI_ABSENT_ENDPOINT_STATUSES = new Set([404, 405, 501]);
+const AI_CANDIDATES_PER_PAGE = 4;
 
 function aiElement(id) {
     return document.getElementById(id);
@@ -596,18 +663,24 @@ function aiHumanize(value) {
         .replace(/\b\w/g, character => character.toUpperCase());
 }
 
+function aiProviderLabel(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const labels = {
+        acoustid: 'AcoustID',
+        musicbrainz: 'MusicBrainz',
+        itunes: 'Apple Music',
+        apple: 'Apple Music',
+        local: 'Local metadata',
+        local_file: 'Local file',
+        metadata_lookup: 'Metadata lookup'
+    };
+    return labels[normalized] || aiHumanize(value);
+}
+
 function aiFiniteNumber(value) {
     if (typeof value === 'boolean' || value === '' || value === null || value === undefined) return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
-}
-
-function aiFormatScore(value) {
-    const number = aiFiniteNumber(value);
-    if (number === null || number < 0) return null;
-    const percent = number <= 1 ? number * 100 : number;
-    if (percent > 100) return null;
-    return `${Math.round(percent)}%`;
 }
 
 function aiNormalizeStage(value, fallback = 'preparing') {
@@ -731,7 +804,7 @@ function aiValuesDiffer(current, suggested) {
 }
 
 function aiFieldAliases(fieldKey) {
-    if (fieldKey === 'coverUrl') return ['coverUrl', 'cover_url', 'cover', 'artwork', 'artworkUrl'];
+    if (fieldKey === 'coverUrl') return ['coverUrl', 'cover_url', 'cover', 'cover_path', 'coverPath', 'artwork', 'artworkUrl'];
     const field = FIELD_CONFIG.find(entry => entry.key === fieldKey);
     return field ? [field.key, ...field.originalKeys, ...field.candidateKeys] : [fieldKey];
 }
@@ -835,6 +908,13 @@ function aiIsFieldAmbiguous(state, candidate, fieldKey) {
         if (value) values.add(String(value).toLocaleLowerCase());
     });
     return values.size > 1 || (state.releaseCandidateCount || 0) > 1;
+}
+
+function aiIsFieldLocked(state, fieldKey) {
+    const source = state && state.raw && (state.raw.lockedFields || state.raw.locked_fields);
+    if (!Array.isArray(source)) return false;
+    const locked = new Set(source.map(value => String(value).toLowerCase()));
+    return aiFieldAliases(fieldKey).some(alias => locked.has(String(alias).toLowerCase()));
 }
 
 function aiCollectEvidence(raw, candidate) {
@@ -945,6 +1025,8 @@ function aiCandidateList(raw) {
             const parentId = aiCandidateId(parent) ?? `candidate-${parentIndex}`;
             const releaseId = aiCandidateId(release);
             const merged = Object.assign({}, parent, release, {
+                title: aiCandidateValue(parent, FIELD_CONFIG[0]),
+                songname: aiCandidateValue(parent, FIELD_CONFIG[0]),
                 album: aiReadMetadataProperty(release, ['album', 'albumName', 'releaseTitle', 'title', 'name']) || aiCandidateValue(parent, FIELD_CONFIG[2]),
                 _aiCandidateType: 'Release',
                 _aiDecisionId: releaseId === undefined || releaseId === null
@@ -1085,13 +1167,24 @@ function aiNormalizeJob(payload) {
         stage: aiNormalizeStage(rawStage, 'preparing'),
         cancelled: ['cancelled', 'canceled'].includes(rawStage) || raw.cancelled === true || raw.canceled === true,
         total: count(['total', 'totalCount', 'total_count', 'itemsTotal', 'items_total']),
-        processed: count(['processed', 'processedCount', 'processed_count', 'completed', 'completedCount', 'completed_count']),
+        processed: count(['scanned', 'processed', 'processedCount', 'processed_count', 'completed', 'completedCount', 'completed_count']),
         matched: count(['matched', 'matchedCount', 'matched_count', 'autoMatched', 'auto_matched']),
+        automatic: count(['automatic', 'automaticCount', 'automatic_count']),
+        approved: count(['approved', 'approvedCount', 'approved_count']),
+        skipped: count(['skipped', 'skippedCount', 'skipped_count']),
         review: count(['needsReview', 'needs_review', 'reviewCount', 'review_count', 'pendingReview', 'pending_review']),
         unidentified: count(['unidentified', 'unidentifiedCount', 'unidentified_count', 'noMatch', 'no_match']),
+        errors: count(['errors', 'errorCount', 'error_count', 'sourceErrors', 'source_errors']),
+        noMatch: count(['noMatch', 'no_match', 'unmatched', 'unmatchedCount', 'unmatched_count']),
+        sourceErrors: count(['sourceErrors', 'source_errors', 'issues', 'issueCount', 'issue_count']),
+        pendingDecisions: count(['pendingDecisions', 'pending_decisions']),
+        decisionsCompleted: count(['decisionsCompleted', 'decisions_completed']),
         percent: count(['percent', 'percentage', 'progressPercent', 'progress_percent']),
         providers: aiCollectProviderStatuses(raw.providers, raw.providerStatuses, raw.provider_statuses, raw.sources),
         item: raw.currentItem || raw.current_item || raw.item || null,
+        lookupMode: aiReadProperty(raw, ['lookupMode', 'lookup_mode']),
+        scope: aiReadProperty(raw, ['scope']),
+        targetSongId: aiReadProperty(raw, ['targetSongId', 'target_song_id', 'songId', 'song_id']),
         message: aiReadProperty(raw, ['message', 'detail']) || ''
     };
 }
@@ -1130,10 +1223,29 @@ async function aiParseResponse(response) {
 }
 
 function aiShowPanel(panel) {
+    const modal = aiElement('ai-metadata-modal');
+    const panelChanged = !modal || modal.dataset.panel !== panel;
+    if (modal) modal.dataset.panel = panel;
+    aiSetVisible('ai-review-preflight', panel === 'preflight');
     aiSetVisible('ai-review-loading', panel === 'loading');
     aiSetVisible('ai-review-content', panel === 'content');
     aiSetVisible('ai-review-empty', panel === 'empty');
     aiSetVisible('ai-review-complete', panel === 'complete');
+    aiSetVisible('ai-job-overview', panel !== 'preflight');
+    const visiblePanel = aiElement(`ai-review-${panel}`);
+    if (visiblePanel && panelChanged) {
+        visiblePanel.classList.remove('ai-panel-enter');
+        void visiblePanel.offsetWidth;
+        visiblePanel.classList.add('ai-panel-enter');
+    }
+    requestAnimationFrame(() => {
+        if (!modal || modal.classList.contains('hidden')) return;
+        const active = document.activeElement;
+        const focusLost = !active || !modal.contains(active) || active.disabled || active.getClientRects().length === 0;
+        if (!focusLost) return;
+        const target = aiElement(`ai-review-${panel}`);
+        if (target) target.focus();
+    });
 }
 
 function aiSetStage(session, stage, message = '') {
@@ -1147,10 +1259,17 @@ function aiSetStage(session, stage, message = '') {
     const label = aiElement('ai-stage-label');
     const title = aiElement('ai-loading-title');
     const detail = aiElement('ai-loading-message');
+    const loadingIcon = aiElement('ai-loading-icon');
     if (badge) badge.textContent = info.badge;
     if (label) label.textContent = info.label;
     if (title) title.textContent = info.title;
     if (detail) detail.textContent = message || info.message;
+    if (loadingIcon) {
+        loadingIcon.classList.toggle('ai-state-orbit--paused', stage === 'paused');
+        loadingIcon.innerHTML = stage === 'paused'
+            ? `<i class='bx bx-pause' aria-hidden="true"></i>`
+            : `<i class='bx bx-loader-alt bx-spin' aria-hidden="true"></i>`;
+    }
 }
 
 function aiRenderProviderStatuses(providers) {
@@ -1164,14 +1283,18 @@ function aiRenderProviderStatuses(providers) {
         const status = aiNormalizeProviderStatus(provider.status);
         const statusLabel = aiHumanize(status);
         const title = provider.detail ? ` title="${aiEscape(provider.detail)}"` : '';
-        return `<span class="ai-provider-chip" data-status="${status}"${title}>${aiEscape(provider.name)}: ${aiEscape(statusLabel)}</span>`;
+        return `<span class="ai-provider-chip" data-status="${status}"${title}>${aiEscape(aiProviderLabel(provider.name))}: ${aiEscape(statusLabel)}</span>`;
     }).join('');
 }
 
 function aiUpdateProgress(session, snapshot = null) {
     if (!aiIsCurrentSession(session)) return;
     if (snapshot) {
-        ['total', 'processed', 'matched', 'review', 'unidentified'].forEach(key => {
+        [
+            'total', 'processed', 'matched', 'automatic', 'approved', 'skipped',
+            'review', 'unidentified', 'errors', 'noMatch', 'sourceErrors',
+            'pendingDecisions', 'decisionsCompleted', 'lookupMode', 'scope'
+        ].forEach(key => {
             if (snapshot[key] !== null && snapshot[key] !== undefined) session[key] = snapshot[key];
         });
         if (snapshot.providers && snapshot.providers.length) session.providers = snapshot.providers;
@@ -1186,19 +1309,38 @@ function aiUpdateProgress(session, snapshot = null) {
     const values = {
         'ai-count-processed': processed,
         'ai-count-total': total,
-        'ai-count-matched': Math.max(0, Number(session.matched) || 0),
-        'ai-count-review': Math.max(0, Number(session.review) || (session.item && _aiReviewState && _aiReviewState.candidate ? 1 : 0)),
-        'ai-count-unidentified': Math.max(0, Number(session.unidentified) || 0)
+        'ai-count-matched': Math.max(0, Number(session.mode === 'job' ? (session.automatic ?? session.matched) : (session.automatic ?? 0)) || 0),
+        'ai-count-approved': Math.max(0, Number(session.approved) || 0),
+        'ai-count-skipped': Math.max(0, Number(session.skipped) || 0),
+        'ai-count-review': Math.max(0, Number(session.pendingDecisions ?? session.review) || (session.item ? 1 : 0)),
+        'ai-count-unidentified': Math.max(0, Number(session.noMatch ?? session.unidentified) || 0),
+        'ai-count-errors': Math.max(0, Number(session.sourceErrors ?? session.errors) || 0)
     };
     Object.keys(values).forEach(id => { const element = aiElement(id); if (element) element.textContent = values[id]; });
     const fill = aiElement('ai-progress-fill');
     const percentLabel = aiElement('ai-progress-percent');
     const track = aiElement('ai-progress-track');
     const queueStatus = aiElement('ai-review-queue-status');
+    const methodLabel = aiElement('ai-job-method');
     if (fill) fill.style.width = `${percent}%`;
     if (percentLabel) percentLabel.textContent = `${Math.round(percent)}%`;
     if (track) track.setAttribute('aria-valuenow', String(Math.round(percent)));
-    if (queueStatus) queueStatus.textContent = total > 0 && session.item ? `${Math.min(processed + 1, total)} of ${total}` : '';
+    if (methodLabel) {
+        const labels = {
+            local_only: 'Local analysis',
+            text_only: 'Text lookup',
+            acoustic_with_text_fallback: 'Audio fingerprint + text'
+        };
+        const label = labels[session.lookupMode] || '';
+        methodLabel.textContent = label;
+        methodLabel.classList.toggle('hidden', !label);
+    }
+    if (queueStatus) {
+        const waiting = Math.max(0, Number(session.pendingDecisions ?? session.review) || 0);
+        queueStatus.textContent = waiting > 0
+            ? `${waiting} ${waiting === 1 ? 'item' : 'items'} waiting`
+            : (total > processed ? `${total - processed} left to scan` : 'Scan complete');
+    }
     aiRenderProviderStatuses(session.providers || []);
 }
 
@@ -1214,9 +1356,15 @@ function aiUpdateControls(session) {
     const hasItem = !!session.item;
     const hasCandidate = !!(_aiReviewState && _aiReviewState.candidate);
     const hasAvailableChanges = hasCandidate && _aiReviewState.enriched
-        && Object.values(_aiReviewState.enriched).some(value => value !== undefined && value !== null && value !== '');
+        && Object.entries(_aiReviewState.enriched).some(([field, value]) =>
+            value !== undefined && value !== null && value !== '' && !aiIsFieldLocked(_aiReviewState, field)
+        );
     const isComplete = session.stage === 'completed';
     const isPaused = session.stage === 'paused';
+    const isPreflight = session.mode === 'preflight';
+    const isChoosingMatch = hasCandidate && _aiReviewState.reviewStep !== 'approval';
+    const isApproving = hasCandidate && _aiReviewState.reviewStep === 'approval';
+    const isCandidateConfirmed = hasCandidate && _aiReviewState.candidateConfirmed === true;
     const isBusy = session.applying || session.controlPending;
     const jobControls = aiElement('ai-job-controls');
     const pauseButton = aiElement('ai-pause-job');
@@ -1224,11 +1372,25 @@ function aiUpdateControls(session) {
     const skipButton = aiElement('cancel-ai-metadata');
     const applyButton = aiElement('apply-ai-metadata');
     const closeButton = aiElement('close-ai-metadata-modal');
+    const preflightActions = aiElement('ai-preflight-actions');
+    const startButton = aiElement('ai-start-review');
+    const reviewMatchButton = aiElement('ai-review-selected-match');
+    const backToMatchesButton = aiElement('ai-back-to-matches');
 
-    if (jobControls) jobControls.classList.toggle('hidden', session.mode !== 'job' || isComplete);
+    if (preflightActions) preflightActions.classList.toggle('hidden', !isPreflight);
+    if (startButton) startButton.disabled = !!session.preflightLoading || !!session.preflightBlocked || isBusy;
+    if (reviewMatchButton) {
+        reviewMatchButton.classList.toggle('hidden', !isChoosingMatch || isComplete || isPreflight);
+        reviewMatchButton.disabled = isBusy || isPaused || !isCandidateConfirmed;
+    }
+    if (backToMatchesButton) {
+        backToMatchesButton.classList.toggle('hidden', !isApproving || isComplete);
+        backToMatchesButton.disabled = isBusy || isPaused;
+    }
+    if (jobControls) jobControls.classList.toggle('hidden', session.mode !== 'job' || isComplete || isPreflight);
     if (pauseButton) {
         pauseButton.classList.toggle('hidden', session.mode !== 'job' || isComplete);
-        pauseButton.disabled = isBusy || hasItem;
+        pauseButton.disabled = isBusy;
         pauseButton.innerHTML = isPaused
             ? `<i class='bx bx-play' aria-hidden="true"></i><span>Resume</span>`
             : `<i class='bx bx-pause' aria-hidden="true"></i><span>Pause</span>`;
@@ -1237,29 +1399,32 @@ function aiUpdateControls(session) {
     if (closeButton) closeButton.disabled = !!isBusy;
 
     if (skipButton) {
-        skipButton.classList.toggle('hidden', !(hasItem || isComplete));
+        skipButton.classList.toggle('hidden', isPreflight || !(hasItem || isComplete));
         skipButton.disabled = !!session.applying || isPaused;
-        skipButton.textContent = isComplete ? 'Close' : (session.mode === 'job' || session.isBatch ? 'Skip' : 'Not now');
+        skipButton.textContent = isComplete ? 'Close' : (session.mode === 'job' || session.isBatch ? 'Skip for this review' : 'Not now');
+        skipButton.title = !isComplete && (session.mode === 'job' || session.isBatch)
+            ? 'Leave this track unchanged for now. It may appear in a future review.'
+            : '';
     }
     if (applyButton) {
-        applyButton.classList.toggle('hidden', !hasAvailableChanges || isComplete);
+        applyButton.classList.toggle('hidden', isPreflight || !isApproving || !hasAvailableChanges || isComplete);
         applyButton.disabled = !!session.applying || isPaused;
         applyButton.innerHTML = session.applying
             ? `<i class='bx bx-loader-alt bx-spin' aria-hidden="true"></i><span>${session.decisionAction === 'skip' ? 'Saving decision...' : 'Applying...'}</span>`
-            : `<i class='bx bx-check' aria-hidden="true"></i><span>Apply selected</span>`;
+            : `<i class='bx bx-check' aria-hidden="true"></i><span>Apply selected fields</span>`;
     }
 
-    document.querySelectorAll('#ai-metadata-modal input, #ai-metadata-modal .ai-suggestion-card').forEach(control => {
+    document.querySelectorAll('#ai-metadata-modal input, #ai-metadata-modal .ai-suggestion-card, #ai-metadata-modal .ai-page-button').forEach(control => {
         control.disabled = control.dataset.aiDisabled === 'true' || !!session.applying || isPaused;
     });
     const modal = aiElement('ai-metadata-modal');
     if (modal) modal.setAttribute('aria-busy', String(!!isBusy));
 }
 
-function aiOpenWorkspace(session) {
+function aiOpenWorkspace(session, panel = 'loading') {
     const modal = aiElement('ai-metadata-modal');
     if (!modal || !aiIsCurrentSession(session)) return;
-    aiShowPanel('loading');
+    aiShowPanel(panel);
     modal.classList.remove('hidden');
     requestAnimationFrame(() => {
         if (!aiIsCurrentSession(session)) return;
@@ -1269,7 +1434,7 @@ function aiOpenWorkspace(session) {
 }
 
 function aiCreateSession({ isBatch, mode = 'legacy', songId = null }) {
-    cancelSmartMetadataReview({ hide: false, cancelRemote: true });
+    cancelSmartMetadataReview({ hide: false, cancelRemote: false });
     const session = {
         token: ++_aiSessionSequence,
         isBatch: !!isBatch,
@@ -1280,8 +1445,16 @@ function aiCreateSession({ isBatch, mode = 'legacy', songId = null }) {
         total: isBatch ? 0 : 1,
         processed: 0,
         matched: 0,
+        automatic: null,
+        approved: 0,
+        skipped: 0,
         review: 0,
         unidentified: 0,
+        errors: 0,
+        noMatch: null,
+        sourceErrors: null,
+        pendingDecisions: null,
+        decisionsCompleted: 0,
         percent: null,
         providers: [],
         item: null,
@@ -1301,6 +1474,7 @@ function aiHideWorkspace() {
     if (modal) {
         modal.classList.add('hidden');
         modal.dataset.stage = 'idle';
+        delete modal.dataset.panel;
         modal.setAttribute('aria-busy', 'false');
     }
 }
@@ -1311,7 +1485,7 @@ function cancelSmartMetadataReview(options = {}) {
     aiAbortReadRequest();
     if (_aiApplyAbort) _aiApplyAbort.abort();
     _aiApplyAbort = null;
-    if (session && options.cancelRemote !== false && session.mode === 'job' && session.jobId && session.stage !== 'completed') {
+    if (session && options.cancelRemote === true && session.mode === 'job' && session.jobId && session.stage !== 'completed') {
         fetch(window.API_BASE_URL + `/api/enrichment/jobs/${encodeURIComponent(session.jobId)}/cancel`, {
             method: 'POST',
             credentials: 'include'
@@ -1327,7 +1501,7 @@ function cancelSmartMetadataReview(options = {}) {
     const autoFillButton = aiElement('ai-autofill-btn');
     if (autoFillButton) {
         autoFillButton.disabled = false;
-        autoFillButton.innerHTML = `<i class='bx bxs-magic-wand'></i> Smart Auto Enrich`;
+        autoFillButton.innerHTML = `<i class='bx bxs-magic-wand' aria-hidden="true"></i>`;
     }
     if (options.hide !== false) aiHideWorkspace();
 }
@@ -1336,9 +1510,138 @@ window.cancelSmartMetadataReview = cancelSmartMetadataReview;
 async function aiRequireOwner() {
     const user = appCache.user || await fetchCurrentUser();
     const isOwner = !!user && String(user.role || '').toLowerCase() === 'owner';
-    if (!isOwner) showToast('Smart Auto Enrich is available to the server Owner only.', 'error');
+    if (!isOwner) showToast('Smart Metadata Review is available to the server Owner only.', 'error');
     return isOwner;
 }
+
+const AI_LOOKUP_METHODS = Object.freeze({
+    local_only: {
+        title: 'Local analysis',
+        detail: 'Embedded tags and filename hints stay on this server.'
+    },
+    text_only: {
+        title: 'Text lookup',
+        detail: 'Title and artist hints are checked with MusicBrainz and Apple.'
+    },
+    acoustic_with_text_fallback: {
+        title: 'Acoustic matching with text fallback',
+        detail: 'A local fingerprint is checked with AcoustID before text lookup is used.'
+    }
+});
+
+function aiRenderPreflight(session, settings = {}) {
+    if (!aiIsCurrentSession(session)) return;
+    const mode = AI_LOOKUP_METHODS[settings.mode] ? settings.mode : 'local_only';
+    const method = AI_LOOKUP_METHODS[mode];
+    const methodTitle = aiElement('ai-preflight-method');
+    const methodDetail = aiElement('ai-preflight-method-detail');
+    const changeTitle = aiElement('ai-preflight-change-title');
+    const changeDetail = aiElement('ai-preflight-change-detail');
+    const readiness = aiElement('ai-preflight-readiness');
+    if (methodTitle) methodTitle.textContent = method.title;
+    if (methodDetail) methodDetail.textContent = method.detail;
+
+    const usesAcoustic = mode === 'acoustic_with_text_fallback';
+    if (changeTitle) changeTitle.textContent = usesAcoustic ? 'Safe missing fields may update' : 'Every change waits for you';
+    if (changeDetail) changeDetail.textContent = usesAcoustic
+        ? 'A strong acoustic match may fill only safe, missing text fields. Existing values and artwork still wait for review.'
+        : 'Streamify will show suggestions without changing your library until you approve them.';
+
+    session.preflightBlocked = usesAcoustic && settings.acoustid_configured !== true;
+    if (readiness) {
+        let status = 'ready';
+        let icon = 'bx-check-circle';
+        let message = 'Ready to scan.';
+        if (settings.loading) {
+            status = 'loading';
+            icon = 'bx-loader-alt bx-spin';
+            message = 'Checking metadata tools and saved settings...';
+        } else if (settings.loadFailed) {
+            status = 'warning';
+            icon = 'bx-error-circle';
+            message = 'Tool readiness could not be verified. You can still start the review.';
+        } else if (session.preflightBlocked) {
+            status = 'blocked';
+            icon = 'bx-error-circle';
+            message = 'Add an AcoustID application key in Metadata settings before using acoustic matching.';
+        } else if (usesAcoustic && settings.fpcalc_available !== true) {
+            status = 'warning';
+            icon = 'bx-info-circle';
+            message = 'The fingerprint tool is unavailable, so this review will rely on text fallback.';
+        } else if (usesAcoustic) {
+            const keySource = settings.acoustid_key_source === 'environment' ? 'environment-managed key' : 'saved key';
+            message = `Fingerprint tool and ${keySource} are configured. Key validity is checked during lookup.`;
+        } else if (mode === 'local_only') {
+            message = 'Ready. No metadata leaves this server.';
+        } else {
+            message = 'Ready to check MusicBrainz and Apple.';
+        }
+        readiness.dataset.status = status;
+        readiness.innerHTML = `<i class='bx ${icon}' aria-hidden="true"></i><span>${aiEscape(message)}</span>`;
+    }
+    aiUpdateControls(session);
+}
+
+async function aiPrepareBatchPreflight(session) {
+    if (!aiIsCurrentSession(session)) return;
+    session.preflightLoading = true;
+    session.preflightBlocked = false;
+    aiRenderPreflight(session, { mode: 'local_only', loading: true });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+        const response = await fetch(window.API_BASE_URL + '/api/settings/metadata', {
+            credentials: 'include',
+            signal: controller.signal
+        });
+        const settings = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(settings.error || 'Metadata settings could not be loaded');
+        if (!aiIsCurrentSession(session)) return;
+        session.preflightLoading = false;
+        aiRenderPreflight(session, settings);
+    } catch (error) {
+        if (!aiIsCurrentSession(session)) return;
+        session.preflightLoading = false;
+        aiRenderPreflight(session, { mode: 'local_only', loadFailed: true });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function startSmartMetadataReview() {
+    const session = _enrichmentSession;
+    if (!aiIsCurrentSession(session) || session.mode !== 'preflight' || session.preflightLoading || session.preflightBlocked) return;
+    session.mode = 'probing';
+    aiSetBatchButtonBusy(true);
+    aiSetStage(session, 'preparing');
+    aiShowPanel('loading');
+    aiUpdateProgress(session);
+    aiUpdateControls(session);
+    try {
+        const startedRichJob = await aiTryStartRichJob(session);
+        if (!aiIsCurrentSession(session)) return;
+        if (!startedRichJob) await aiLoadLegacyQueue(session);
+    } catch (error) {
+        if (!aiIsCurrentSession(session)) return;
+        if (error.name === 'AbortError') error = new Error('The metadata review did not start in time. Please try again.');
+        aiRenderJobError(session, error);
+        showToast(`Could not start Smart Metadata Review: ${error.message}`, 'error');
+    }
+}
+window.startSmartMetadataReview = startSmartMetadataReview;
+
+async function openMetadataSettingsFromReview() {
+    const session = _enrichmentSession;
+    if (aiIsCurrentSession(session) && session.mode === 'job' && session.stage !== 'completed') {
+        if (!window.confirm('Cancel this run and open Metadata settings? Failed items need a new review after settings change.')) return;
+        const cancelled = await cancelSmartMetadataJob({ confirmed: true, closeAfter: true });
+        if (!cancelled) return;
+    } else {
+        cancelSmartMetadataReview({ hide: true, cancelRemote: false });
+    }
+    if (typeof window.openMetadataSettings === 'function') window.openMetadataSettings();
+}
+window.openMetadataSettingsFromReview = openMetadataSettingsFromReview;
 
 function aiLegacyOriginal(songId) {
     const librarySong = aiLibrarySong(songId) || {};
@@ -1373,6 +1676,7 @@ function aiRenderUnknownState(session, state) {
     const title = aiElement('ai-empty-title');
     const message = aiElement('ai-empty-message');
     const detail = aiElement('ai-empty-detail');
+    const settingsAction = aiElement('ai-empty-settings-action');
     const currentTitle = aiOriginalValue(state.original, FIELD_CONFIG[0]);
     if (icon) icon.innerHTML = isProviderError ? `<i class='bx bx-error-circle'></i>` : `<i class='bx bx-search-alt'></i>`;
     if (title) title.textContent = isProviderError ? 'Lookup could not be completed' : 'No reliable match';
@@ -1380,6 +1684,7 @@ function aiRenderUnknownState(session, state) {
     if (detail) detail.textContent = currentTitle
         ? `"${currentTitle}" keeps its current metadata and cover.`
         : 'Current title, metadata, and cover remain unchanged.';
+    if (settingsAction) settingsAction.classList.toggle('hidden', !isProviderError);
     aiUpdateProgress(session);
     aiUpdateControls(session);
 }
@@ -1436,7 +1741,7 @@ async function aiLoadLegacyPreview(session, songId) {
         const button = aiElement('ai-autofill-btn');
         if (button) {
             button.disabled = false;
-            button.innerHTML = `<i class='bx bxs-magic-wand'></i> Smart Auto Enrich`;
+            button.innerHTML = `<i class='bx bxs-magic-wand' aria-hidden="true"></i>`;
         }
     }
 }
@@ -1453,7 +1758,7 @@ async function triggerSmartMetadataAutoFill(songId = null) {
     const button = aiElement('ai-autofill-btn');
     if (button) {
         button.disabled = true;
-        button.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Preparing...`;
+        button.innerHTML = `<i class='bx bx-loader-alt bx-spin' aria-hidden="true"></i>`;
     }
     aiSetStage(session, 'preparing');
     aiOpenWorkspace(session);
@@ -1465,22 +1770,63 @@ async function triggerSmartMetadataAutoFill(songId = null) {
     } catch (error) {
         if (!aiIsCurrentSession(session)) return;
         showToast(`Could not start metadata review: ${error.message}`, 'error');
-        aiSetStage(session, 'provider_error', error.message);
-        aiShowPanel('empty');
+        aiRenderJobError(session, error);
     } finally {
         const currentButton = aiElement('ai-autofill-btn');
         if (currentButton) {
             currentButton.disabled = false;
-            currentButton.innerHTML = `<i class='bx bxs-magic-wand'></i> Smart Auto Enrich`;
+            currentButton.innerHTML = `<i class='bx bxs-magic-wand' aria-hidden="true"></i>`;
         }
     }
 }
 
-function aiConfidenceText(value) {
-    const score = aiFormatScore(value);
-    if (score) return score;
-    if (typeof value === 'string' && value.trim()) return aiHumanize(value);
-    return null;
+function aiConfidenceLabel(value) {
+    const number = aiFiniteNumber(value);
+    if (number !== null) {
+        const normalized = number > 1 ? number / 100 : number;
+        if (normalized >= 0.9) return 'High confidence';
+        if (normalized >= 0.75) return 'Good confidence';
+        return 'Review carefully';
+    }
+    const text = String(value || '').trim().toLowerCase();
+    if (text.includes('high') || text.includes('strong')) return 'High confidence';
+    if (text.includes('medium') || text.includes('good')) return 'Good confidence';
+    return text ? 'Review carefully' : null;
+}
+
+function aiRenderReviewGuidance(state) {
+    const panel = aiElement('ai-review-guidance');
+    if (!panel) return;
+    const notes = [];
+    const ambiguous = [...FIELD_CONFIG, { key: 'coverUrl', label: 'Artwork' }]
+        .filter(field => aiIsFieldAmbiguous(state, state.candidate, field.key))
+        .map(field => field.label);
+    const locked = [...FIELD_CONFIG, { key: 'coverUrl', label: 'Artwork' }]
+        .filter(field => aiIsFieldLocked(state, field.key))
+        .map(field => field.label);
+    const conflicts = state.raw && state.raw.conflicts;
+    if (aiRequiresReleaseSelection(state.candidate)) notes.push('Several releases match this recording. Choose the correct release first.');
+    if (ambiguous.length) notes.push(`Sources disagree about ${ambiguous.join(', ')}. Those fields are not preselected.`);
+    if (locked.length) notes.push(`${locked.join(', ')} ${locked.length === 1 ? 'is' : 'are'} locked and will not be changed.`);
+    if (Array.isArray(conflicts) && conflicts.length && !ambiguous.length) notes.push('The metadata sources disagree on part of this match. Compare the values before applying them.');
+    panel.classList.toggle('hidden', notes.length === 0);
+    panel.innerHTML = notes.length ? `
+        <i class='bx bx-info-circle' aria-hidden="true"></i>
+        <div><strong>Take a closer look</strong><ul>${notes.map(note => `<li>${aiEscape(note)}</li>`).join('')}</ul></div>
+    ` : '';
+}
+
+function aiFriendlyEvidence(value) {
+    const text = String(value || '').trim();
+    const separator = text.indexOf(':');
+    if (separator < 0) return text.replace(/[_-]+/g, ' ');
+    const label = aiHumanize(text.slice(0, separator));
+    const rawDetail = text.slice(separator + 1).trim();
+    const numericDetail = aiFiniteNumber(rawDetail);
+    const detail = numericDetail !== null && numericDetail >= 0 && numericDetail <= 1 && /confidence|score|similarity/i.test(label)
+        ? `${Math.round(numericDetail * 100)}%`
+        : rawDetail.replace(/[_-]+/g, ' ');
+    return `${label}: ${detail}`;
 }
 
 function aiRenderEvidence(state) {
@@ -1492,7 +1838,7 @@ function aiRenderEvidence(state) {
         return;
     }
     container.innerHTML = state.evidence.map(item => `
-        <span class="ai-evidence-chip"><i class='bx bx-check-shield' aria-hidden="true"></i>${aiEscape(item)}</span>
+        <span class="ai-evidence-chip"><i class='bx bx-check-shield' aria-hidden="true"></i>${aiEscape(aiFriendlyEvidence(item))}</span>
     `).join('');
 }
 
@@ -1508,27 +1854,35 @@ function aiRenderFields(state) {
         const changed = usableSuggestion && aiValuesDiffer(current, suggested);
         const safeToApply = aiIsFieldSafe(state, state.candidate, field.key);
         const ambiguous = aiIsFieldAmbiguous(state, state.candidate, field.key);
+        const locked = aiIsFieldLocked(state, field.key);
         const releaseOnlyField = field.key === 'album' || field.key === 'year';
         const releaseAmbiguous = releaseOnlyField && releaseSelectionRequired && ambiguous;
-        const checked = changed && (aiIsPlaceholder(current, field.key) || safeToApply) && !ambiguous;
-        const confidence = aiConfidenceText(aiFieldConfidence(state, state.candidate, field.key));
+        const defaultChecked = changed && (aiIsPlaceholder(current, field.key) || safeToApply) && !ambiguous && !locked;
+        const selectionKey = aiCandidateKey(state.candidate, state.selectedIndex);
+        const savedSelections = state.selectionByCandidate && state.selectionByCandidate[selectionKey];
+        const checked = savedSelections && Object.prototype.hasOwnProperty.call(savedSelections, field.key)
+            ? savedSelections[field.key] === true
+            : defaultChecked;
+        const confidence = aiConfidenceLabel(aiFieldConfidence(state, state.candidate, field.key));
         if (changed) state.enriched[field.key] = suggested;
         const currentLabel = current || 'Not set';
         const suggestedLabel = usableSuggestion ? suggested : 'Not returned';
-        const confidenceLabel = releaseAmbiguous
+        const confidenceLabel = locked
+            ? 'Locked in your library'
+            : releaseAmbiguous
             ? 'Multiple releases disagree; select manually or choose a Release card'
-            : (confidence ? `Field confidence ${confidence}` : 'Field confidence not provided');
+            : (confidence || (changed ? 'Review this suggestion' : 'No new value'));
         const rowClass = changed ? 'changed' : 'unavailable';
         return `
             <div class="ai-review-row ${rowClass}">
                 <div class="ai-review-label"><i class='bx ${field.icon}' aria-hidden="true"></i><span>${aiEscape(field.label)}</span></div>
-                <div class="ai-review-current ${current ? '' : 'ai-review-placeholder'}" title="${aiEscape(currentLabel)}">${aiEscape(currentLabel)}</div>
+                <div class="ai-review-current ${current ? '' : 'ai-review-placeholder'}" title="${aiEscape(currentLabel)}" aria-label="Current ${aiEscape(field.label)}: ${aiEscape(currentLabel)}">${aiEscape(currentLabel)}</div>
                 <div class="ai-review-suggested-wrap">
-                    <div class="ai-review-suggested ${usableSuggestion ? '' : 'ai-review-placeholder'}" title="${aiEscape(suggestedLabel)}">${aiEscape(suggestedLabel)}</div>
+                    <div class="ai-review-suggested ${usableSuggestion ? '' : 'ai-review-placeholder'}" title="${aiEscape(suggestedLabel)}" aria-label="Suggested ${aiEscape(field.label)}: ${aiEscape(suggestedLabel)}">${aiEscape(suggestedLabel)}</div>
                     <span class="ai-field-confidence ${confidence ? 'has-score' : ''}">${aiEscape(confidenceLabel)}</span>
                 </div>
-                <label class="ai-check-control" title="${releaseAmbiguous ? 'Applying this value will not select a canonical release' : (changed ? `Apply suggested ${field.label}` : `No new ${field.label} value`)}">
-                    <input type="checkbox" data-field="${field.key}" data-ai-disabled="${String(!changed)}" ${checked ? 'checked' : ''} ${changed ? '' : 'disabled'} aria-label="Apply suggested ${aiEscape(field.label)}">
+                <label class="ai-check-control" title="${locked ? `${field.label} is locked` : (releaseAmbiguous ? 'Applying this value will not select a canonical release' : (changed ? `Apply suggested ${field.label}` : `No new ${field.label} value`))}">
+                    <input type="checkbox" data-field="${field.key}" data-ai-disabled="${String(!changed || locked)}" ${checked ? 'checked' : ''} ${changed && !locked ? '' : 'disabled'} aria-label="Apply suggested ${aiEscape(field.label)}">
                     <span aria-hidden="true"><i class='bx bx-check'></i></span>
                 </label>
             </div>`;
@@ -1551,6 +1905,7 @@ function aiRenderCover(state) {
     const rawCurrentCover = aiReadMetadataProperty(state.original, ['coverUrl', 'cover_url', 'cover', 'cover_path', 'coverPath'])
         || (aiLibrarySong(state.songId) && aiLibrarySong(state.songId).cover);
     const ambiguous = aiIsFieldAmbiguous(state, state.candidate, 'coverUrl');
+    const locked = aiIsFieldLocked(state, 'coverUrl');
     const releaseSelectionRequired = aiRequiresReleaseSelection(state.candidate);
     const safeToApply = aiIsFieldSafe(state, state.candidate, 'coverUrl');
     const currentMissing = !safeImageURL(rawCurrentCover) || currentCover === COVER_PLACEHOLDER;
@@ -1558,39 +1913,60 @@ function aiRenderCover(state) {
     if (currentImage) currentImage.src = currentCover;
     if (suggestedImage) suggestedImage.src = suggestedCover;
     if (checkbox) {
-        checkbox.checked = !ambiguous && (currentMissing || safeToApply);
-        checkbox.disabled = false;
-        checkbox.dataset.aiDisabled = 'false';
+        const selectionKey = aiCandidateKey(state.candidate, state.selectedIndex);
+        const savedSelections = state.selectionByCandidate && state.selectionByCandidate[selectionKey];
+        checkbox.checked = savedSelections && Object.prototype.hasOwnProperty.call(savedSelections, 'coverUrl')
+            ? savedSelections.coverUrl === true
+            : !ambiguous && !locked && (currentMissing || safeToApply);
+        checkbox.disabled = locked;
+        checkbox.dataset.aiDisabled = String(locked);
     }
-    if (note) note.textContent = releaseSelectionRequired && ambiguous
+    if (note) note.textContent = locked
+        ? 'Artwork is locked in your library'
+        : releaseSelectionRequired && ambiguous
         ? 'Multiple releases returned different covers; choose one manually or select a Release card'
-        : 'Cover changes are staged until Apply';
+        : 'Artwork changes only after approval';
 }
 
 function aiRenderCandidates(state) {
     const section = aiElement('ai-suggestions-section');
     const list = aiElement('ai-suggestions-list');
-    if (!section || !list || state.candidates.length < 2) {
+    const pagination = aiElement('ai-candidate-pagination');
+    const previousButton = aiElement('ai-candidates-previous');
+    const nextButton = aiElement('ai-candidates-next');
+    const pageStatus = aiElement('ai-candidate-page-status');
+    if (!section || !list || state.candidates.length < 1) {
         if (section) section.classList.add('hidden');
         if (list) list.innerHTML = '';
         return;
     }
-    section.classList.remove('hidden');
-    list.innerHTML = state.candidates.map((candidate, index) => {
+    section.classList.toggle('hidden', state.reviewStep === 'approval');
+    const pageCount = Math.max(1, Math.ceil(state.candidates.length / AI_CANDIDATES_PER_PAGE));
+    const selectedPage = Math.floor(state.selectedIndex / AI_CANDIDATES_PER_PAGE);
+    state.candidatePage = Number.isInteger(state.candidatePage) ? state.candidatePage : selectedPage;
+    state.candidatePage = Math.max(0, Math.min(state.candidatePage, pageCount - 1));
+    const pageStart = state.candidatePage * AI_CANDIDATES_PER_PAGE;
+    const pageCandidates = state.candidates.slice(pageStart, pageStart + AI_CANDIDATES_PER_PAGE);
+    list.classList.remove('ai-panel-enter');
+    void list.offsetWidth;
+    list.classList.add('ai-panel-enter');
+    list.innerHTML = pageCandidates.map((candidate, pageIndex) => {
+        const index = pageStart + pageIndex;
         const title = aiCandidateValue(candidate, FIELD_CONFIG[0]) || 'Untitled candidate';
         const artist = aiCandidateValue(candidate, FIELD_CONFIG[1]) || 'Artist not returned';
         const album = aiCandidateValue(candidate, FIELD_CONFIG[2]);
         const year = aiCandidateValue(candidate, FIELD_CONFIG[4]);
         const cover = aiCandidateCover(candidate);
-        const score = aiConfidenceText(aiReadMetadataProperty(candidate, ['matchScore', 'match_score', 'confidence', 'score']));
+        const confidence = aiConfidenceLabel(aiReadMetadataProperty(candidate, ['matchScore', 'match_score', 'confidence', 'score']));
         const type = candidate._aiCandidateType ||
             (Array.isArray(candidate.releaseCandidates) && candidate.releaseCandidates.length > 1
                 ? 'Recording'
                 : (index === 0 ? 'Suggested' : 'Alternative'));
-        const detail = [artist, album, year].filter(Boolean).join(' / ');
+        const source = aiReadMetadataProperty(candidate, ['provider', 'source', 'registry']);
+        const detail = [source ? aiProviderLabel(source) : null, artist, album, year].filter(Boolean).join(' / ');
         return `
-            <button type="button" class="ai-suggestion-card ${index === state.selectedIndex ? 'active' : ''}"
-                data-sug-index="${index}" aria-pressed="${String(index === state.selectedIndex)}">
+            <button type="button" class="ai-suggestion-card ${state.candidateConfirmed && index === state.selectedIndex ? 'active' : ''}"
+                data-sug-index="${index}" aria-pressed="${String(state.candidateConfirmed && index === state.selectedIndex)}">
                 ${cover
                     ? `<img class="ai-suggestion-cover" src="${aiEscape(cover)}" alt="" loading="lazy" decoding="async">`
                     : `<span class="ai-suggestion-cover-placeholder" aria-hidden="true"><i class='bx bx-music'></i></span>`}
@@ -1600,7 +1976,7 @@ function aiRenderCandidates(state) {
                 </span>
                 <span class="ai-candidate-meta">
                     <span class="ai-candidate-type">${aiEscape(type)}</span>
-                    ${score ? `<span class="ai-candidate-score">Score ${aiEscape(score)}</span>` : ''}
+                    ${confidence ? `<span class="ai-candidate-score">${aiEscape(confidence)}</span>` : ''}
                 </span>
             </button>`;
     }).join('');
@@ -1612,14 +1988,76 @@ function aiRenderCandidates(state) {
             if (!Number.isInteger(index) || !state.candidates[index]) return;
             state.selectedIndex = index;
             state.candidate = state.candidates[index];
+            state.candidateConfirmed = true;
             aiRenderReviewState(session, state);
+            requestAnimationFrame(() => {
+                document.querySelector(`#ai-suggestions-list .ai-suggestion-card[data-sug-index="${index}"]`)?.focus();
+            });
         });
     });
+    if (pagination) pagination.classList.toggle('hidden', pageCount <= 1);
+    if (pageStatus) pageStatus.textContent = `Page ${state.candidatePage + 1} of ${pageCount}`;
+    if (previousButton) {
+        previousButton.dataset.aiDisabled = String(state.candidatePage === 0);
+        previousButton.disabled = state.candidatePage === 0;
+        previousButton.onclick = () => {
+            if (state.candidatePage === 0) return;
+            state.candidatePage -= 1;
+            aiRenderCandidates(state);
+            requestAnimationFrame(() => document.querySelector('#ai-suggestions-list .ai-suggestion-card:last-child')?.focus());
+        };
+    }
+    if (nextButton) {
+        nextButton.dataset.aiDisabled = String(state.candidatePage >= pageCount - 1);
+        nextButton.disabled = state.candidatePage >= pageCount - 1;
+        nextButton.onclick = () => {
+            if (state.candidatePage >= pageCount - 1) return;
+            state.candidatePage += 1;
+            aiRenderCandidates(state);
+            requestAnimationFrame(() => document.querySelector('#ai-suggestions-list .ai-suggestion-card')?.focus());
+        };
+    }
 }
+
+function aiRememberReviewSelections(state) {
+    if (!state || state.reviewStep !== 'approval' || !state.candidate) return;
+    const selectionKey = aiCandidateKey(state.candidate, state.selectedIndex);
+    const selections = {};
+    document.querySelectorAll('#ai-fields-container input[type="checkbox"][data-field]').forEach(checkbox => {
+        selections[checkbox.dataset.field] = checkbox.checked;
+    });
+    const coverCheckbox = aiElement('ai-accept-cover');
+    if (coverCheckbox && !aiElement('ai-cover-section')?.classList.contains('hidden')) {
+        selections.coverUrl = coverCheckbox.checked;
+    }
+    if (!state.selectionByCandidate) state.selectionByCandidate = {};
+    state.selectionByCandidate[selectionKey] = selections;
+}
+
+function aiSetReviewStep(step) {
+    const session = _enrichmentSession;
+    const state = _aiReviewState;
+    if (!aiIsCurrentSession(session) || !state || session.applying || session.stage === 'paused') return;
+    if (state.reviewStep === 'approval') aiRememberReviewSelections(state);
+    state.reviewStep = step === 'approval' ? 'approval' : 'match';
+    aiRenderReviewState(session, state);
+    const scrollRegion = document.querySelector('#ai-metadata-modal .ai-workspace-scroll');
+    if (scrollRegion) scrollRegion.scrollTop = 0;
+    requestAnimationFrame(() => {
+        const focusTarget = state.reviewStep === 'approval'
+            ? aiElement('ai-back-to-matches')
+            : document.querySelector('#ai-suggestions-list .ai-suggestion-card.active');
+        if (focusTarget) focusTarget.focus();
+    });
+}
+window.reviewSelectedMetadataMatch = () => aiSetReviewStep('approval');
+window.backToMetadataMatches = () => aiSetReviewStep('match');
 
 function aiRenderReviewState(session, state) {
     if (!aiIsCurrentSession(session) || !state || !state.candidate) return;
     state.selectedIndex = Math.max(0, Math.min(state.selectedIndex || 0, state.candidates.length - 1));
+    state.reviewStep = state.reviewStep === 'approval' ? 'approval' : 'match';
+    state.candidateConfirmed = state.candidateConfirmed === true;
     state.candidate = state.candidates[state.selectedIndex];
     state.evidence = aiCollectEvidence(state.raw, state.candidate);
     state.providers = aiCollectProviderStatuses(session.providers, state.providers);
@@ -1644,20 +2082,23 @@ function aiRenderReviewState(session, state) {
     const title = aiElement('ai-item-title');
     const kicker = aiElement('ai-item-kicker');
     const scoreBadge = aiElement('ai-match-score');
-    const score = aiConfidenceText(aiReadMetadataProperty(state.candidate, ['matchScore', 'match_score', 'confidence', 'score']));
+    const evidencePanel = aiElement('ai-evidence-section');
+    const approvalStep = aiElement('ai-approval-step');
+    const score = aiConfidenceLabel(aiReadMetadataProperty(state.candidate, ['matchScore', 'match_score', 'confidence', 'score']));
     if (title) title.textContent = currentTitle || suggestedTitle || `Song ${state.songId || ''}`.trim();
-    if (kicker) kicker.textContent = session.isBatch && session.total > 0
-        ? `Review item ${Math.min(session.processed + 1, session.total)} of ${session.total}`
-        : 'Current item';
+    if (kicker) kicker.textContent = 'Needs your review';
     if (scoreBadge) {
         scoreBadge.classList.toggle('hidden', !score);
-        scoreBadge.textContent = score ? `Match score ${score}` : '';
+        scoreBadge.textContent = score || '';
     }
+    if (evidencePanel) evidencePanel.removeAttribute('open');
+    if (approvalStep) approvalStep.classList.toggle('hidden', state.reviewStep !== 'approval');
 
-    aiRenderEvidence(state);
+    aiRenderCandidates(state);
+    aiRenderReviewGuidance(state);
     aiRenderFields(state);
     aiRenderCover(state);
-    aiRenderCandidates(state);
+    aiRenderEvidence(state);
     aiUpdateProgress(session);
     aiUpdateControls(session);
 }
@@ -1670,6 +2111,17 @@ function renderSmartReviewModal(songId, data) {
         ? _aiReviewState.selectedIndex
         : 0;
     const state = alreadyNormalized ? data : aiNormalizeItem(data, { songId, selectedIndex: previousIndex });
+    const previousState = _aiReviewState && String(_aiReviewState.itemId) === String(state.itemId)
+        ? _aiReviewState
+        : null;
+    if (previousState && state !== previousState) {
+        state.selectedIndex = previousState.selectedIndex;
+        state.candidatePage = previousState.candidatePage;
+        state.candidateConfirmed = previousState.candidateConfirmed;
+        state.reviewStep = previousState.reviewStep;
+        state.selectionByCandidate = previousState.selectionByCandidate;
+        state.candidate = state.candidates[state.selectedIndex] || state.candidates[0] || null;
+    }
     if (!state.songId) state.songId = songId;
     if (!state.candidates.length) {
         aiRenderUnknownState(session, state);
@@ -1727,10 +2179,23 @@ function aiCompleteSession(session, options = {}) {
     aiShowPanel('complete');
     const title = aiElement('ai-complete-title');
     const message = aiElement('ai-complete-message');
+    const summary = aiElement('ai-complete-summary');
     if (title) title.textContent = options.title || (options.cancelled ? 'Run cancelled' : 'Review complete');
     if (message) message.textContent = options.message || (options.cancelled
         ? 'No further items will be requested from this review session.'
         : 'Your approved metadata changes have been saved.');
+    const summaryValues = {
+        'ai-complete-automatic': Math.max(0, Number(session.mode === 'job' ? (session.automatic ?? session.matched) : (session.automatic ?? 0)) || 0),
+        'ai-complete-approved': Math.max(0, Number(session.approved) || 0),
+        'ai-complete-skipped': Math.max(0, Number(session.skipped) || 0),
+        'ai-complete-unmatched': Math.max(0, Number(session.noMatch ?? session.unidentified) || 0),
+        'ai-complete-errors': Math.max(0, Number(session.sourceErrors ?? session.errors) || 0)
+    };
+    Object.entries(summaryValues).forEach(([id, value]) => {
+        const element = aiElement(id);
+        if (element) element.textContent = value;
+    });
+    if (summary) summary.classList.toggle('hidden', !!options.cancelled || session.total === 0);
     aiUpdateProgress(session);
     aiUpdateControls(session);
     aiSetBatchButtonBusy(false);
@@ -1741,8 +2206,15 @@ function aiAdvanceLegacySession(session, decision, state) {
     if (!aiIsCurrentSession(session)) return;
     session.processed += 1;
     session.percent = null;
-    if (decision === 'apply') session.matched += 1;
-    if (decision === 'skip' && state && ['unidentified', 'provider_error'].includes(state.stage)) session.unidentified += 1;
+    if (decision === 'apply') {
+        session.matched += 1;
+        session.approved += 1;
+    }
+    const skippedUnknown = decision === 'skip' && state && state.stage === 'unidentified';
+    const skippedError = decision === 'skip' && state && state.stage === 'provider_error';
+    if (decision === 'skip' && !skippedUnknown && !skippedError) session.skipped += 1;
+    if (skippedUnknown) session.unidentified += 1;
+    if (skippedError) session.errors += 1;
     if (session.review > 0) session.review -= 1;
     session.item = null;
     _aiReviewState = null;
@@ -1861,10 +2333,12 @@ function aiRenderJobError(session, error, providers = []) {
     const title = aiElement('ai-empty-title');
     const message = aiElement('ai-empty-message');
     const detail = aiElement('ai-empty-detail');
+    const settingsAction = aiElement('ai-empty-settings-action');
     if (icon) icon.innerHTML = `<i class='bx bx-error-circle'></i>`;
     if (title) title.textContent = 'Enrichment job needs attention';
     if (message) message.textContent = error && error.message ? error.message : 'The server could not continue this job.';
-    if (detail) detail.textContent = 'No metadata was applied by this screen. Cancel the run or close the workspace.';
+    if (detail) detail.textContent = 'Review the metadata setup, or close this window and return later.';
+    if (settingsAction) settingsAction.classList.remove('hidden');
     aiUpdateProgress(session);
     aiUpdateControls(session);
 }
@@ -1888,11 +2362,13 @@ async function aiHandleJobSnapshot(session, snapshot) {
     if (snapshot.stage === 'completed') {
         aiCompleteSession(session, snapshot.cancelled
             ? { cancelled: true, title: 'Run cancelled', message: snapshot.message || 'No further review items will be requested.' }
-            : { message: snapshot.message || 'All available review items have been handled.' });
+            : (snapshot.total === 0
+                ? { title: 'Your library is up to date', message: 'No unfinished metadata was found.' }
+                : { message: snapshot.message || 'All available review items have been handled.' }));
         return;
     }
     if (snapshot.stage === 'paused') {
-        aiShowPanel('loading');
+        aiShowPanel(session.item ? 'content' : 'loading');
         aiUpdateControls(session);
         return;
     }
@@ -1916,7 +2392,11 @@ async function aiHandleJobSnapshot(session, snapshot) {
 }
 
 async function aiRefreshJob(session) {
-    if (!aiIsCurrentSession(session) || session.mode !== 'job' || !session.jobId || session.loadingJob) return;
+    if (!aiIsCurrentSession(session) || session.mode !== 'job' || !session.jobId) return;
+    if (session.loadingJob) {
+        aiScheduleJobPoll(session, 500);
+        return;
+    }
     session.loadingJob = true;
     const controller = aiBeginReadRequest(session);
     try {
@@ -1932,7 +2412,12 @@ async function aiRefreshJob(session) {
         aiRenderJobError(session, error);
     } finally {
         if (_aiReviewAbort === controller) _aiReviewAbort = null;
-        if (aiIsCurrentSession(session)) session.loadingJob = false;
+        if (aiIsCurrentSession(session)) {
+            session.loadingJob = false;
+            if (!session.item && !['paused', 'completed', 'provider_error'].includes(session.stage)) {
+                aiScheduleJobPoll(session);
+            }
+        }
     }
 }
 
@@ -2002,8 +2487,15 @@ async function aiAfterJobDecision(session, body, decision, decidedState = null) 
     } else {
         session.processed += 1;
         session.percent = null;
-        if (decision === 'apply') session.matched += 1;
-        if (decision === 'skip' && decidedState && ['unidentified', 'provider_error'].includes(decidedState.stage)) session.unidentified += 1;
+        if (decision === 'apply') {
+            session.matched += 1;
+            session.approved += 1;
+        }
+        const skippedUnknown = decision === 'skip' && decidedState && decidedState.stage === 'unidentified';
+        const skippedError = decision === 'skip' && decidedState && decidedState.stage === 'provider_error';
+        if (decision === 'skip' && !skippedUnknown && !skippedError) session.skipped += 1;
+        if (skippedUnknown) session.unidentified += 1;
+        if (skippedError) session.errors += 1;
         if (session.review > 0) session.review -= 1;
         aiUpdateProgress(session);
     }
@@ -2021,6 +2513,11 @@ async function aiAfterJobDecision(session, body, decision, decidedState = null) 
 
 async function aiTryStartRichJob(session, options = {}) {
     const controller = aiBeginReadRequest(session);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, 20000);
     let response;
     try {
         response = await fetch(window.API_BASE_URL + '/api/enrichment/jobs', {
@@ -2050,11 +2547,21 @@ async function aiTryStartRichJob(session, options = {}) {
         if (snapshot.id === undefined || snapshot.id === null || snapshot.id === '') {
             throw new Error('The enrichment job response did not include a job id');
         }
+        if (response.status === 409 && options.songId &&
+            (snapshot.scope !== 'song' || String(snapshot.targetSongId || '') !== String(options.songId))) {
+            throw new Error('Another metadata review is already active. Reopen it from Your Library, or cancel it before reviewing this track.');
+        }
         session.mode = 'job';
         session.jobId = snapshot.id;
         await aiHandleJobSnapshot(session, snapshot);
         return true;
+    } catch (error) {
+        if (timedOut && error.name === 'AbortError') {
+            throw new Error('The server took too long to start the metadata review. Please try again.');
+        }
+        throw error;
     } finally {
+        clearTimeout(timeout);
         if (_aiReviewAbort === controller) _aiReviewAbort = null;
     }
 }
@@ -2117,21 +2624,12 @@ async function aiLoadLegacyQueue(session) {
 
 async function enrichBatchSongs() {
     if (!await aiRequireOwner()) return;
-    const session = aiCreateSession({ isBatch: true, mode: 'probing' });
-    aiSetBatchButtonBusy(true);
-    aiSetStage(session, 'preparing');
-    aiOpenWorkspace(session);
+    const session = aiCreateSession({ isBatch: true, mode: 'preflight' });
+    aiSetStage(session, 'idle');
+    aiOpenWorkspace(session, 'preflight');
     aiUpdateProgress(session);
     aiUpdateControls(session);
-    try {
-        const startedRichJob = await aiTryStartRichJob(session);
-        if (!aiIsCurrentSession(session)) return;
-        if (!startedRichJob) await aiLoadLegacyQueue(session);
-    } catch (error) {
-        if (error.name === 'AbortError' || !aiIsCurrentSession(session)) return;
-        aiRenderJobError(session, error);
-        showToast(`Could not start Smart Auto Enrich: ${error.message}`, 'error');
-    }
+    await aiPrepareBatchPreflight(session);
 }
 
 function processNextInQueue() {
@@ -2151,6 +2649,7 @@ async function toggleSmartMetadataPause() {
     const session = _enrichmentSession;
     if (!aiIsCurrentSession(session) || session.mode !== 'job' || !session.jobId || session.applying || session.controlPending) return;
     const resume = session.stage === 'paused';
+    if (!resume) aiRememberReviewSelections(_aiReviewState);
     session.controlPending = true;
     aiClearPollTimer();
     aiAbortReadRequest();
@@ -2174,7 +2673,7 @@ async function toggleSmartMetadataPause() {
             }
         } else {
             aiSetStage(session, 'paused');
-            aiShowPanel('loading');
+            aiShowPanel(session.item ? 'content' : 'loading');
             aiUpdateControls(session);
         }
     } catch (error) {
@@ -2190,6 +2689,9 @@ window.toggleSmartMetadataPause = toggleSmartMetadataPause;
 async function cancelSmartMetadataJob(options = {}) {
     const session = _enrichmentSession;
     if (!aiIsCurrentSession(session) || session.applying || session.controlPending || session.stage === 'completed') return false;
+    if (options.confirmed !== true && !window.confirm('Cancel this metadata review? Scanning will stop and remaining items will be left unchanged.')) {
+        return false;
+    }
     session.controlPending = true;
     aiClearPollTimer();
     aiAbortReadRequest();
@@ -2226,11 +2728,9 @@ async function requestCloseSmartMetadataReview() {
         return;
     }
     if (session.applying || session.controlPending) return;
-    if (session.mode === 'job' && session.stage !== 'completed') {
-        await cancelSmartMetadataJob({ closeAfter: true });
-        return;
-    }
+    const jobContinues = session.mode === 'job' && session.stage !== 'completed';
     cancelSmartMetadataReview({ hide: true, cancelRemote: false });
+    if (jobContinues) showToast('Metadata review closed. Reopen it from Your Library to continue.', 'success');
 }
 window.requestCloseSmartMetadataReview = requestCloseSmartMetadataReview;
 
@@ -2272,7 +2772,7 @@ function renderPeopleGrid(users) {
         const safeUsername = escapeHTML(user.username);
         const avatarHtml = user.avatar
             ? `<div style="width:120px;max-width:100%;aspect-ratio:1;border-radius:50%;background:url('${safeStyleURL(user.avatar)}') center/cover;margin:0 auto 16px;box-shadow:0 4px 10px rgba(0,0,0,0.5);overflow:hidden;"></div>`
-            : `<div style="width:120px;max-width:100%;aspect-ratio:1;background:linear-gradient(45deg,#1db954,#191414);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:bold;margin:0 auto 16px;box-shadow:0 4px 10px rgba(0,0,0,0.5);">${initial}</div>`;
+            : `<div style="width:120px;max-width:100%;aspect-ratio:1;background:linear-gradient(45deg,var(--gradient-1),var(--gradient-2));color:var(--on-gradient);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:bold;margin:0 auto 16px;box-shadow:0 4px 10px rgba(0,0,0,0.5);">${initial}</div>`;
 
         const userRole = user.role || 'User';
         let roleClass = '';
@@ -2330,7 +2830,7 @@ function renderUserUI(data) {
             el.style.backgroundSize = 'cover';
             el.style.backgroundPosition = 'center';
         } else {
-            el.style.backgroundImage = 'linear-gradient(45deg, #1db954, #191414)';
+            el.style.backgroundImage = 'linear-gradient(45deg, var(--gradient-1), var(--gradient-2))';
             el.style.backgroundSize = '';
             el.style.backgroundPosition = '';
             el.textContent = username.charAt(0).toUpperCase();
@@ -2349,7 +2849,7 @@ function clearUserProfile() {
         playlists: document.getElementById('profile-playlists-count')
     };
     if (els.name) els.name.textContent = 'Loading...';
-    if (els.avatar) { els.avatar.innerHTML = ''; els.avatar.style.backgroundImage = 'linear-gradient(45deg,#1db954,#191414)'; els.avatar.textContent = 'L'; }
+    if (els.avatar) { els.avatar.innerHTML = ''; els.avatar.style.backgroundImage = 'linear-gradient(45deg,var(--gradient-1),var(--gradient-2))'; els.avatar.textContent = 'L'; }
     if (els.bio) els.bio.textContent = 'Loading...';
     if (els.playlists) els.playlists.textContent = '\u2014';
 }
@@ -2406,7 +2906,7 @@ function displayUserProfile(data) {
             image.style.cssText = 'width:100%;height:100%;object-fit:cover;object-position:center;border-radius:50%;';
             avatarEl.appendChild(image);
         } else {
-            avatarEl.style.backgroundImage = 'linear-gradient(45deg,#1db954,#191414)';
+            avatarEl.style.backgroundImage = 'linear-gradient(45deg,var(--gradient-1),var(--gradient-2))';
             avatarEl.style.backgroundSize = '';
             avatarEl.style.backgroundPosition = '';
             avatarEl.textContent = displayName.charAt(0).toUpperCase();
@@ -2641,19 +3141,21 @@ function fetchTrending(forceRefresh = false) {
 
 let _fetchLibrarySeq = 0;
 
-function fetchLibrary(forceRefresh = false) {
+function fetchLibrary(forceRefresh = false, options = {}) {
     const list = document.getElementById('trending-list'); // Streamify codebase calls the library list 'trending-list'.
+    const shouldRender = options.render !== false;
+    const renderOptions = options.renderOptions || {};
 
     if (!navigator.onLine && window.OfflineStore) {
         return window.OfflineStore.getOfflineSongs().then(songs => {
-            renderSongList(songs, list);
+            if (shouldRender) renderSongList(songs, list, renderOptions);
             return songs;
         });
     }
 
     const now = Date.now();
     if (!forceRefresh && appCache.library && (now - appCache.libraryTime < CACHE_DURATION)) {
-        renderSongList(appCache.library, list);
+        if (shouldRender) renderSongList(appCache.library, list, renderOptions);
         return Promise.resolve(appCache.library);
     }
     const seq = ++_fetchLibrarySeq;
@@ -2665,11 +3167,14 @@ function fetchLibrary(forceRefresh = false) {
         .then(songs => {
             appCache.library = songs;
             appCache.libraryTime = Date.now();
-            if (window.currentActiveView !== 'library' || seq !== _fetchLibrarySeq) return songs;
-            renderSongList(songs, list);
+            if (!shouldRender || window.currentActiveView !== 'library' || seq !== _fetchLibrarySeq) return songs;
+            renderSongList(songs, list, renderOptions);
             return songs;
         })
-        .catch(err => console.error('Error fetching library:', err));
+        .catch(err => {
+            console.error('Error fetching library:', err);
+            return [];
+        });
 }
 
 // Global compatibility alias for legacy fetchSongs calls
@@ -3033,7 +3538,7 @@ function createPostElement(post) {
     const safeInitial = escapeHTML(initial);
     const avatarStyle = post.avatar
         ? `background-image: url('${safeStyleURL(post.avatar)}'); background-size: cover; background-position: center;`
-        : `background: linear-gradient(135deg, #4169e1, #8b5cf6);`;
+        : `background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2)); color: var(--on-gradient);`;
 
     let badgeHtml = '';
     const isSelfOwner = appCache.user && appCache.user.role === 'Owner';
@@ -4188,7 +4693,7 @@ async function fetchDetailedProfile(username) {
     if (nameEl) nameEl.textContent = 'Loading...';
     if (handleEl) handleEl.textContent = '';
     if (bioEl) bioEl.textContent = '';
-    if (avatarEl) { avatarEl.innerHTML = ''; avatarEl.style.backgroundImage = 'linear-gradient(45deg, #4169e1, #8b5cf6)'; }
+    if (avatarEl) { avatarEl.innerHTML = ''; avatarEl.style.backgroundImage = 'linear-gradient(45deg, var(--gradient-1), var(--gradient-2))'; }
     if (bannerEl) { bannerEl.style.background = ''; bannerEl.style.backgroundImage = 'none'; }
     const backdropEl = document.getElementById('profile-banner-backdrop');
     if (backdropEl) backdropEl.style.backgroundImage = 'none';

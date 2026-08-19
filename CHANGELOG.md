@@ -5,6 +5,180 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - YouTube Acquisition Removal - 2026-08-17
+
+### Changed
+
+- Get Music now acquires audio exclusively through Soulseek. Spotify remains a
+  tracklist source and resolves each item through Soulseek.
+- Discord Rich Presence now offers five artwork policies: always use the app
+  logo, stored/public only, exact YouTube title/version/duration matching,
+  Apple Music only, and exact YouTube with an Apple fallback. Successful matches
+  are cached for 30 days and uncertain matches use the Streamify logo.
+- The Owner can continue to provide a public HTTPS Streamify URL so Discord can
+  display exact embedded and uploaded covers without an online lookup.
+
+### Removed
+
+- Removed YouTube search and download from Get Music, including pasted YouTube
+  links, cookie authentication, media extraction, MP3 conversion and fallback
+  acquisition for Spotify imports.
+- Unfinished legacy YouTube queue rows are retired on startup and cannot be
+  retried. Completed songs, historical queue records and trusted thumbnail URLs
+  remain available.
+
+## [Unreleased] - Desktop Auto-Update - 2026-08-16
+
+### Added
+
+- The desktop app now checks its GitHub releases for a newer version, downloads
+  it in the background and installs it the next time Streamify quits. A
+  **Restart and install** button applies it immediately.
+- Added **Settings → Updates** (desktop only): installed version, check status,
+  download progress, release notes, and a manual **Check now**.
+- Added an Owner-only switch for automatic checks. It is server-wide rather than
+  per-device, because the Owner is the only person on a self-hosted box who can
+  actually apply an update. Stored as `system_config.auto_update_enabled` and
+  changed through `POST /api/settings/updates`; existing installs default to on.
+- Added `npm run release` / `npm run release:linux`, which upload the installer
+  together with the `latest.yml` manifest that installed clients read. The
+  release is created as a draft; press **Publish release** on GitHub once every
+  asset has finished uploading.
+
+### Changed
+
+- Builds that cannot replace themselves now say so instead of failing a check:
+  deb and tar.gz are left to the package manager, the portable exe has no
+  install root, and macOS builds are unsigned.
+
+### Removed
+
+- Removed the **Beta Info** page and its sidebar entry. It carried a hardcoded
+  version string that had been wrong since 0.2.0; `/home#about` now falls back
+  to the library.
+
+## [Unreleased] - Player Motion Performance - 2026-08-16
+
+Detailed engineering notes and the manual verification checklist are available
+in [`MD Files/Engineering/PLAYER_TRANSITION_PERFORMANCE.md`](MD%20Files/Engineering/PLAYER_TRANSITION_PERFORMANCE.md).
+
+### Performance
+
+- Kept the desktop dedicated player mounted as a retained fixed compositor layer,
+  trading a bounded amount of GPU memory for smooth repeated open/Back transitions.
+- Preserved the existing 500ms section entrance, 800ms blur entrance, 300ms shell
+  motion, routed-page return animations, and lyric spring timing.
+- Replaced per-frame sidebar margin and top-bar width animation with one layout
+  commit followed by FLIP transforms and opacity.
+- Kept the routed library/playlist/profile/search section mounted and inert beneath
+  the player so Back no longer rebuilds its visual layers.
+- Replaced continuous desktop lyric polling with next-line scheduling and skipped
+  filtered rasterization for lyrics outside the visible depth stack.
+- Added library render batching, offscreen row containment, cover decode/tint
+  prewarming, deferred non-critical startup work, and GPU feature diagnostics.
+- Added a first-library paint gate that builds rows while hidden, decodes
+  first-viewport covers, and primes retained layers before resuming the original
+  entrance animations. Remaining rows and background services start after that
+  motion, so cold-start work stays bounded as libraries grow.
+- Avoided hashing unchanged audio files and recalculating normal storage totals from
+  filesystem stats on every launch.
+
+### Fixed
+
+- Removed the large blank band above the first desktop lyric lines while preserving
+  centered spring scrolling once enough preceding lyrics exist.
+- Removed repeated first/reopen hitches caused by destroying the player, blurred
+  footer, and routed-page layers with `display:none`.
+
+### Branding
+
+- Standardized the Streamify wordmark on home, startup, login, locked-login,
+  admin, maintenance, diagnostics, and special-error pages using the bundled
+  Plus Jakarta Sans variable font, with context-specific sizing and tracking.
+- Matched the cold-start splash to the login intro: centered animated-gradient
+  wordmark with the same one-second upward blur and scale transition.
+
+## [Unreleased] - Get Music Update - 2026-08-15
+
+### Get Music (Owner only)
+
+- Added a **Get Music** page that searches Soulseek and YouTube side by side and
+  downloads straight into the configured music library.
+- Added Soulseek (P2P) search with quality-aware ranking across free slots, queue
+  length, filename relevance, container, bitrate and peer speed.
+- Added YouTube search and download through yt-dlp, converted to MP3 with the
+  thumbnail and metadata embedded in a single pass.
+- Added pasted-link support for YouTube tracks and for Spotify playlists, albums
+  and tracks. Spotify is used as a tracklist only; no audio comes from Spotify.
+- Added a persistent, resumable download queue with per-item stages, cancel,
+  retry, cancel-all and clear. Transfers interrupted by a crash or restart are
+  requeued instead of lost.
+- Added live queue progress over Socket.IO, with polling as a fallback when the
+  socket cannot connect.
+- Downloads are saved to `Streamify Downloads` inside the first configured music
+  directory, then indexed by the normal library scanner.
+- Cover art is embedded into the file itself, so artwork survives moving,
+  renaming or backing up the track, and needs no scanner special-casing.
+- Nothing is ever queued without confirmation. Picking a search result, pasting a
+  YouTube link or importing a Spotify album all open a confirmation dialog first,
+  previewing the track (or tracklist) and its quality before anything downloads.
+- Source status is shown only when it needs attention: a single card prompting
+  for a Soulseek account, and nothing at all once it works. The Soulseek tab,
+  panel and search request are dropped entirely when no account is configured,
+  rather than presenting a source that cannot return anything.
+- Added a **Downloads** tab in Owner Settings for the Soulseek account, with a
+  connection test and an explanation of what connecting to the P2P network
+  actually does.
+- Added `npm run test:downloads`, `test:downloads-ui`, `test:downloads-security`
+  and `test:wiring`.
+
+### Fixed
+
+- YouTube downloads failed with `HTTP 403: Forbidden`. yt-dlp now receives the
+  running Node interpreter for JavaScript challenges, no longer gets a forced
+  User-Agent that breaks its client pairing, and retries extraction with a fresh
+  signed media URL when a rotating public IP invalidates the first one. Searches,
+  metadata, and transfers also share the same request cooldown, and AAC/M4A is
+  preferred before falling back to another available audio representation.
+- Electron now trusts the app's own self-signed certificate for its matching
+  `wss://` endpoint as well as HTTPS, restoring Socket.IO without weakening the
+  certificate exception for any other host or port.
+- YouTube downloads now retain the exact public thumbnail applied to the file,
+  so Discord Rich Presence can show it without access to Streamify's LAN URL.
+  Trusted thumbnails are also recovered for downloads completed before the fix.
+- Extracted single-file indexing out of the library scan loop so a finished
+  download joins the library immediately instead of forcing a full rescan.
+
+### Security
+
+- Soulseek credentials are excluded from every configuration API response.
+  `initializeConfig()` bulk-loads all `system_config` rows into
+  `app.locals.config`, which `GET /api/admin/config` returns to Admins, so any
+  new secret stored there was exposed by default. Secret keys are now stripped
+  centrally in both `initializeConfig()` and `safeSystemConfigResponse()`.
+- All download and download-settings routes are Owner-only, matching the existing
+  restriction on music directories and rescans.
+- Download progress is broadcast to a role-scoped socket room resolved from the
+  database at handshake, never from client-supplied data.
+- Only YouTube URLs are passed to yt-dlp. An unvalidated queue entry could
+  otherwise have reached the generic extractor and been used to probe internal
+  addresses or ingest local files.
+- Artwork is fetched only from an allowlist of YouTube and Spotify image hosts,
+  with the allowlist re-checked on every redirect, plus size, redirect-depth and
+  content-type limits.
+- Certificate verification is enabled for all yt-dlp traffic.
+- Streamify's own secrets are stripped from the environment passed to yt-dlp.
+- The Soulseek password is never returned to the browser.
+
+### Removed
+
+- Retired the superseded uploader-era downloader: the old Soulseek helper, the
+  `/api/youtube-*` handlers and the `/api/import/spotify` background importer.
+  They wrote into `MusicLibrary/uploads` under per-user storage quotas, which no
+  longer matches the folder-library model, and their second Soulseek client
+  would have fought the new one over `slsk-client`'s module-level singletons.
+  The retired endpoints continue to return HTTP 410.
+
 ## [Unreleased] - Polishing Update - 2026-08-15
 
 Detailed engineering notes and the manual verification checklist are available

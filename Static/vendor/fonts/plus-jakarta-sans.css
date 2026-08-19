@@ -1,0 +1,26 @@
+@font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-style: normal;
+    font-weight: 200 800;
+    font-display: block;
+    src: url('PlusJakartaSans-VariableFont_wght.ttf') format('truetype');
+}
+
+/* Shared Streamify wordmark. Page styles control the contextual size, while
+   the face, weight, tracking, and vertical metrics stay consistent everywhere. */
+.streamify-logo {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    font-weight: 760 !important;
+    font-variation-settings: 'wght' 760;
+    font-synthesis: none;
+    letter-spacing: -0.055em;
+    line-height: 1.16;
+    display: inline-block;
+    padding: 0.04em 0.04em 0.12em 0;
+    white-space: nowrap;
+}
+
+.streamify-logo--compact {
+    font-size: 21px !important;
+    letter-spacing: -0.045em !important;
+}

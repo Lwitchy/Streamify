@@ -1,4 +1,4 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -15,15 +15,18 @@ const compression = require('compression');
 const HandleDatabase = require('./database');
 const Media = require('./media');
 const AIMetadata = require('./aiMetadata');
+const MetadataProviders = require('./metadataProviders');
 const Fingerprint = require('./fingerprint');
+const EnrichmentSummary = require('./enrichmentSummary');
 const Auth = require('./auth');
 const RT = require('./runtime');
-const ffmpegPath = RT.unpackPath(require('@ffmpeg-installer/ffmpeg').path);
 const { Jimp } = require('jimp');
 const mm = require('music-metadata');
 const Moderation = require('./moderation');
+const DiscordArtwork = require('./discordArtwork');
 const ytDlpFactory = require('yt-dlp-exec');
 const ytDlp = ytDlpFactory.create(RT.unpackPath(require('yt-dlp-exec/src/constants').YOUTUBE_DL_PATH));
+DiscordArtwork.configure({ ytDlp });
 
 // Config is loaded through the runtime module rather than require()'d directly.
 // This lets the packaged desktop app keep a writable config outside the asar,
@@ -31,47 +34,12 @@ const ytDlp = ytDlpFactory.create(RT.unpackPath(require('yt-dlp-exec/src/constan
 RT.ensureDirectories();
 const config = RT.loadConfig();
 const { getTracks } = require('spotify-url-info')(fetch);
-const slsk = require('slsk-client');
-const NodeID3 = require('node-id3');
 
-// Map to track active Soulseek downloads for manual skipping/cancellation
-// Key: "username:query"
-const activeSoulseekDownloads = new Map();
-const activeImports = new Map(); // Track overall active imports for cancellation
 const activeEnrichmentWorkers = new Map();
 
-// Persistent Soulseek Client to avoid rate-limits
-let globalSlskClient = null;
-let isSlskConnecting = false;
-
-async function getSoulseekClient() {
-    if (globalSlskClient && globalSlskClient.search) return globalSlskClient;
-    if (isSlskConnecting) {
-        return new Promise(resolve => {
-            const check = setInterval(() => {
-                if (globalSlskClient) { clearInterval(check); resolve(globalSlskClient); }
-            }, 500);
-        });
-    }
-
-    isSlskConnecting = true;
-    return new Promise((resolve) => {
-        console.log("[SOULSEEK] Connecting to P2P network...");
-        slsk.connect({
-            user: process.env.SLSK_USER,
-            pass: process.env.SLSK_PASS
-        }, (err, client) => {
-            isSlskConnecting = false;
-            if (err) {
-                console.error("[SOULSEEK] Connection failed:", err);
-                return resolve(null);
-            }
-            console.log("[SOULSEEK] Connected successfully.");
-            globalSlskClient = client;
-            resolve(client);
-        });
-    });
-}
+// The Soulseek client, search/download logic and queue worker all live in
+// downloads.js. slsk-client keeps its connection in module-level singletons, so
+// exactly one client may exist per process - never connect from here as well.
 
 const app = express();
 const port = RT.PORT;
@@ -82,6 +50,15 @@ const musicDirectory = path.isAbsolute(config.music_directory || '')
 const musicLibraryOwner = config.music_library_owner || 'Shared Library';
 const supportedMusicExtensions = new Set(['.mp3', '.wav', '.m4a', '.flac', '.ogg', '.webm']);
 const METADATA_PIPELINE_VERSION = 'folder-scanner-v1';
+/**
+ * system_config rows that must never be echoed back over any API.
+ *
+ * initializeConfig() bulk-loads every row into app.locals.config, and both
+ * /api/admin/config and /api/settings/* derive their responses from that
+ * object, so a new secret key added to system_config is exposed by default.
+ * Anything credential-shaped belongs in this list.
+ */
+const SECRET_CONFIG_KEYS = ['acoustid_client_key', 'soulseek_username', 'soulseek_password'];
 const METADATA_LOOKUP_MODES = new Set(['local_only', 'text_only', 'acoustic_with_text_fallback']);
 const DEFAULT_METADATA_LOOKUP_MODE = 'local_only';
 const MAX_ACOUSTID_KEY_LENGTH = 128;
@@ -157,6 +134,10 @@ io.use(async (socket, next) => {
 
         // Attach username to socket for later use
         socket.username = username;
+        // The role is resolved here, at handshake time, so room membership can
+        // never be influenced by anything the client sends afterwards.
+        const userRow = await HandleDatabase.getUser(username);
+        socket.userRole = userRow ? userRow.role : null;
         next();
     } catch (err) {
         console.error("[SOCKET AUTH]", err);
@@ -169,6 +150,12 @@ io.on('connection', (socket) => {
     if (socket.username) {
         socket.join(`user:${socket.username}`);
         console.log(`[SOCKET] User connected & joined: user:${socket.username}`);
+    }
+
+    // Download progress is Owner-only data (it names files and folders on the
+    // host), so it is broadcast to a role room rather than to every client.
+    if (socket.userRole === 'Owner') {
+        socket.join('role:owner');
     }
 
     // --- WebSocket Rate Limiting ---
@@ -195,54 +182,8 @@ io.on('connection', (socket) => {
         // Log clean-up if needed
     });
 
-    // Handle manual skipping of Soulseek downloads
-    socket.on('skip_soulseek', (data) => {
-        if (!socket.username || !data.song) return;
-        const downloadId = `${socket.username}:${data.song}`;
-        const download = activeSoulseekDownloads.get(downloadId);
-        if (download) {
-            console.log(`[SOULSEEK] Manual skip requested by ${socket.username} for: ${data.song}`);
-            download.skipped = true; // Mark for search-phase skip if applicable
-            if (download.resolve) download.resolve({ success: false });
-            activeSoulseekDownloads.delete(downloadId);
-        } else {
-            // Mark as skipped even if not downloading yet (for search phase)
-            activeSoulseekDownloads.set(downloadId, { skipped: true });
-            setTimeout(() => activeSoulseekDownloads.delete(downloadId), 30000);
-        }
-    });
-
-    socket.on('skip_all_soulseek', () => {
-        if (!socket.username) return;
-        const imp = activeImports.get(socket.username);
-        if (imp) {
-            imp.skipSoulseek = true;
-            console.log(`[IMPORT] ${socket.username} requested skipping Soulseek for all remaining tracks.`);
-            // Also skip current one
-            for (const [key, dl] of activeSoulseekDownloads.entries()) {
-                if (key.startsWith(`${socket.username}:`)) {
-                    dl.resolve({ success: false });
-                    activeSoulseekDownloads.delete(key);
-                }
-            }
-        }
-    });
-
-    socket.on('stop_import', () => {
-        if (!socket.username) return;
-        const imp = activeImports.get(socket.username);
-        if (imp) {
-            imp.cancelled = true;
-            console.log(`[IMPORT] ${socket.username} requested stopping the entire import.`);
-            // Also kill current download
-            for (const [key, dl] of activeSoulseekDownloads.entries()) {
-                if (key.startsWith(`${socket.username}:`)) {
-                    dl.resolve({ success: false });
-                    activeSoulseekDownloads.delete(key);
-                }
-            }
-        }
-    });
+    // Downloads are controlled over HTTP (/api/downloads/*) so every mutation
+    // passes the same Owner check. Sockets here are strictly one-way telemetry.
 });
 
 // Direct LAN clients must not be able to spoof their address with
@@ -273,6 +214,18 @@ function downloadFile(url, dest) {
     });
 }
 
+/* --- Download engine ---
+ * Wired by injection rather than a circular require: downloads.js needs the
+ * music-directory resolver and the single-file indexer that live here, while
+ * this file only needs the engine's public API. */
+const Downloads = require('./downloads');
+Downloads.init({
+    io,
+    getMusicDirectories,
+    indexMusicFile,
+    getSpotifyTracks: getTracks
+});
+
 // --- Initialize Database ---
 let initializationPromise = null;
 
@@ -281,6 +234,7 @@ function initializeServer() {
         initializationPromise = (async () => {
             await HandleDatabase.createUsersTable();
             await HandleDatabase.createSongsTable();
+            await HandleDatabase.createDiscordArtworkCacheTable();
             await HandleDatabase.createMetadataTables();
             await HandleDatabase.createSessionsTable();
             await HandleDatabase.createTelemetryTable();
@@ -289,6 +243,7 @@ function initializeServer() {
             await HandleDatabase.createSystemLogsTable();
             await HandleDatabase.createSystemConfigTable();
             await HandleDatabase.createLyricsTable();
+            await HandleDatabase.createDownloadQueueTable();
 
             // Configuration and scans can rely on every table being ready here.
             await initializeConfig();
@@ -298,6 +253,12 @@ function initializeServer() {
             await HandleDatabase.migrateLyrics();
             const resumableJobs = await HandleDatabase.recoverEnrichmentJobs();
             resumableJobs.forEach(job => startEnrichmentWorker(job.id));
+            const retiredYoutubeJobs = await HandleDatabase.retireYoutubeDownloads();
+            if (retiredYoutubeJobs > 0) {
+                console.log(`[INIT] Retired ${retiredYoutubeJobs} unfinished YouTube download(s).`);
+            }
+            // Requeues Soulseek transfers interrupted by a crash or restart.
+            await Downloads.resume();
             console.log("[INIT] Database initialization complete.");
         })();
     }
@@ -462,45 +423,6 @@ const dmMessageLimiter = rateLimit({
     max: 30,
     message: { error: "You're sending messages too fast. Please slow down." }
 });
-
-const youtubeDownloadLimiter = rateLimit({
-    windowMs: parseInt(process.env.YOUTUBE_LIMIT_WINDOW_MS) || (5 * 60 * 1000),
-    limit: (req) => app.locals.config.ratelimits.youtube_max || 2,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: `YouTube limit reached. Please wait some time before downloading another song.` }
-});
-
-const youtubeMetadataLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 10,
-    standardHeaders: false,
-    legacyHeaders: false,
-    message: { error: "Too many requests. Please wait a minute." }
-});
-
-// --- YouTube Stealth & Global Sync ---
-let lastYoutubeRequestTime = 0;
-const YOUTUBE_GLOBAL_COOLDOWN_MS = 5000; // 5 seconds between ANY two YouTube requests
-
-const USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0'
-];
-
-function getRandomUserAgent() {
-    return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-
-function extractYoutubeId(url) {
-    const regex = /(?:v=|be\/|embed\/|v\/|watch\?v=|&v=)([a-zA-Z0-9_-]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-}
 
 async function getFileHash(filePath) {
     return new Promise((resolve, reject) => {
@@ -740,185 +662,8 @@ async function performMusicDirectorySync() {
     let synced = 0;
     for (const filePath of allFiles) {
         try {
-            const stats = fs.statSync(filePath);
-            if (!stats.isFile()) continue;
-            const filepath = toStoredMusicPath(filePath);
-            const pathKey = musicPathKey(filepath);
-            const fileMtimeMs = Math.trunc(stats.mtimeMs);
-            let existing = await HandleDatabase.getSongByPathKey(pathKey);
-            let precomputedHash = null;
-            const hasCanonicalIdentity = Boolean(existing && (
-                existing.recording_uid || existing.identification_method ||
-                existing.metadata_status === 'identified' || existing.ai_enriched === 1
-            ));
-
-            if (existing && existing.file_hash &&
-                Number(existing.file_size_bytes) === stats.size &&
-                Number(existing.file_mtime_ms) === fileMtimeMs) {
-                if (hasCanonicalIdentity) {
-                    precomputedHash = await getFileHash(filePath);
-                    if (precomputedHash !== existing.file_hash) {
-                        // Continue through full parsing and identity invalidation.
-                    } else {
-                        await HandleDatabase.updateSongScanEvidence(existing.id, {
-                            filepath,
-                            path_key: pathKey,
-                            uploaded_by: musicLibraryOwner,
-                            is_private: 'public',
-                            source: 'folder',
-                            availability: 'available'
-                        });
-                        synced++;
-                        continue;
-                    }
-                } else {
-                    await HandleDatabase.updateSongScanEvidence(existing.id, {
-                        filepath,
-                        path_key: pathKey,
-                        uploaded_by: musicLibraryOwner,
-                        is_private: 'public',
-                        source: 'folder',
-                        availability: 'available'
-                    });
-                    synced++;
-                    continue;
-                }
-            }
-
-            // duration:true asks parsers that need a full scan to calculate the
-            // precise duration. Embedded artwork comes from this same parse.
-            const parsed = await mm.parseFile(filePath, { duration: true });
-            const common = parsed.common || {};
-            const format = parsed.format || {};
-            const fileHash = precomputedHash || await getFileHash(filePath);
-            const durationMs = Number.isFinite(format.duration) ? Math.max(0, Math.round(format.duration * 1000)) : 0;
-            const rawBitrate = Number(format.bitrate) || 0;
-            const songBitrate = rawBitrate > 1000 ? Math.round(rawBitrate / 1000) : (Math.round(rawBitrate) || 128);
-            const evidence = embeddedMetadataEvidence(common, format, durationMs);
-
-            if (!existing) {
-                const moveCandidates = (missingCandidatesByHash.get(fileHash) || [])
-                    .filter(candidate => missingSongIds.has(candidate.id));
-                if (moveCandidates.length === 1) {
-                    existing = moveCandidates[0];
-                    missingSongIds.delete(existing.id);
-                }
-            }
-
-            let song;
-            let embeddedEvidencePersisted = false;
-            if (!existing) {
-                const songUid = crypto.randomUUID();
-                const coverPath = saveEmbeddedPicture(common.picture && common.picture[0], songUid);
-                const title = common.title || path.parse(filePath).name;
-                const artists = metadataValues(common.artists);
-                const artist = common.artist || artists.join(', ') || 'Unknown Artist';
-                const genres = metadataValues(common.genre);
-                const hasEmbeddedIdentity = Boolean(common.title || common.artist || artists.length > 0);
-                await HandleDatabase.insertSong(
-                    title,
-                    artist,
-                    common.album || 'Unknown Album',
-                    genres[0] || 'Unknown Genre',
-                    Math.round(durationMs / 1000),
-                    filepath,
-                    musicLibraryOwner,
-                    'public',
-                    null,
-                    fileHash,
-                    songBitrate,
-                    'folder',
-                    metadataYear(common),
-                    0,
-                    coverPath,
-                    {
-                        song_uid: songUid,
-                        path_key: pathKey,
-                        duration_ms: durationMs,
-                        file_size_bytes: stats.size,
-                        file_mtime_ms: fileMtimeMs,
-                        availability: 'available',
-                        metadata_status: hasEmbeddedIdentity ? 'unreviewed' : 'unknown',
-                        metadata_pipeline_version: METADATA_PIPELINE_VERSION,
-                        metadata_source: hasEmbeddedIdentity ? 'embedded' : 'filename'
-                    }
-                );
-                song = await HandleDatabase.getSongByPathKey(pathKey);
-            } else {
-                const hashChanged = existing.file_hash
-                    ? existing.file_hash !== fileHash
-                    : hasCanonicalIdentity;
-                // A matching content hash means metadata evidence is unchanged;
-                // size/mtime differences alone should not force another review.
-                const scanEvidenceChanged = false;
-                const updates = {
-                    filepath,
-                    path_key: pathKey,
-                    duration: Math.round(durationMs / 1000),
-                    duration_ms: durationMs,
-                    file_hash: fileHash,
-                    file_size_bytes: stats.size,
-                    file_mtime_ms: fileMtimeMs,
-                    bitrate: songBitrate,
-                    uploaded_by: musicLibraryOwner,
-                    is_private: 'public',
-                    source: 'folder',
-                    availability: 'available'
-                };
-
-                const existingCover = findExistingSongCover(existing);
-                const preservedCover = existingCover ||
-                    saveEmbeddedPicture(common.picture && common.picture[0], existing.song_uid);
-                if (preservedCover && (!existing.cover_path || !existingCover)) updates.cover_path = preservedCover;
-                if (hashChanged) {
-                    const invalidation = await HandleDatabase.invalidateSongIdentityForFileReplacement(
-                        existing.id,
-                        updates,
-                        {
-                            previousFileHash: existing.file_hash,
-                            embeddedProvenance: evidence.provenance,
-                            embeddedIdentifiers: evidence.identifiers
-                        }
-                    );
-                    if (!invalidation.invalidated) {
-                        throw new Error('Song identity changed concurrently during file replacement');
-                    }
-                    embeddedEvidencePersisted = true;
-                    song = {
-                        ...existing,
-                        ...updates,
-                        recording_uid: null,
-                        identified_release_uid: null,
-                        identified_release_track_uid: null,
-                        identity_artist_credit_json: null,
-                        identification_method: null,
-                        identification_source: null,
-                        identification_confidence: null,
-                        ai_enriched: 0,
-                        metadata_status: 'conflict',
-                        metadata_revision: invalidation.metadataRevision
-                    };
-                } else {
-                    await HandleDatabase.updateSongScanEvidence(existing.id, updates, {
-                        evidenceChanged: scanEvidenceChanged
-                    });
-                    song = {
-                        ...existing,
-                        ...updates,
-                        ...(scanEvidenceChanged ? {
-                            metadata_status: existing.metadata_status === 'conflict' ? 'conflict' : 'review',
-                            metadata_revision: (Number(existing.metadata_revision) || 0) + 1
-                        } : {})
-                    };
-                }
-            }
-
-            if (!song) throw new Error('Song row was not created');
-            if (!embeddedEvidencePersisted) {
-                await HandleDatabase.replaceMetadataProvenance(song.id, evidence.provenance, 'embedded');
-                await HandleDatabase.replaceExternalIdentifiers(song.id, evidence.identifiers, 'embedded');
-            }
-            synced++;
+            const song = await indexMusicFile(filePath, { missingCandidatesByHash, missingSongIds });
+            if (song) synced++;
         } catch (err) {
             console.error(`[MUSIC SCAN] Failed to index ${filePath}:`, err.message);
         }
@@ -931,15 +676,188 @@ async function performMusicDirectorySync() {
     return synced;
 }
 
-async function ensureYoutubeCooldown() {
-    const now = Date.now();
-    const elapsed = now - lastYoutubeRequestTime;
-    if (elapsed < YOUTUBE_GLOBAL_COOLDOWN_MS) {
-        const waitTime = YOUTUBE_GLOBAL_COOLDOWN_MS - elapsed;
-        console.log(`[YOUTUBE COOLDOWN] Queuing request... waiting ${waitTime}ms to respect global limit.`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+/**
+ * Indexes exactly one audio file into the library, using the same rules as a
+ * full scan: content hashing, embedded-metadata provenance, artwork extraction,
+ * move detection and identity invalidation.
+ *
+ * Extracted from the scan loop so the download engine can register a newly
+ * saved track immediately instead of forcing a rescan of the whole library.
+ *
+ * `context` carries the scan-wide move-detection maps. Called standalone (one
+ * new file) there is nothing to reconcile, so both default to empty.
+ *
+ * Returns the indexed song row, or null when the path is not a regular file.
+ */
+async function indexMusicFile(filePath, context = {}) {
+    const missingCandidatesByHash = context.missingCandidatesByHash || new Map();
+    const missingSongIds = context.missingSongIds || new Set();
+
+    const stats = fs.statSync(filePath);
+    if (!stats.isFile()) return null;
+
+    const filepath = toStoredMusicPath(filePath);
+    const pathKey = musicPathKey(filepath);
+    const fileMtimeMs = Math.trunc(stats.mtimeMs);
+    let existing = await HandleDatabase.getSongByPathKey(pathKey);
+
+    const unchangedScanEvidence = {
+        filepath,
+        path_key: pathKey,
+        uploaded_by: musicLibraryOwner,
+        is_private: 'public',
+        source: 'folder',
+        availability: 'available'
+    };
+
+    if (existing && existing.file_hash &&
+        Number(existing.file_size_bytes) === stats.size &&
+        Number(existing.file_mtime_ms) === fileMtimeMs) {
+        const evidenceChanged = Object.entries(unchangedScanEvidence).some(([field, value]) =>
+            String(existing[field] ?? '') !== String(value ?? '')
+        );
+        if (evidenceChanged) {
+            await HandleDatabase.updateSongScanEvidence(existing.id, unchangedScanEvidence);
+        }
+        // Size + mtime are the scan fingerprint. Re-hashing every unchanged
+        // identified file made cold launch scale with total library bytes.
+        return { ...existing, ...unchangedScanEvidence };
     }
-    lastYoutubeRequestTime = Date.now();
+
+    // duration:true asks parsers that need a full scan to calculate the
+    // precise duration. Embedded artwork comes from this same parse.
+    const parsed = await mm.parseFile(filePath, { duration: true });
+    const common = parsed.common || {};
+    const format = parsed.format || {};
+    const fileHash = await getFileHash(filePath);
+    const durationMs = Number.isFinite(format.duration) ? Math.max(0, Math.round(format.duration * 1000)) : 0;
+    const rawBitrate = Number(format.bitrate) || 0;
+    const songBitrate = rawBitrate > 1000 ? Math.round(rawBitrate / 1000) : (Math.round(rawBitrate) || 128);
+    const evidence = embeddedMetadataEvidence(common, format, durationMs);
+
+    if (!existing) {
+        const moveCandidates = (missingCandidatesByHash.get(fileHash) || [])
+            .filter(candidate => missingSongIds.has(candidate.id));
+        if (moveCandidates.length === 1) {
+            existing = moveCandidates[0];
+            missingSongIds.delete(existing.id);
+        }
+    }
+
+    let song;
+    let embeddedEvidencePersisted = false;
+    if (!existing) {
+        const songUid = crypto.randomUUID();
+        const coverPath = saveEmbeddedPicture(common.picture && common.picture[0], songUid);
+        const title = common.title || path.parse(filePath).name;
+        const artists = metadataValues(common.artists);
+        const artist = common.artist || artists.join(', ') || 'Unknown Artist';
+        const genres = metadataValues(common.genre);
+        const hasEmbeddedIdentity = Boolean(common.title || common.artist || artists.length > 0);
+        await HandleDatabase.insertSong(
+            title,
+            artist,
+            common.album || 'Unknown Album',
+            genres[0] || 'Unknown Genre',
+            Math.round(durationMs / 1000),
+            filepath,
+            musicLibraryOwner,
+            'public',
+            null,
+            fileHash,
+            songBitrate,
+            'folder',
+            metadataYear(common),
+            0,
+            coverPath,
+            {
+                song_uid: songUid,
+                path_key: pathKey,
+                duration_ms: durationMs,
+                file_size_bytes: stats.size,
+                file_mtime_ms: fileMtimeMs,
+                availability: 'available',
+                metadata_status: hasEmbeddedIdentity ? 'unreviewed' : 'unknown',
+                metadata_pipeline_version: METADATA_PIPELINE_VERSION,
+                metadata_source: hasEmbeddedIdentity ? 'embedded' : 'filename'
+            }
+        );
+        song = await HandleDatabase.getSongByPathKey(pathKey);
+    } else {
+        const hashChanged = existing.file_hash
+            ? existing.file_hash !== fileHash
+            : hasCanonicalIdentity;
+        // A matching content hash means metadata evidence is unchanged;
+        // size/mtime differences alone should not force another review.
+        const scanEvidenceChanged = false;
+        const updates = {
+            filepath,
+            path_key: pathKey,
+            duration: Math.round(durationMs / 1000),
+            duration_ms: durationMs,
+            file_hash: fileHash,
+            file_size_bytes: stats.size,
+            file_mtime_ms: fileMtimeMs,
+            bitrate: songBitrate,
+            uploaded_by: musicLibraryOwner,
+            is_private: 'public',
+            source: 'folder',
+            availability: 'available'
+        };
+
+        const existingCover = findExistingSongCover(existing);
+        const preservedCover = existingCover ||
+            saveEmbeddedPicture(common.picture && common.picture[0], existing.song_uid);
+        if (preservedCover && (!existing.cover_path || !existingCover)) updates.cover_path = preservedCover;
+        if (hashChanged) {
+            const invalidation = await HandleDatabase.invalidateSongIdentityForFileReplacement(
+                existing.id,
+                updates,
+                {
+                    previousFileHash: existing.file_hash,
+                    embeddedProvenance: evidence.provenance,
+                    embeddedIdentifiers: evidence.identifiers
+                }
+            );
+            if (!invalidation.invalidated) {
+                throw new Error('Song identity changed concurrently during file replacement');
+            }
+            embeddedEvidencePersisted = true;
+            song = {
+                ...existing,
+                ...updates,
+                recording_uid: null,
+                identified_release_uid: null,
+                identified_release_track_uid: null,
+                identity_artist_credit_json: null,
+                identification_method: null,
+                identification_source: null,
+                identification_confidence: null,
+                ai_enriched: 0,
+                metadata_status: 'conflict',
+                metadata_revision: invalidation.metadataRevision
+            };
+        } else {
+            await HandleDatabase.updateSongScanEvidence(existing.id, updates, {
+                evidenceChanged: scanEvidenceChanged
+            });
+            song = {
+                ...existing,
+                ...updates,
+                ...(scanEvidenceChanged ? {
+                    metadata_status: existing.metadata_status === 'conflict' ? 'conflict' : 'review',
+                    metadata_revision: (Number(existing.metadata_revision) || 0) + 1
+                } : {})
+            };
+        }
+    }
+
+    if (!song) throw new Error('Song row was not created');
+    if (!embeddedEvidencePersisted) {
+        await HandleDatabase.replaceMetadataProvenance(song.id, evidence.provenance, 'embedded');
+        await HandleDatabase.replaceExternalIdentifiers(song.id, evidence.identifiers, 'embedded');
+    }
+    return song;
 }
 
 app.use('/api/', (req, res, next) => {
@@ -1185,15 +1103,14 @@ async function initializeConfig() {
                 allow_registration: config.allow_registration ?? false,
                 lockdown_new_posts: false,
                 oobe_completed: false,
+                auto_update_enabled: true,
                 metadata_lookup_mode: DEFAULT_METADATA_LOOKUP_MODE,
                 acoustid_client_key: '',
                 ratelimits: {
                     api: 200,
                     social: 20,
                     comment: 10,
-                    post: 1,
-                    youtube_max: 2,
-                    youtube_duration: 600
+                    post: 1
                 }
             };
 
@@ -1204,7 +1121,7 @@ async function initializeConfig() {
         } else {
             // Ensure essential keys exist
             if (!configMap.ratelimits) {
-                configMap.ratelimits = { api: 200, social: 20, comment: 10, post: 1, youtube_max: 2, youtube_duration: 600 };
+                configMap.ratelimits = { api: 200, social: 20, comment: 10, post: 1 };
                 await HandleDatabase.updateSystemConfig('ratelimits', JSON.stringify(configMap.ratelimits));
             }
             if (configMap.lockdown_new_posts === undefined) {
@@ -1219,6 +1136,24 @@ async function initializeConfig() {
                 configMap.oobe_completed = false;
                 await HandleDatabase.updateSystemConfig('oobe_completed', JSON.stringify(false));
             }
+            // Existing installs opt in: staying on a build with a known bug is
+            // the worse default, and the Owner can turn it off in Settings.
+            if (configMap.auto_update_enabled === undefined) {
+                configMap.auto_update_enabled = true;
+                await HandleDatabase.updateSystemConfig('auto_update_enabled', JSON.stringify(true));
+            }
+        }
+
+        if (configMap.ratelimits && typeof configMap.ratelimits === 'object') {
+            const cleanedRateLimits = { ...configMap.ratelimits };
+            const hadYoutubeLimits = Object.prototype.hasOwnProperty.call(cleanedRateLimits, 'youtube_max') ||
+                Object.prototype.hasOwnProperty.call(cleanedRateLimits, 'youtube_duration');
+            delete cleanedRateLimits.youtube_max;
+            delete cleanedRateLimits.youtube_duration;
+            if (hadYoutubeLimits) {
+                configMap.ratelimits = cleanedRateLimits;
+                await HandleDatabase.updateSystemConfig('ratelimits', JSON.stringify(cleanedRateLimits));
+            }
         }
 
         if (!METADATA_LOOKUP_MODES.has(configMap.metadata_lookup_mode)) {
@@ -1231,9 +1166,11 @@ async function initializeConfig() {
             await HandleDatabase.updateSystemConfig('acoustid_client_key', JSON.stringify(''));
         }
 
-        // Merge DB settings into existing config (don't overwrite whole object)
+        // Merge DB settings into existing config (don't overwrite whole object).
+        // Secrets are stripped here so they can never reach app.locals.config,
+        // which is the object every config API response is derived from.
         const publicConfigMap = { ...configMap };
-        delete publicConfigMap.acoustid_client_key;
+        for (const key of SECRET_CONFIG_KEYS) delete publicConfigMap[key];
         app.locals.config = { ...app.locals.config, ...publicConfigMap };
         console.log("[CONFIG] System settings loaded from database.");
     } catch (err) {
@@ -1249,8 +1186,9 @@ app.locals.config = {
     maintenance_message: "Site is currently undergoing maintenance.",
     allow_registration: false,
     lockdown_new_posts: false,
+    auto_update_enabled: true,
     metadata_lookup_mode: DEFAULT_METADATA_LOOKUP_MODE,
-    ratelimits: { api: 200, social: 20, comment: 10, post: 1, youtube_max: 2, youtube_duration: 600 }
+    ratelimits: { api: 200, social: 20, comment: 10, post: 1 }
 };
 
 function parseStoredConfigValue(value) {
@@ -1325,7 +1263,10 @@ function currentMetadataLookupMode() {
 
 function safeSystemConfigResponse() {
     const safe = { ...(app.locals.config || {}) };
-    delete safe.acoustid_client_key;
+    // Defence in depth: initializeConfig already keeps these out of
+    // app.locals.config, but /api/admin/config is reachable by Admins who are
+    // deliberately not trusted with Owner-only credentials.
+    for (const key of SECRET_CONFIG_KEYS) delete safe[key];
     return safe;
 }
 
@@ -1339,6 +1280,7 @@ async function metadataSettingsContract() {
         mode: currentMetadataLookupMode(),
         acoustid_configured: Boolean(key),
         acoustid_key_source: environmentKey ? 'environment' : (storedKey ? 'stored' : null),
+        acoustid_stored_key_configured: Boolean(storedKey),
         fpcalc_available: fpcalc.fpcalc_available,
         fpcalc_source: fpcalc.fpcalc_source
     };
@@ -1555,8 +1497,6 @@ app.get('/api/config/public', async (req, res) => {
     res.json({
         is_fresh_install: isFreshInstall,
         user_count: users.length,
-        youtube_max: app.locals.config.ratelimits.youtube_max,
-        youtube_duration: app.locals.config.ratelimits.youtube_duration,
         allow_registration: isFreshInstall || app.locals.config.allow_registration === true,
         setup_requires_localhost: isFreshInstall,
         maintenance_mode: app.locals.config.maintenance_mode,
@@ -1570,6 +1510,34 @@ app.post('/api/settings/registration', requireRole(['Owner']), async (req, res) 
     app.locals.config.allow_registration = enabled;
     await HandleDatabase.updateSystemConfig('allow_registration', JSON.stringify(enabled));
     res.json({ success: true, allow_registration: enabled });
+});
+
+/* ---------------------------------------------------------------------------
+ * Desktop auto-update switch.
+ *
+ * Server-wide rather than per-device on purpose: on a self-hosted box the
+ * Owner is the only person who can actually apply an update, and a per-user
+ * setting would let anyone opt the machine out of security fixes.
+ *
+ * The desktop app hosts this server in-process, so electron/updater.js reads
+ * the same `auto_update_enabled` row straight from SQLite. Writing it here is
+ * therefore enough; the renderer calls refreshPolicy() over IPC so a running
+ * session picks the change up without a restart.
+ *
+ * A browser or phone client gets `supported: false` — there is nothing to
+ * update outside the desktop build.
+ * ------------------------------------------------------------------------ */
+app.get('/api/settings/updates', requireRole(['Owner']), (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ auto_update_enabled: app.locals.config.auto_update_enabled !== false });
+});
+
+app.post('/api/settings/updates', requireRole(['Owner']), async (req, res) => {
+    const enabled = req.body && req.body.enabled === true;
+    app.locals.config.auto_update_enabled = enabled;
+    await HandleDatabase.updateSystemConfig('auto_update_enabled', JSON.stringify(enabled));
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, auto_update_enabled: enabled });
 });
 
 app.get('/api/settings/metadata', requireRole(['Owner']), async (req, res) => {
@@ -1593,19 +1561,41 @@ app.post('/api/settings/metadata', requireRole(['Owner']), async (req, res) => {
         return res.status(400).json({ error: 'An AcoustID client key is required for acoustic lookup' });
     }
 
-    if (hasKey) {
-        await HandleDatabase.updateSystemConfig('acoustid_client_key', JSON.stringify(suppliedKey));
+    const settingsUpdate = await HandleDatabase.updateMetadataSystemConfig({
+        mode,
+        acoustidKey: suppliedKey,
+        updateKey: hasKey,
+        requireAcoustidKey: mode === 'acoustic_with_text_fallback',
+        environmentKeyConfigured: validAcoustidKey(process.env.ACOUSTID_CLIENT_KEY)
+    });
+    if (!settingsUpdate.updated && settingsUpdate.missingAcoustidKey) {
+        return res.status(400).json({ error: 'An AcoustID client key is required for acoustic lookup' });
     }
-    await HandleDatabase.updateSystemConfig('metadata_lookup_mode', JSON.stringify(mode));
     app.locals.config.metadata_lookup_mode = mode;
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, ...await metadataSettingsContract() });
 });
 
 app.delete('/api/settings/metadata/acoustid-key', requireRole(['Owner']), async (req, res) => {
-    await HandleDatabase.updateSystemConfig('acoustid_client_key', JSON.stringify(''));
+    const environmentKeyConfigured = validAcoustidKey(process.env.ACOUSTID_CLIENT_KEY);
+    const currentMode = currentMetadataLookupMode();
+    const nextMode = EnrichmentSummary.lookupModeAfterKeyRemoval(
+        currentMode,
+        environmentKeyConfigured
+    );
+    const modeChanged = nextMode !== currentMode;
+    await HandleDatabase.updateMetadataSystemConfig({
+        mode: nextMode,
+        acoustidKey: '',
+        updateKey: true
+    });
+    app.locals.config.metadata_lookup_mode = nextMode;
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, ...await metadataSettingsContract() });
+    res.json({
+        success: true,
+        mode_changed: modeChanged,
+        ...await metadataSettingsContract()
+    });
 });
 
 app.post('/api/config/oobe', requireRole(['Owner', 'Admin']), async (req, res) => {
@@ -1618,7 +1608,7 @@ app.post('/api/config/oobe', requireRole(['Owner', 'Admin']), async (req, res) =
 // API: me
 app.get('/api/me', requireLogin, async (req, res) => {
     const username = req.user;
-    const userRow = await HandleDatabase.getUser(username);
+    const userRow = req.userRow;
 
     const avatarUrl = Media.resolveAvatar(username);
 
@@ -1817,6 +1807,290 @@ app.get('/api/widget/now-playing', async (req, res) => {
     if (!data) return res.json({ isPlaying: false });
 
     res.json(data);
+});
+
+/* =========================================================================
+ * DISCORD RICH PRESENCE
+ *
+ * Presence itself is spoken over a local IPC pipe by the Electron main
+ * process (see electron/discord-presence.js). The only thing the server has
+ * to solve is artwork, and it is the awkward half of the feature.
+ *
+ * Discord does not render an image the client already has. It hands the URL
+ * to its own media proxy, which fetches it server-side. Every cover this app
+ * serves lives at /Static/covers/... on a LAN box, so Discord can never load
+ * one. We therefore resolve, in order:
+ *
+ *   1. the local cover re-pointed at a configured public HTTPS origin, if the
+ *      owner actually exposes this server to the internet - exact artwork,
+ *      including hand-uploaded covers;
+ *   2. songs.cover_source_url, the provider URL Smart Auto already resolved
+ *      when it downloaded the cover - free, no request, exact;
+ *   3. the retained thumbnail for a legacy YouTube download whose original
+ *      scanner-extracted cover is still active;
+ *   4. a still-valid Discord-only cache entry;
+ *   5. the per-device lookup policy: strict YouTube matching, optionally
+ *      followed by Apple as a best-effort fallback;
+ *   6. nothing, and the desktop app falls back to the static Streamify logo.
+ * ========================================================================= */
+
+const DISCORD_PUBLIC_URL_KEY = 'discord_public_url';
+
+/**
+ * Whether a stored cover URL may be handed to Discord.
+ *
+ * Two allowlists are deliberately disjoint:
+ *
+ *   AIMetadata.isTrustedCoverUrl  - Apple CDN, Cover Art Archive (enrichment)
+ *   DiscordArtwork.isTrustedRemoteArtworkUrl - YouTube and legacy Spotify CDNs
+ *
+ * The question here is different and weaker - Discord does the fetching, not
+ * us - so the union is the right answer. It still has to be an allowlist:
+ * an arbitrary URL would let whoever supplied it log a hit from Discord's CDN
+ * every time someone plays that song.
+ */
+function isPublishableCoverUrl(url) {
+    return AIMetadata.isTrustedCoverUrl(url) || DiscordArtwork.isTrustedRemoteArtworkUrl(url);
+}
+
+const DISCORD_ART_SUCCESS_MS = 30 * 24 * 60 * 60 * 1000;
+const DISCORD_ART_MISS_MS = 7 * 24 * 60 * 60 * 1000;
+const DISCORD_ART_TRANSIENT_MS = 60 * 60 * 1000;
+const discordArtworkLookups = new Map();
+
+function discordArtworkExpiry(ttlMs) {
+    return new Date(Date.now() + ttlMs).toISOString();
+}
+
+const discordLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 200,
+    message: { error: "Too many artwork lookups. Please slow down." }
+});
+
+/**
+ * Rejects anything Discord's media proxy could not reach from the public
+ * internet. A private address here is worse than no address: Discord silently
+ * renders an empty card and there is nothing to debug.
+ *
+ * Returns { url } on success or { error } with a message meant for the owner.
+ */
+function validateDiscordPublicUrl(raw) {
+    const value = String(raw || '').trim().replace(/\/+$/, '');
+    if (!value) return { url: null };
+    if (value.length > 300) return { error: 'That URL is too long.' };
+
+    let parsed;
+    try { parsed = new URL(value); }
+    catch { return { error: 'That is not a valid URL.' }; }
+
+    if (parsed.protocol !== 'https:') {
+        return { error: 'The public URL must start with https:// - Discord will not load images over http.' };
+    }
+    if (parsed.username || parsed.password) {
+        return { error: 'The public URL must not contain credentials.' };
+    }
+    if (parsed.search || parsed.hash) {
+        return { error: 'The public URL must not contain a query string or fragment.' };
+    }
+
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/gu, '');
+    const isPrivate =
+        host === 'localhost' || host.endsWith('.localhost') ||
+        host.endsWith('.local') || host.endsWith('.internal') || host.endsWith('.home.arpa') ||
+        host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80:') ||
+        /^127\./u.test(host) || /^10\./u.test(host) || /^192\.168\./u.test(host) ||
+        /^172\.(?:1[6-9]|2\d|3[01])\./u.test(host) ||
+        /^169\.254\./u.test(host) ||
+        /^100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./u.test(host) ||
+        /^0\./u.test(host);
+
+    if (isPrivate) {
+        return { error: 'That address is only reachable on your own network. Discord fetches artwork from its own servers, so it needs a public hostname.' };
+    }
+    if (!host.includes('.')) {
+        return { error: 'Use a full public hostname, for example https://music.example.com' };
+    }
+
+    return { url: parsed.origin + parsed.pathname.replace(/\/+$/, '') };
+}
+
+app.get('/api/settings/discord', requireRole(['Owner']), async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+        res.json({ publicUrl: await HandleDatabase.getSystemConfigValue(DISCORD_PUBLIC_URL_KEY) || '' });
+    } catch (err) {
+        console.error('[DISCORD SETTINGS]', err);
+        res.status(500).json({ error: 'Could not read the Discord settings.' });
+    }
+});
+
+app.post('/api/settings/discord', requireRole(['Owner']), async (req, res) => {
+    const validation = validateDiscordPublicUrl(req.body && req.body.publicUrl);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+
+    try {
+        await HandleDatabase.updateSystemConfig(DISCORD_PUBLIC_URL_KEY, validation.url || '');
+        res.json({ success: true, publicUrl: validation.url || '' });
+    } catch (err) {
+        console.error('[DISCORD SETTINGS]', err);
+        res.status(500).json({ error: 'Could not save the Discord settings.' });
+    }
+});
+
+/**
+ * Resolves a publicly fetchable cover URL for one song, or null.
+ *
+ * `mode` is a per-device privacy choice. Only explicit online modes send track
+ * metadata outside Streamify; app_logo and stored_only never start a lookup.
+ */
+app.get('/api/discord/artwork', requireLogin, discordLimiter, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+
+    const songId = String(req.query.songId || '').trim();
+    if (!songId || songId.length > 64) return res.status(400).json({ error: 'Invalid song id' });
+
+    try {
+        const song = await HandleDatabase.getSong(songId);
+        if (!song) return res.status(404).json({ error: 'Song not found' });
+        if (!canAccessSong(song, req.user)) return res.status(403).json({ error: 'Forbidden' });
+        const requestedMode = req.query.mode || (req.query.external === '1' ? 'best_effort' : 'stored_only');
+        const mode = DiscordArtwork.validArtworkMode(String(requestedMode));
+        if (mode === 'app_logo') return res.json({ url: null, source: 'app_logo' });
+
+        /* 1. Local artwork, if this server is actually reachable from outside. */
+        const publicUrl = await HandleDatabase.getSystemConfigValue(DISCORD_PUBLIC_URL_KEY);
+        if (publicUrl) {
+            const localCover = resolveSongCover(song);
+            if (localCover) {
+                return res.json({ url: `${publicUrl}${localCover}`, source: 'local' });
+            }
+        }
+
+        /* 2. A URL we already know: resolved by Smart Auto, or the YouTube /
+         *    Spotify thumbnail the track was downloaded with. */
+        if (song.cover_source_url && isPublishableCoverUrl(song.cover_source_url)) {
+            return res.json({ url: song.cover_source_url, source: 'stored' });
+        }
+
+        /* 3. Downloads completed before cover_source_url was fixed still retain
+         * their thumbnail in the queue. Use it only while the scanner-extracted
+         * cover is active; a file-named cover means the owner replaced it. */
+        const embeddedCoverPrefix = song.song_uid ? `/Static/covers/${song.song_uid}.` : null;
+        const hasScannerExtractedCover = Boolean(
+            embeddedCoverPrefix && String(song.cover_path || '').startsWith(embeddedCoverPrefix)
+        );
+        const coverBaseName = song.filepath
+            ? path.basename(song.filepath, path.extname(song.filepath))
+            : null;
+        const hasReplacementCover = Boolean(coverBaseName && ['.jpg', '.jpeg', '.png', '.webp']
+            .some(extension => fs.existsSync(path.join(RT.paths.covers, `${coverBaseName}${extension}`))));
+
+        if (hasScannerExtractedCover && !hasReplacementCover) {
+            const downloadArtwork = await HandleDatabase.getCompletedYoutubeArtworkForSong(song.id);
+            if (downloadArtwork && DiscordArtwork.isTrustedRemoteArtworkUrl(downloadArtwork)) {
+                return res.json({ url: downloadArtwork, source: 'download' });
+            }
+        }
+
+        /* 4. A persistent RPC-only cache. It deliberately stays separate from
+         * cover_source_url: a YouTube thumbnail can be the best public proxy for
+         * Discord without being the exact local artwork shown in Streamify. */
+        const cached = await HandleDatabase.getDiscordArtworkCache(song.id);
+        const cacheFresh = cached && Date.parse(cached.expires_at) > Date.now();
+        const cachedSourceAllowed = cached && (
+            cached.source === 'youtube' && (mode === 'youtube_exact' || mode === 'best_effort') ||
+            cached.source === 'apple' && (mode === 'apple_only' || mode === 'best_effort')
+        );
+        if (cacheFresh && cached.status === 'match' && cachedSourceAllowed && isPublishableCoverUrl(cached.artwork_url)) {
+            return res.json({ url: cached.artwork_url, source: cached.source || 'cache', cached: true });
+        }
+        if (mode === 'stored_only') return res.json({ url: null, source: 'none' });
+        if (cacheFresh && cached.lookup_mode === mode && cached.status !== 'match') {
+            return res.json({ url: null, source: 'none', cached: true });
+        }
+
+        const lookupKey = `${song.id}:${mode}`;
+        let lookupPromise = discordArtworkLookups.get(lookupKey);
+        if (!lookupPromise) {
+            lookupPromise = (async () => {
+                const youtube = mode === 'apple_only'
+                    ? { status: 'skipped', reason: 'mode' }
+                    : await DiscordArtwork.findExactYoutubeArtwork(song);
+                if (youtube.status === 'match') {
+                    await HandleDatabase.setDiscordArtworkCache(song.id, {
+                        status: 'match',
+                        lookupMode: mode,
+                        source: 'youtube',
+                        artworkUrl: youtube.url,
+                        videoId: youtube.videoId,
+                        matchedTitle: youtube.title,
+                        matchedDuration: youtube.duration,
+                        confidence: youtube.score,
+                        expiresAt: discordArtworkExpiry(DISCORD_ART_SUCCESS_MS)
+                    });
+                    return { url: youtube.url, source: 'youtube', cached: false };
+                }
+
+                if (mode === 'apple_only' || mode === 'best_effort') {
+                    const lookup = await MetadataProviders.searchApple(
+                        { title: song.songname, artist: song.artist, album: song.album },
+                        { limit: 5, totalTimeoutMs: 8000 }
+                    );
+                    const appleMatch = (lookup.candidates || []).find(candidate =>
+                        candidate && candidate.coverUrl && AIMetadata.isTrustedCoverUrl(candidate.coverUrl));
+                    if (appleMatch) {
+                        await HandleDatabase.setDiscordArtworkCache(song.id, {
+                            status: 'match',
+                            lookupMode: mode,
+                            source: 'apple',
+                            artworkUrl: appleMatch.coverUrl,
+                            matchedTitle: appleMatch.title,
+                            matchedDuration: appleMatch.durationMs ? appleMatch.durationMs / 1000 : null,
+                            expiresAt: discordArtworkExpiry(DISCORD_ART_SUCCESS_MS)
+                        });
+                        return { url: appleMatch.coverUrl, source: 'apple', cached: false };
+                    }
+                }
+
+                const transient = youtube.status === 'unavailable';
+                await HandleDatabase.setDiscordArtworkCache(song.id, {
+                    status: transient ? 'unavailable' : 'miss',
+                    lookupMode: mode,
+                    source: mode === 'apple_only' ? 'apple' : 'youtube',
+                    reason: youtube.reason,
+                    expiresAt: discordArtworkExpiry(transient ? DISCORD_ART_TRANSIENT_MS : DISCORD_ART_MISS_MS)
+                });
+                return { url: null, source: 'none' };
+            })();
+            discordArtworkLookups.set(lookupKey, lookupPromise);
+        }
+        try {
+            return res.json(await lookupPromise);
+        } finally {
+            if (discordArtworkLookups.get(lookupKey) === lookupPromise) {
+                discordArtworkLookups.delete(lookupKey);
+            }
+        }
+    } catch (err) {
+        console.error('[DISCORD ARTWORK]', err);
+        res.status(500).json({ error: 'Could not resolve artwork' });
+    }
+});
+
+app.post('/api/discord/artwork/refresh', requireLogin, discordLimiter, async (req, res) => {
+    const songId = String(req.body && req.body.songId || '').trim();
+    if (!songId || songId.length > 64) return res.status(400).json({ error: 'Invalid song id' });
+    try {
+        const song = await HandleDatabase.getSong(songId);
+        if (!song) return res.status(404).json({ error: 'Song not found' });
+        if (!canAccessSong(song, req.user)) return res.status(403).json({ error: 'Forbidden' });
+        await HandleDatabase.clearDiscordArtworkCache(song.id);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[DISCORD ARTWORK]', error);
+        res.status(500).json({ error: 'Could not refresh artwork' });
+    }
 });
 
 // API: get active sessions
@@ -2269,6 +2543,8 @@ app.get('/api/play/:identifier', requireLogin, async (req, res) => {
         artist: songData.artist,
         album: songData.album,
         genre: songData.genre,
+        year: songData.year,
+        metadata_revision: Number(songData.metadata_revision) || 0,
         duration: Media.formatDuration(songData.duration),
         url: `/api/stream/${songData.id}`,
         cover: resolveSongCover(songData),
@@ -2401,547 +2677,179 @@ app.post('/api/upload-banner', requireLogin, avatarUploadLimiter, uploadBanner.s
     return res.json({ success: true, banner: Media.resolveUserBanner(req.user) });
 });
 
-// API: youtube-ratelimit-status (Check status without consuming a download)
-app.get('/api/youtube-ratelimit-status', requireLogin, async (req, res) => {
-    try {
-        const key = req.ip;
-        // In express-rate-limit v7+, getStore().get(key) is also possible, 
-        // but getKey() is a built-in helper that should work.
-        const status = await youtubeDownloadLimiter.getKey(key);
+/* =====================================================================
+ * Downloads (Owner only)
+ * ---------------------------------------------------------------------
+ * Every route here writes into the Owner's real music folder and can spawn
+ * outbound network activity, so they carry the same Owner-only restriction as
+ * the music-directory and rescan endpoints. See downloads.js for the engine.
+ * ===================================================================== */
 
-        const limit = app.locals.config.ratelimits.youtube_max || 2;
-        let remaining = limit;
-        let resetSeconds = 0;
+const requireOwner = requireRole(['Owner']);
 
-        if (status) {
-            remaining = Math.max(0, limit - (status.totalHits || 0));
-            if (status.resetTime) {
-                const diff = new Date(status.resetTime) - Date.now();
-                resetSeconds = Math.ceil(diff / 1000);
-
-                // CRITICAL FIX: If reset time has passed, explicitly return full quota
-                // This prevents "stuck at 0" issues caused by minor server/client clock desync
-                if (resetSeconds <= 0) {
-                    remaining = limit;
-                    resetSeconds = 0;
-                }
-            }
-        }
-
-        return res.json({
-            success: true,
-            remaining: remaining,
-            resetSeconds: Math.max(0, resetSeconds),
-            limit: limit
-        });
-    } catch (err) {
-        console.error("[YOUTUBE RATELIMIT STATUS ERROR]", err);
-        // Fail-safe: return default limit
-        return res.json({ success: true, remaining: 2, limit: 2, resetSeconds: 0 });
-    }
+// Soulseek searches remain open for several seconds while peers answer.
+const downloadSearchLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many searches. Give it a moment." }
 });
 
-// API: youtube-metadata
-app.post('/api/youtube-metadata', requireLogin, youtubeMetadataLimiter, async (req, res) => {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: "Missing YouTube URL." });
-
-    try {
-        await ensureYoutubeCooldown();
-        const userAgent = getRandomUserAgent();
-        const info = await ytDlp(url, {
-            dumpSingleJson: true,
-            noCheckCertificates: true,
-            noWarnings: true,
-            preferFreeFormats: true,
-            ffmpegLocation: ffmpegPath,
-            userAgent: userAgent
-        });
-
-        const maxDuration = app.locals.config.ratelimits.youtube_duration || 600;
-        if (info.duration > maxDuration) {
-            return res.status(400).json({ error: `Video is too long (${Math.floor(info.duration / 60)}m). Music imports are limited to ${Math.floor(maxDuration / 60)} minutes.` });
-        }
-
-        return res.json({
-            success: true,
-            title: info.title,
-            artist: info.uploader || "Unknown YouTube Artist",
-            duration: info.duration,
-            thumbnail: info.thumbnail
-        });
-    } catch (err) {
-        console.error(`[YOUTUBE METADATA ERROR]`, err);
-        return res.status(500).json({ error: "Failed to fetch metadata: " + err.message });
-    }
+const downloadWriteLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many download requests. Give it a moment." }
 });
 
-// API: youtube-download
-app.post('/api/youtube-download', requireLogin, youtubeDownloadLimiter, async (req, res) => {
-    const { url, compress } = req.body;
-    if (!url) return res.status(400).json({ error: "Missing YouTube URL." });
-
-    const shouldCompress = !!compress;
-
-    // 1. Check Per-User Storage Limit (300 MB)
-    if (!req.userRow) return res.status(401).json({ error: "User session lost. Please log in again." });
-    const storageUsed = req.userRow.storage_used || 0;
-    const storageLimit = 314572800; // 300 MB
-    if (storageUsed >= storageLimit) {
-        return res.status(403).json({ error: "Your 300MB storage limit has been reached. Please delete some of your songs to upload more." });
-    }
-
-    console.log(`[YOUTUBE] User '${req.user}' requested download: ${url}`);
-
-    const youtubeId = extractYoutubeId(url);
-    if (youtubeId) {
-        const existing = await HandleDatabase.getSongByMetadata(req.user, { youtube_id: youtubeId });
-        if (existing) {
-            console.warn(`[YOUTUBE REJECTED] Duplicate import for user '${req.user}': ${youtubeId}`);
-            return res.status(409).json({ error: "This YouTube song already exists in your library." });
-        }
-    }
-
-    const tempAudioPath = path.join(RT.paths.temp, `yt-${crypto.randomBytes(6).toString('hex')}.m4a`);
-    const tempDir = path.dirname(tempAudioPath);
-    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-    try {
-        await ensureYoutubeCooldown();
-        const userAgent = getRandomUserAgent();
-
-        // 2. Fetch metadata
-        const info = await ytDlp(url, {
-            dumpSingleJson: true,
-            noCheckCertificates: true,
-            noWarnings: true,
-            preferFreeFormats: true,
-            ffmpegLocation: ffmpegPath,
-            userAgent: userAgent
-        });
-
-        const title = info.title;
-        const artist = info.uploader || "Unknown YouTube Artist";
-        const duration = info.duration;
-        const thumbnail = info.thumbnail;
-
-        // Final check on metadata duration (redundant check for safety)
-        const maxDuration = app.locals.config.ratelimits.youtube_duration || 600;
-        if (duration > maxDuration) {
-            throw new Error(`Video is too long (${Math.floor(duration / 60)}m). Max allowed is ${Math.floor(maxDuration / 60)} minutes.`);
-        }
-
-        console.log(`[YOUTUBE] Metadata - Title: ${title}, Artist: ${artist}, Duration: ${duration}s`);
-
-        // 3. Download Audio
-        // We'll use yt-dlp to download the best audio available
-        // --extract-audio and --audio-format m4a ensures we get a consistent format for Media.saveSong
-        await ytDlp(url, {
-            output: tempAudioPath,
-            extractAudio: true,
-            audioFormat: 'm4a',
-            noCheckCertificates: true,
-            noWarnings: true,
-            ffmpegLocation: ffmpegPath,
-            userAgent: userAgent
-        });
-
-        if (!fs.existsSync(tempAudioPath)) {
-            // Fallback: check if it was saved with a different extension by mistake
-            const files = fs.readdirSync(tempDir);
-            const found = files.find(f => f.startsWith(path.basename(tempAudioPath, '.m4a')));
-            if (found) {
-                fs.renameSync(path.join(tempDir, found), tempAudioPath);
-            } else {
-                throw new Error("Failed to download audio stream.");
-            }
-        }
-
-        // 4. Save Song using existing Media logic
-        // If shouldCompress is true, it re-encodes to MP3 128k (slow). Else, rename (instant).
-        const metaOverride = { title, artist, duration };
-        const fingerprint = { youtube_id: youtubeId };
-        const finalPath = await Media.saveSong(tempAudioPath, "../MusicLibrary/", req.user, shouldCompress, 'private', title, metaOverride, fingerprint);
-
-        if (finalPath) {
-            const baseName = path.basename(finalPath, path.extname(finalPath));
-
-            // 5. Handle Thumbnail/Cover
-            if (thumbnail) {
-                const coverDir = RT.paths.covers;
-                if (!fs.existsSync(coverDir)) fs.mkdirSync(coverDir, { recursive: true });
-                const coverPath = path.join(coverDir, `${baseName}.jpg`);
-
-                try {
-                    await downloadFile(thumbnail, coverPath);
-                    console.log(`[YOUTUBE] Saved cover art: ${coverPath}`);
-                } catch (thumbErr) {
-                    console.error(`[YOUTUBE] Failed to download thumbnail: ${thumbErr.message}`);
-                }
-            }
-
-            return res.json({ success: true, message: "YouTube song imported successfully!" });
-        } else {
-            throw new Error("Media processing failed.");
-        }
-
-    } catch (err) {
-        console.error(`[YOUTUBE ERROR]`, err);
-        if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath);
-        return res.status(500).json({ error: "Failed to download or process YouTube song: " + err.message });
-    }
-});
-
-// --- Cover Art Helper ---
-async function fetchAndSaveCover(artist, title, baseName, album = "", directUrl = null) {
-    try {
-        const coversDir = RT.paths.covers;
-        if (!fs.existsSync(coversDir)) fs.mkdirSync(coversDir, { recursive: true });
-        const savePath = path.join(coversDir, `${baseName}.jpg`);
-
-        // Retired import code may persist artwork supplied by its source, but
-        // must not perform a second unreviewed registry guess.
-        if (!directUrl) return;
-        await downloadFile(directUrl, savePath);
-        console.log(`[COVER] Saved from direct URL: ${baseName}.jpg`);
-    } catch (e) {
-        console.error(`[COVER] Failed for ${artist} - ${title}:`, e.message);
-    }
+/** Maps engine errors onto their intended status code instead of a blanket 500. */
+function respondDownloadError(res, err, fallback) {
+    const status = Number(err && err.statusCode) || 500;
+    if (status >= 500) console.error('[DOWNLOADS API]', err);
+    return res.status(status).json({ error: status >= 500 ? fallback : err.message });
 }
 
-// --- Soulseek Helper ---
-function trySoulseek(query, socketInfo = null, songName = null) {
-    return new Promise(async (resolve) => {
-        const client = await getSoulseekClient();
-        if (!client) {
-            console.error("[SOULSEEK] No client available for search.");
-            return resolve({ success: false });
-        }
+// API: download engine status (queue + Soulseek connectivity + target folder)
+app.get('/api/downloads/status', requireOwner, async (req, res) => {
+    try {
+        const [queue, soulseek] = await Promise.all([
+            Downloads.getQueue(),
+            Downloads.soulseekStatus()
+        ]);
+        return res.json({ success: true, ...queue, soulseek });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not read the download queue.");
+    }
+});
 
-        client.search({ req: query, timeout: 15000 }, (err, res) => {
-            // Check if user skipped/cancelled DURING the search
-            const stillActive = activeImports.get(socketInfo?.user);
-            const searchId = `${socketInfo?.user}:${query}`;
-            if (!stillActive || stillActive.cancelled || (activeSoulseekDownloads.get(searchId)?.skipped)) {
-                activeSoulseekDownloads.delete(searchId);
-                return resolve({ success: false });
-            }
+// API: search Soulseek for a track
+app.post('/api/downloads/search', requireOwner, downloadSearchLimiter, async (req, res) => {
+    const { query, sources } = req.body || {};
+    const requestedSources = Array.isArray(sources) && sources.length > 0
+        ? sources.filter(source => source === 'soulseek')
+        : ['soulseek'];
 
-            if (err || !res || res.length === 0) {
-                console.log(`[SOULSEEK] No results found or search error for: ${query} (err: ${err})`);
-                return resolve({ success: false });
-            }
+    try {
+        const results = await Downloads.search(query, { sources: requestedSources });
+        return res.json({ success: true, ...results });
+    } catch (err) {
+        return respondDownloadError(res, err, "Search failed.");
+    }
+});
 
-            // Filter for audio files, good bitrate, and decent speed
-            const candidates = res
-                .filter(peer => {
-                    if (!peer.file) return false;
-                    const ext = path.extname(peer.file).toLowerCase();
-                    const isAudio = ['.mp3', '.m4a', '.wav', '.ogg'].includes(ext);
-                    // Be flexible with bitrate
-                    const isGoodBitrate = (peer.bitrate >= 192 && peer.bitrate <= 450);
-                    // Minimum speed floor: 100KB/s (102400 bytes/s)
-                    const isFastEnough = (peer.speed || 0) >= 102400;
-                    return isAudio && isGoodBitrate && isFastEnough;
-                })
-                .sort((a, b) => {
-                    // 1. Prefer free slots
-                    if (a.slots !== b.slots) return a.slots ? -1 : 1;
-
-                    // 2. Prefer lower queue
-                    const qA = a.inQueue ?? 999;
-                    const qB = b.inQueue ?? 999;
-                    if (qA !== qB) return qA - qB;
-
-                    // 3. Prefer significantly higher speed (tiered)
-                    const speedTierA = Math.floor((a.speed || 0) / 1048576); // 1MB/s tiers
-                    const speedTierB = Math.floor((b.speed || 0) / 1048576);
-                    if (speedTierA !== speedTierB) return speedTierB - speedTierA;
-
-                    // 4. Prefer higher bitrate
-                    if ((b.bitrate || 0) !== (a.bitrate || 0)) {
-                        return (b.bitrate || 0) - (a.bitrate || 0);
-                    }
-
-                    // 5. Tie-break with raw speed
-                    return (b.speed || 0) - (a.speed || 0);
-                });
-
-            const bestFile = candidates[0];
-            if (!bestFile) {
-                console.log(`[SOULSEEK] No suitable candidates found for: ${query} (out of ${res.length} results)`);
-                return resolve({ success: false });
-            }
-
-            const fileExt = path.extname(bestFile.file).toLowerCase() || '.mp3';
-            const tempPath = path.join(RT.paths.temp, `slsk-${crypto.randomBytes(6).toString('hex')}${fileExt}`);
-
-            // Calculate ETA: Convert speed bits->bytes and add 5s for handshake/connection overhead
-            const rawSize = bestFile.size || 0;
-            const rawSpeed = bestFile.speed || 1;
-            const etaSeconds = Math.max(5, Math.ceil(rawSize / (rawSpeed / 8)) + 5);
-
-            if (socketInfo) {
-                socketInfo.io.to(`user:${socketInfo.user}`).emit('import_progress', {
-                    song: songName || query,
-                    status: 'downloading',
-                    source: 'soulseek',
-                    eta: etaSeconds
-                });
-            }
-
-            // Real-time Progress Tracking
-            let lastSize = 0;
-            const progressInterval = setInterval(() => {
-                try {
-                    if (fs.existsSync(tempPath)) {
-                        const stats = fs.statSync(tempPath);
-                        const currentSize = stats.size;
-                        const totalSize = bestFile.size || 1;
-                        const bytesGained = currentSize - lastSize;
-                        lastSize = currentSize;
-                        if (socketInfo) {
-                            // Calculate speed per second (interval is now 1000ms = 1s)
-                            const bytesPerSecond = bytesGained;
-                            if (bytesPerSecond > 0) {
-                                const realEta = Math.ceil((totalSize - currentSize) / bytesPerSecond);
-                                socketInfo.io.to(`user:${socketInfo.user}`).emit('import_progress', {
-                                    song: songName || query,
-                                    status: 'downloading',
-                                    source: 'soulseek',
-                                    eta: realEta
-                                });
-                            } else if (currentSize < totalSize) {
-                                // If stalled, send a 'stalled' status or just keep same ETA
-                                socketInfo.io.to(`user:${socketInfo.user}`).emit('import_progress', {
-                                    song: songName || query,
-                                    status: 'downloading',
-                                    source: 'soulseek',
-                                    eta: 'Stalled'
-                                });
-                            }
-                        }
-                    }
-                } catch (e) { }
-            }, 1000);
-
-            console.log(`[SOULSEEK] Downloading: ${bestFile.file} from ${bestFile.user} (${bestFile.bitrate}kbps)`);
-
-            const downloadId = socketInfo ? `${socketInfo.user}:${query}` : null;
-            if (downloadId) {
-                activeSoulseekDownloads.set(downloadId, { resolve, tempPath });
-            }
-
-            let downloadTimeout = setTimeout(() => {
-                clearInterval(progressInterval);
-                if (downloadId) activeSoulseekDownloads.delete(downloadId);
-                console.log(`[SOULSEEK] Download timed out for: ${bestFile.file}`);
-                // Tell UI we are moving on to YouTube
-                if (socketInfo) {
-                    socketInfo.io.to(`user:${socketInfo.user}`).emit('import_progress', {
-                        song: songName || query,
-                        status: 'searching_yt',
-                        message: `Soulseek timed out, trying YouTube...`
-                    });
-                }
-                resolve({ success: false });
-            }, 120000); // 120-second (2 min) patience limit for download
-
-            client.download({ file: bestFile, path: tempPath }, (err, data) => {
-                clearInterval(progressInterval);
-                clearTimeout(downloadTimeout);
-                if (downloadId) activeSoulseekDownloads.delete(downloadId);
-
-                if (err) {
-                    console.error(`[SOULSEEK DOWNLOAD ERROR]`, err);
-                    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-                    // Tell UI we are moving on to YouTube
-                    if (socketInfo) {
-                        socketInfo.io.to(`user:${socketInfo.user}`).emit('import_progress', {
-                            song: songName || query,
-                            status: 'searching_yt',
-                            message: `Soulseek failed, trying YouTube...`
-                        });
-                    }
-                    return resolve({ success: false });
-                }
-                resolve({ success: true, filePath: tempPath, bitrate: bestFile.bitrate });
-            });
-        });
-    });
-}
-
-// API: spotify-import
-app.post('/api/import/spotify', requireLogin, async (req, res) => {
-    const { url, playlistName, useSoulseek } = req.body;
-    if (!url || !url.includes('spotify.com')) {
-        return res.status(400).json({ error: "Invalid Spotify URL." });
+// API: turn a pasted Spotify link into a preview tracklist
+app.post('/api/downloads/resolve', requireOwner, downloadSearchLimiter, async (req, res) => {
+    const { url } = req.body || {};
+    if (typeof url !== 'string' || url.trim().length === 0) {
+        return res.status(400).json({ error: "Paste a link first." });
+    }
+    if (url.length > 2000) {
+        return res.status(400).json({ error: "That link is too long." });
     }
 
     try {
-        const storageUsed = req.userRow.storage_used || 0;
-        const storageLimit = 314572800; // 300 MB
-        if (storageUsed >= storageLimit) {
-            return res.status(403).json({ error: "Your 300MB storage limit has been reached. Please delete some of your songs to import more." });
-        }
-
-        let tracks;
-        try {
-            tracks = await getTracks(url);
-        } catch (err) {
-            console.error(`[SPOTIFY GET TRACKS ERROR]`, err.message);
-            return res.status(404).json({ error: "Spotify playlist not found or is private. Make sure the URL is correct and the playlist is public." });
-        }
-
-        if (!tracks || tracks.length === 0) {
-            return res.status(404).json({ error: "No tracks found or playlist is private." });
-        }
-
-        const actualPlaylistName = playlistName || tracks[0]?.album || "Spotify Import";
-        const result = await HandleDatabase.insertPlaylist(actualPlaylistName, req.user);
-        const playlistId = result.lastID;
-
-        // Track import state
-        activeImports.set(req.user, { cancelled: false, skipSoulseek: false });
-
-        // Respond immediately, process in background
-        res.json({ success: true, totalTracks: tracks.length, message: `Importing ${tracks.length} tracks in the background. Check your library soon.` });
-
-        let songPosition = 0;
-
-        for (const track of tracks) {
-            try {
-                // Check for manual cancellation
-                const impState = activeImports.get(req.user);
-                if (!impState || impState.cancelled) {
-                    console.log(`[SPOTIFY IMPORT] Import for ${req.user} cancelled.`);
-                    activeImports.delete(req.user);
-                    req.app.get('io').to(`user:${req.user}`).emit('import_cancelled');
-                    break;
-                }
-
-                // Flex quota check inside the loop
-                const currentUser = await HandleDatabase.getUser(req.user);
-                if (currentUser.storage_used >= storageLimit) {
-                    req.app.get('io').to(`user:${req.user}`).emit('import_error', { message: "Storage limit reached. Import paused." });
-                    activeImports.delete(req.user);
-                    break;
-                }
-
-                const query = `${track.artist} ${track.name}`;
-                console.log(`[SPOTIFY IMPORT] Processing: ${query}`);
-
-                let finalAudioPath = null;
-                let downloadedBitrate = 128;
-                let sourceUsed = 'unknown';
-
-                // 1. Try Soulseek (if enabled AND not skipped globally)
-                if (useSoulseek !== false && !impState.skipSoulseek) {
-                    req.app.get('io').to(`user:${req.user}`).emit('import_progress', { song: track.name, status: 'searching_slsk' });
-                    console.log(`[SPOTIFY IMPORT] Trying Soulseek: ${query}`);
-                    const soulseekResult = await trySoulseek(query, { io: req.app.get('io'), user: req.user }, track.name);
-                    if (soulseekResult.success) {
-                        finalAudioPath = soulseekResult.filePath;
-                        downloadedBitrate = soulseekResult.bitrate || 320;
-                        sourceUsed = 'soulseek';
-                        console.log(`[SPOTIFY IMPORT] Downloaded from Soulseek: ${query}`);
-                    }
-                }
-
-                // 2. Fallback to yt-dlp (SoundCloud then YouTube)
-                if (!finalAudioPath) {
-                    // Check cancellation again before YouTube fallback
-                    const impCheck = activeImports.get(req.user);
-                    if (!impCheck || impCheck.cancelled) {
-                        console.log(`[SPOTIFY IMPORT] Import for ${req.user} stopped before YouTube fallback.`);
-                        req.app.get('io').to(`user:${req.user}`).emit('import_cancelled');
-                        break;
-                    }
-
-                    req.app.get('io').to(`user:${req.user}`).emit('import_progress', { song: track.name, status: 'downloading', source: 'youtube' });
-
-                    await ensureYoutubeCooldown();
-                    const tempAudioPath = path.join(RT.paths.temp, `yt-${crypto.randomBytes(6).toString('hex')}.m4a`);
-                    const fallbacks = [
-                        `ytsearch1:${query} official audio`,
-                        `scsearch1:${query}`,
-                        `ytsearch1:${query}`
-                    ];
-
-                    for (const fallback of fallbacks) {
-                        try {
-                            console.log(`[SPOTIFY IMPORT] Trying fallback: ${fallback}`);
-                            await ytDlp(fallback, {
-                                output: tempAudioPath,
-                                extractAudio: true,
-                                audioFormat: 'm4a',
-                                noCheckCertificates: true,
-                                noWarnings: true,
-                                ffmpegLocation: ffmpegPath,
-                                userAgent: getRandomUserAgent()
-                            });
-
-                            if (fs.existsSync(tempAudioPath)) {
-                                finalAudioPath = tempAudioPath;
-                                downloadedBitrate = 128; // Standard yt-dlp audio format estimation
-                                sourceUsed = fallback.includes('scsearch') ? 'soundcloud' : 'youtube';
-                                break;
-                            }
-                        } catch (e) {
-                            console.log(`[SPOTIFY IMPORT] Fallback ${fallback} failed.`);
-                        }
-                    }
-                }
-
-                if (finalAudioPath) {
-                    // Tag with node-id3 (MP3 only; ID3 tags corrupt M4A containers)
-                    if (finalAudioPath.toLowerCase().endsWith('.mp3')) {
-                        const tags = {
-                            title: track.name,
-                            artist: track.artist,
-                            album: track.album || "Single"
-                        };
-                        NodeID3.write(tags, finalAudioPath);
-                    }
-
-                    const metaOverride = {
-                        title: track.name,
-                        artist: track.artist,
-                        album: track.album,
-                        duration: track.duration_ms ? Math.round(track.duration_ms / 1000) : undefined
-                    };
-
-                    const fingerprint = {
-                        bitrate: downloadedBitrate,
-                        source: sourceUsed
-                    };
-
-                    const dbPath = await Media.saveSong(finalAudioPath, "../MusicLibrary/", req.user, false, 'private', track.name, metaOverride, fingerprint);
-
-                    if (dbPath) {
-                        const songData = await HandleDatabase.getSongByFilepath(dbPath);
-                        if (songData) {
-                            await HandleDatabase.addSongToPlaylist(playlistId, songData.id, songPosition++);
-                            // Use direct Spotify cover if available, otherwise accurate iTunes search
-                            const baseName = path.basename(dbPath, path.extname(dbPath));
-                            const spotifyCover = track.cover || (track.images && track.images[0]?.url);
-                            fetchAndSaveCover(track.artist, track.name, baseName, track.album, spotifyCover).catch(() => { });
-                        }
-
-                        req.app.get('io').to(`user:${req.user}`).emit('import_progress', { song: track.name, status: 'done', source: sourceUsed, songId: songData.id });
-                        req.app.get('io').to(`user:${req.user}`).emit('storage_update');
-                    }
-                } else {
-                    req.app.get('io').to(`user:${req.user}`).emit('import_progress', { song: track.name, status: 'failed' });
-                }
-            } catch (err) {
-                console.error(`[SPOTIFY IMPORT ERROR] Failed track ${track.name}:`, err);
-                req.app.get('io').to(`user:${req.user}`).emit('import_progress', { song: track.name, status: 'failed' });
-            }
-        }
-
+        const resolved = await Downloads.resolveLink(url);
+        return res.json({ success: true, ...resolved });
     } catch (err) {
-        console.error(`[SPOTIFY IMPORT ENDPOINT ERROR]`, err);
-        return res.status(500).json({ error: "Failed to process Spotify URL." });
+        return respondDownloadError(res, err, "Could not read that link.");
+    }
+});
+
+// API: add tracks to the download queue
+app.post('/api/downloads/enqueue', requireOwner, downloadWriteLimiter, async (req, res) => {
+    const { items, batchLabel } = req.body || {};
+    if (!Array.isArray(items)) {
+        return res.status(400).json({ error: "Nothing to download." });
+    }
+
+    try {
+        const result = await Downloads.enqueue(items, req.user, {
+            batchLabel: typeof batchLabel === 'string' ? batchLabel.slice(0, 200) : null
+        });
+        return res.json({ success: true, ...result });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not queue those downloads.");
+    }
+});
+
+// API: cancel a single queued or running download
+app.post('/api/downloads/queue/:id/cancel', requireOwner, downloadWriteLimiter, async (req, res) => {
+    try {
+        const cancelled = await Downloads.cancelItem(req.params.id);
+        return res.json({ success: true, cancelled });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not cancel that download.");
+    }
+});
+
+// API: retry a failed or cancelled download
+app.post('/api/downloads/queue/:id/retry', requireOwner, downloadWriteLimiter, async (req, res) => {
+    try {
+        const item = await Downloads.retryItem(req.params.id);
+        return res.json({ success: true, item });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not retry that download.");
+    }
+});
+
+// API: cancel everything still pending
+app.post('/api/downloads/queue/cancel-all', requireOwner, downloadWriteLimiter, async (req, res) => {
+    try {
+        const cancelled = await Downloads.cancelAll();
+        return res.json({ success: true, cancelled });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not cancel the queue.");
+    }
+});
+
+// API: remove finished rows from the queue history
+app.post('/api/downloads/queue/clear', requireOwner, downloadWriteLimiter, async (req, res) => {
+    try {
+        const removed = await Downloads.clearFinished();
+        return res.json({ success: true, removed });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not clear the queue.");
+    }
+});
+
+// API: read Soulseek settings (never returns the stored password)
+app.get('/api/settings/downloads', requireOwner, async (req, res) => {
+    try {
+        const soulseek = await Downloads.soulseekStatus();
+        let folder = null;
+        try { folder = Downloads.resolveDownloadRoot({ create: false }); } catch { folder = null; }
+        return res.json({ success: true, soulseek, downloadFolder: folder });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not read the download settings.");
+    }
+});
+
+// API: save Soulseek credentials
+app.post('/api/settings/downloads', requireOwner, downloadWriteLimiter, async (req, res) => {
+    const { username, password, clear } = req.body || {};
+
+    try {
+        if (clear === true) {
+            await Downloads.clearSoulseekCredentials();
+            return res.json({ success: true, cleared: true, soulseek: await Downloads.soulseekStatus() });
+        }
+
+        await Downloads.saveSoulseekCredentials({ username, password });
+        return res.json({ success: true, soulseek: await Downloads.soulseekStatus() });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not save the download settings.");
+    }
+});
+
+// API: verify the stored Soulseek credentials actually log in
+app.post('/api/settings/downloads/test', requireOwner, downloadWriteLimiter, async (req, res) => {
+    try {
+        const result = await Downloads.testSoulseekConnection();
+        return res.json({ success: true, ...result, soulseek: await Downloads.soulseekStatus() });
+    } catch (err) {
+        return respondDownloadError(res, err, "Could not reach Soulseek.");
     }
 });
 
@@ -3005,6 +2913,15 @@ app.post('/api/save-cover', requireLogin, async (req, res) => {
             const downloaded = await AIMetadata.downloadFile(parsedCoverUrl.href, savePath);
             if (!downloaded) throw new Error('Cover download failed');
             console.log(`[COVER] Saved: ${baseName}.jpg`);
+        }
+
+        /* Record the public source so external consumers (Discord Rich Presence)
+         * can link the artwork without re-querying Apple. Best-effort: a failure
+         * here must not fail the cover save the user actually asked for. */
+        try {
+            await HandleDatabase.setSongCoverSourceUrl(songData.id, parsedCoverUrl.href);
+        } catch (error) {
+            console.warn('[COVER] Could not record the cover source URL:', error.message);
         }
 
         return res.json({ success: true, cover: Media.resolveCover(baseName) });
@@ -3798,7 +3715,7 @@ app.delete('/api/songs/:id', requireLogin, async (req, res) => {
 // Update Song Metadata
 app.patch('/api/songs/:id', requireLogin, async (req, res) => {
     const songId = req.params.id;
-    const { songname, artist, album, genre, year, is_private } = req.body;
+    const { songname, artist, album, genre, year, is_private, expectedRevision } = req.body;
 
     const song = await HandleDatabase.getSong(songId);
     if (!song) return res.status(404).json({ error: "Song not found" });
@@ -3821,12 +3738,22 @@ app.patch('/api/songs/:id', requireLogin, async (req, res) => {
         }
 
         if (Object.keys(metadataUpdates).length > 0) {
-            await HandleDatabase.updateSongMetadata(song.id, metadataUpdates, {
+            const updateResult = await HandleDatabase.updateSongMetadata(song.id, metadataUpdates, {
                 status: 'identified',
                 source: 'manual',
                 pipelineVersion: 'manual-v1',
-                lockFields: true
+                lockFields: true,
+                expectedRevision
             });
+            if (!updateResult.updated) {
+                if (updateResult.conflict) {
+                    return res.status(409).json({
+                        error: 'Song metadata changed while this editor was open. Reopen it to review the latest values.',
+                        currentRevision: updateResult.currentRevision
+                    });
+                }
+                return res.status(updateResult.notFound ? 404 : 409).json({ error: 'Song metadata could not be updated' });
+            }
         }
         if (is_private !== undefined) await HandleDatabase.updateSong(song.id, { is_private });
         res.json({ success: true, message: "Song updated" });
@@ -4033,6 +3960,49 @@ function removeStagedCover(staged) {
     try { if (fs.existsSync(staged.destination)) fs.unlinkSync(staged.destination); } catch { /* best-effort cleanup */ }
 }
 
+const ENRICHMENT_ITEM_TIMEOUTS = Object.freeze({
+    local_only: 15_000,
+    text_only: 45_000,
+    acoustic_with_text_fallback: 75_000
+});
+
+async function runEnrichmentLookupWithDeadline(song, mode, signal) {
+    if (signal.aborted) {
+        const error = new Error('Enrichment cancelled');
+        error.name = 'AbortError';
+        throw error;
+    }
+    const controller = new AbortController();
+    const timeoutMs = ENRICHMENT_ITEM_TIMEOUTS[mode] || 45_000;
+    let timer = null;
+    let onAbort = null;
+    const interruption = new Promise((_, reject) => {
+        onAbort = () => {
+            controller.abort();
+            const error = new Error('Enrichment cancelled');
+            error.name = 'AbortError';
+            reject(error);
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+        timer = setTimeout(() => {
+            controller.abort();
+            const error = new Error('Metadata lookup timed out');
+            error.code = 'ETIMEDOUT';
+            reject(error);
+        }, timeoutMs);
+        timer.unref?.();
+    });
+    try {
+        return await Promise.race([
+            enrichSongWithLookupMode(song, mode, { signal: controller.signal }),
+            interruption
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+        if (onAbort) signal.removeEventListener('abort', onAbort);
+    }
+}
+
 async function processEnrichmentJobItem(item, signal) {
     const song = await HandleDatabase.getSong(item.song_id, { includeUnavailable: true });
     if (!song || song.availability !== 'available') {
@@ -4055,7 +4025,7 @@ async function processEnrichmentJobItem(item, signal) {
 
     const configuredMode = item.options && item.options.lookupMode;
     const mode = METADATA_LOOKUP_MODES.has(configuredMode) ? configuredMode : currentMetadataLookupMode();
-    const result = await enrichSongWithLookupMode(song, mode, { signal });
+    const result = await runEnrichmentLookupWithDeadline(song, mode, signal);
     if (signal.aborted) return;
     const candidates = Array.isArray(result && result.candidates) ? result.candidates : [];
     const top = candidates[0] || null;
@@ -4129,20 +4099,21 @@ async function runEnrichmentWorker(jobId, controller) {
         }
         try {
             await processEnrichmentJobItem(item, controller.signal);
-        } catch {
+        } catch (error) {
             if (!controller.signal.aborted) {
+                const timedOut = error && error.code === 'ETIMEDOUT';
                 await HandleDatabase.storeEnrichmentItemResult(item.id, {
                     result: {
                         original: {},
                         candidates: [],
-                        providers: [{ name: 'metadata_lookup', status: 'provider_error', detail: 'lookup_failed' }],
+                        providers: [{ name: 'metadata_lookup', status: 'provider_error', detail: timedOut ? 'lookup_timeout' : 'lookup_failed' }],
                         evidence: [],
                         outcome: 'provider_error',
                         stage: 'provider_error',
                         pipelineVersion: AIMetadata.PIPELINE_VERSION
                     },
                     status: 'error',
-                    error: 'lookup_failed',
+                    error: timedOut ? 'lookup_timeout' : 'lookup_failed',
                     songStatus: 'error'
                 });
             }
@@ -4284,14 +4255,16 @@ function aggregateJobProviders(items) {
 async function enrichmentJobContract(job, { includeItem = true } = {}) {
     const current = await HandleDatabase.syncEnrichmentJobState(job.id) || job;
     const items = await HandleDatabase.getEnrichmentJobItems(current.id);
-    const counts = {};
-    items.forEach(item => { counts[item.status] = (counts[item.status] || 0) + 1; });
-    const total = items.length;
-    const processed = total - (counts.queued || 0) - (counts.processing || 0);
-    const matched = counts.applied || 0;
-    const review = counts.review || 0;
-    const unidentified = counts.unidentified || 0;
-    const errors = counts.error || 0;
+    const summary = EnrichmentSummary.summarizeEnrichmentItems(items);
+    const options = parseStoredConfigValue(current.options_json) || {};
+    const {
+        total,
+        scanned: processed,
+        matched,
+        needsReview: review,
+        unidentified,
+        errors
+    } = summary;
     let stage;
     let message = '';
     if (current.status === 'paused') stage = 'paused';
@@ -4302,15 +4275,14 @@ async function enrichmentJobContract(job, { includeItem = true } = {}) {
     else if (review > 0) stage = 'needs_review';
     else if (unidentified > 0) stage = 'unidentified';
     else if (errors > 0) stage = 'provider_error';
-    else if ((counts.processing || 0) > 0 || (counts.queued || 0) > 0) {
-        const options = parseStoredConfigValue(current.options_json) || {};
+    else if (summary.processing > 0 || summary.queued > 0) {
         stage = options.lookupMode === 'local_only' ? 'local_analysis' : 'registry_lookup';
     } else stage = 'preparing';
     const next = includeItem && ['needs_review', 'unidentified', 'provider_error'].includes(stage)
         ? await HandleDatabase.getNextEnrichmentReviewItem(current.id)
         : null;
     const item = next ? await formatEnrichmentItem(next) : null;
-    const percent = total > 0 ? Math.round((processed / total) * 10000) / 100 : (stage === 'completed' ? 100 : 0);
+    const percent = total > 0 ? summary.scanPercent : (stage === 'completed' ? 100 : 0);
     return {
         id: current.job_uid,
         jobId: current.job_uid,
@@ -4324,8 +4296,37 @@ async function enrichmentJobContract(job, { includeItem = true } = {}) {
         needsReview: review,
         unidentified,
         errors,
+        automatic: summary.automatic,
+        approved: summary.approved,
+        skipped: summary.skipped,
+        markedUnknown: summary.markedUnknown,
+        pendingDecisions: summary.pendingDecisions,
+        decisionsCompleted: summary.decisionsCompleted,
+        noMatch: summary.noMatch,
+        sourceErrors: summary.sourceErrors,
+        lookupMode: options.lookupMode || currentMetadataLookupMode(),
+        scope: options.scope || null,
+        targetSongId: Number.isInteger(Number(options.songId)) && Number(options.songId) > 0 ? Number(options.songId) : null,
+        force: options.force === true,
         percent,
-        progress: { total, processed, matched, needsReview: review, unidentified, errors, percent },
+        progress: {
+            total,
+            scanned: processed,
+            processed,
+            matched,
+            automatic: summary.automatic,
+            approved: summary.approved,
+            skipped: summary.skipped,
+            markedUnknown: summary.markedUnknown,
+            needsReview: review,
+            unidentified,
+            errors,
+            pendingDecisions: summary.pendingDecisions,
+            decisionsCompleted: summary.decisionsCompleted,
+            noMatch: summary.noMatch,
+            sourceErrors: summary.sourceErrors,
+            percent
+        },
         providers: aggregateJobProviders(items),
         item,
         message,
@@ -4361,6 +4362,8 @@ function resolvePersistedCandidate(rows, candidateId) {
                 candidate: {
                     ...payload,
                     ...release,
+                    title: payload.title || payload.songname || payload.trackTitle || payload.name,
+                    songname: payload.songname || payload.title || payload.trackTitle || payload.name,
                     album: release.album || release.title || payload.album,
                     coverUrl: release.coverUrl || payload.coverUrl,
                     _selectedReleaseId: release.id,
@@ -4388,6 +4391,7 @@ app.post('/api/enrichment/jobs', requireRole(['Owner']), async (req, res) => {
     if (activeJob) {
         const activeContract = await enrichmentJobContract(activeJob);
         if (['queued', 'running', 'paused', 'awaiting_review'].includes(activeContract.status)) {
+            if (['queued', 'running'].includes(activeJob.status)) startEnrichmentWorker(activeJob.id);
             return res.status(409).json({
                 success: false,
                 error: 'An enrichment job is already active',
@@ -4417,7 +4421,12 @@ app.post('/api/enrichment/jobs', requireRole(['Owner']), async (req, res) => {
     const job = await HandleDatabase.createEnrichmentJob({
         requestedBy: req.user,
         mode: 'review',
-        options: { scope: body.scope, force: includeAll, lookupMode },
+        options: {
+            scope: body.scope,
+            force: includeAll,
+            lookupMode,
+            songId: body.scope === 'song' ? Number(body.songId) : null
+        },
         songIds: selectedSongs.map(song => song.id),
         pipelineVersion: AIMetadata.PIPELINE_VERSION
     });
@@ -4429,8 +4438,9 @@ app.post('/api/enrichment/jobs', requireRole(['Owner']), async (req, res) => {
         });
     }
     const current = await HandleDatabase.syncEnrichmentJobState(job.id);
+    const contract = await enrichmentJobContract(current);
+    res.status(202).json({ success: true, job: contract });
     if (current.status === 'running' || current.status === 'queued') startEnrichmentWorker(current.id);
-    res.status(202).json({ success: true, job: await enrichmentJobContract(current) });
 });
 
 app.get('/api/enrichment/jobs/:id', requireRole(['Owner']), async (req, res) => {
@@ -4583,6 +4593,12 @@ app.post('/api/enrichment/items/:id/decision', requireRole(['Owner']), async (re
             });
         }
         databaseUpdates.cover_path = stagedCover.coverPath;
+        /* Remember where the artwork came from. The URL was already checked by
+         * validateEnrichmentUpdates -> AIMetadata.isTrustedCoverUrl, and it is a
+         * public HTTPS address, so anything that cannot reach the LAN (Discord
+         * Rich Presence) can use it directly instead of paying for a second
+         * provider lookup later. */
+        databaseUpdates.cover_source_url = normalizedUpdates.coverUrl;
     }
 
     let result;
@@ -4625,6 +4641,9 @@ app.post('/api/enrichment/items/:id/decision', requireRole(['Owner']), async (re
     if (result.idempotent) {
         removeStagedCover(stagedCover);
         stagedCover = null;
+    }
+    if (fields.some(field => ['songname', 'artist', 'duration', 'coverUrl'].includes(field))) {
+        await HandleDatabase.clearDiscordArtworkCache(item.song_id);
     }
 
     const currentJob = await HandleDatabase.syncEnrichmentJobState(item.job_id);
@@ -4887,6 +4906,15 @@ app.post('/api/songs/:id/cover', requireLogin, uploadCover.single('cover_file'),
                 throw error;
             } finally {
                 if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+            }
+
+            /* The local artwork is now something the user chose by hand, so any
+             * remembered provider URL no longer describes it. Clearing avoids
+             * showing a stale, mismatched cover in Discord Rich Presence. */
+            try {
+                await HandleDatabase.setSongCoverSourceUrl(song.id, null);
+            } catch (error) {
+                console.warn('[COVER UPLOAD] Could not clear the cover source URL:', error.message);
             }
 
             res.json({ success: true, cover: Media.resolveCover(baseName) });
@@ -5204,8 +5232,11 @@ app.post('/api/admin/config', requireRole(['Owner', 'Admin']), async (req, res) 
         }
     }
     if (ratelimits !== undefined) {
-        app.locals.config.ratelimits = { ...app.locals.config.ratelimits, ...ratelimits };
-        changes.push(`Rate Limits updated: ${JSON.stringify(ratelimits)}`);
+        const cleanedRateLimits = ratelimits && typeof ratelimits === 'object' ? { ...ratelimits } : {};
+        delete cleanedRateLimits.youtube_max;
+        delete cleanedRateLimits.youtube_duration;
+        app.locals.config.ratelimits = { ...app.locals.config.ratelimits, ...cleanedRateLimits };
+        changes.push(`Rate Limits updated: ${JSON.stringify(cleanedRateLimits)}`);
     }
 
     try {
@@ -5414,6 +5445,13 @@ const gracefulShutdown = ({ exit = true } = {}) => {
                     ? new AggregateError([shutdownError, error], 'Initialization and enrichment worker shutdown failed')
                     : error;
                 console.error('[SERVER] Enrichment workers did not stop cleanly:', error);
+            }
+            try {
+                // Stop the optional artwork search and drop the Soulseek socket.
+                DiscordArtwork.shutdown();
+                Downloads.shutdown();
+            } catch (error) {
+                console.error('[SERVER] Download engine did not stop cleanly:', error);
             }
             try {
                 await HandleDatabase.close();

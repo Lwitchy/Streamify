@@ -348,12 +348,16 @@ async function cacheUserProfile(username, avatarUrl) {
     await syncWorkerUserState(userKey);
 
     if (typeof caches !== 'undefined' && avatarUrl && avatarUrl.startsWith('/')) {
-        try {
+        // Account scoping is ready at this point. Avatar network work is useful
+        // offline, but must not hold up initial routing and the library paint.
+        (async () => {
             const cache = await caches.open(getMediaCacheName(userKey));
-            await fetchAndCacheResource(cache, avatarUrl, false);
-        } catch (error) {
+            const request = createCacheRequest(avatarUrl);
+            const cached = await cache.match(request, { ignoreVary: true });
+            if (!cached) await fetchAndCacheResource(cache, avatarUrl, false);
+        })().catch(error => {
             console.error('[Offline DB] Failed to cache avatar:', error);
-        }
+        });
     }
 }
 

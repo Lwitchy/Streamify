@@ -18,27 +18,6 @@ window.getAppScrollContainer = () => {
     return mainContent;
 };
 
-/* --- App Limits --- */
-window.YOUTUBE_LIMIT_MAX = 2; // Default fallback
-window.YOUTUBE_LIMIT_DURATION = 600; // Default fallback
-
-/* --- Configuration Sync --- */
-/**
- * Safely syncs frontend limits with the server's config.json.
- * This is called by modules like upload.js or admin.js after initial load.
- */
-window.syncConfigWithServer = async () => {
-    try {
-        const res = await fetch('/api/config/public');
-        const cfg = await res.json();
-        if (cfg.youtube_max) window.YOUTUBE_LIMIT_MAX = cfg.youtube_max;
-        if (cfg.youtube_duration) window.YOUTUBE_LIMIT_DURATION = cfg.youtube_duration;
-        console.log('[CONFIG] Synchronized with server:', cfg);
-    } catch (err) {
-        console.warn('[CONFIG] Failed to sync with server, using defaults.', err);
-    }
-};
-
 /* ============================================================================
  * ENVIRONMENT CAPABILITIES
  * ============================================================================
@@ -270,8 +249,28 @@ function showToast(message, type = 'error', duration = 3500) {
 window.showToast = showToast;
 
 /* --- Cover Art Fallback --- */
-/* Inline gradient SVG — shown instantly while iTunes lookup runs (no external request) */
-const COVER_PLACEHOLDER = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234169e1'/%3E%3Cstop offset='1' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='200' height='200' fill='url(%23g)'/%3E%3Ctext x='100' y='125' font-size='80' text-anchor='middle' fill='rgba(255,255,255,0.35)'%3E%E2%99%AA%3C/text%3E%3C/svg%3E`;
+/* Inline gradient SVG shown while cover lookup runs. It follows the selected
+   palette without making another network request. */
+function createCoverPlaceholder() {
+    const styles = getComputedStyle(document.documentElement);
+    const gradient1 = styles.getPropertyValue('--gradient-1').trim() || '#4169e1';
+    const gradient2 = styles.getPropertyValue('--gradient-2').trim() || '#8164d7';
+    const foreground = styles.getPropertyValue('--on-gradient').trim() || '#ffffff';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${gradient1}"/><stop offset="1" stop-color="${gradient2}"/></linearGradient></defs><rect width="200" height="200" fill="url(#g)"/><text x="100" y="125" font-size="80" text-anchor="middle" fill="${foreground}" fill-opacity="0.42">&#9834;</text></svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+let COVER_PLACEHOLDER = createCoverPlaceholder();
+
+window.addEventListener('streamifythemechange', () => {
+    const previousPlaceholder = COVER_PLACEHOLDER;
+    COVER_PLACEHOLDER = createCoverPlaceholder();
+    document.querySelectorAll('img').forEach(image => {
+        if (image.src === previousPlaceholder || image.getAttribute('src') === previousPlaceholder) {
+            image.src = COVER_PLACEHOLDER;
+        }
+    });
+});
 
 function safeImageURL(value, fallback = '') {
     if (value === COVER_PLACEHOLDER) return value;

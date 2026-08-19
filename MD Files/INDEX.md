@@ -1,6 +1,6 @@
 # Streamify Documentation Index
 
-Last reviewed: 2026-08-15
+Last reviewed: 2026-08-16
 
 This directory contains internal project documentation. Critical public-facing
 documents stay at the repository root so GitHub, contributors, and deployment
@@ -23,7 +23,10 @@ tools can find them in their conventional locations.
 | [`Engineering/PROJECT_AUDIT.md`](Engineering/PROJECT_AUDIT.md) | Current source of truth for findings, completed fixes, risks, and future work |
 | [`Engineering/POLISHING_UPDATE.md`](Engineering/POLISHING_UPDATE.md) | Complete 2026-08-15 polishing implementation record and manual verification checklist |
 | [`Engineering/SMART_AUTO_ENRICH_UPDATE.md`](Engineering/SMART_AUTO_ENRICH_UPDATE.md) | Smart Auto Enrich matching, AcoustID, canonical metadata, job workflow, tests, and verification |
+| [`Engineering/DISCORD_RPC.md`](Engineering/DISCORD_RPC.md) | Discord Rich Presence: IPC transport, artwork resolution, `cover_source_url`, privacy and failure modes |
+| [`Engineering/PLAYER_TRANSITION_PERFORMANCE.md`](Engineering/PLAYER_TRANSITION_PERFORMANCE.md) | Retained desktop player, FLIP shell motion, lyrics scheduling, startup optimizations, memory tradeoff, and Liquid Glass performance contract |
 | [`Engineering/FINDINGS.md`](Engineering/FINDINGS.md) | Desktop and mobile conversion findings captured during the Electron work |
+| [`Engineering/RELEASING.md`](Engineering/RELEASING.md) | How to cut a GitHub release that installed copies auto-update from: required assets, the draft flow, and failure modes |
 
 ### History
 
@@ -37,8 +40,11 @@ tools can find them in their conventional locations.
 MD Files/
 |-- INDEX.md
 |-- Engineering/
+|   |-- DISCORD_RPC.md
 |   |-- FINDINGS.md
+|   |-- PLAYER_TRANSITION_PERFORMANCE.md
 |   |-- POLISHING_UPDATE.md
+|   |-- RELEASING.md
 |   |-- SMART_AUTO_ENRICH_UPDATE.md
 |   `-- PROJECT_AUDIT.md
 `-- History/

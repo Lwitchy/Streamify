@@ -198,6 +198,19 @@ per second. Streamify uses one request per second. The Owner can enter an
 application client key during OOBE or Settings; `ACOUSTID_CLIENT_KEY` overrides
 the stored value. Audio remains local.
 
+### Discord Artwork
+
+Discord Rich Presence cannot load cover files from a private LAN address. The
+Owner can set a public HTTPS Streamify address under **Settings → Discord** when
+the server is exposed through a reverse proxy or tunnel. Discord then uses the
+exact embedded or uploaded cover.
+
+Each desktop device can choose whether Discord always shows the Streamify logo,
+uses stored/public covers only, searches YouTube by exact title/version/duration,
+searches Apple Music only, or tries YouTube before Apple. These lookups never
+authenticate to YouTube and never stream or download YouTube audio. Successful
+results are cached for 30 days.
+
 ### CORS
 
 Streamify serves its own frontend, so normal traffic is same-origin. Browser
@@ -219,6 +232,11 @@ then Windows Firewall. Guest/AP-isolated Wi-Fi blocks device-to-device traffic
 entirely.
 
 **Downloads/install unavailable on phone** — you are on HTTP. See Tier 2 or 3.
+
+**Discord shows the Streamify logo for a song** — Discord cannot reach a local
+cover. Enable an online artwork mode or configure a public HTTPS Streamify URL
+under Settings → Discord. Uncertain and temporarily blocked matches deliberately
+fall back to the logo.
 
 **Icons or fonts missing** — all assets are served locally from `Static/vendor/`;
 no internet needed. If they are missing, the files did not get copied.

@@ -257,9 +257,12 @@ These are the classic "works in dev, broken after packaging" failures:
    [SignPath](https://signpath.io) for OSS would fix this. Highest-impact item
    for anyone distributing publicly.
 
-2. **Auto-update.** `electron-updater` is not configured. Currently every update
-   requires manually downloading a new installer. `latest.yml` is already being
-   generated, so wiring this to GitHub Releases is straightforward.
+2. ~~**Auto-update.**~~ Done. `electron-updater` is wired to GitHub Releases via
+   the `publish:` block in `electron-builder.yml` and `electron/updater.js`.
+   See [`RELEASING.md`](RELEASING.md) for the release procedure. Only NSIS and
+   AppImage self-update — deb, tar.gz and the portable exe report why they
+   cannot. The switch is Owner-level server state
+   (`system_config.auto_update_enabled`), surfaced in Settings → Updates.
 
 3. **Delete the dead social code.** ~2,000 lines in `api_v2.js` plus the
    corresponding server routes can never execute. This is the single biggest

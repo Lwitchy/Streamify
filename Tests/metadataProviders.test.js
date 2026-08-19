@@ -2,7 +2,27 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const https = require('https');
+const { EventEmitter } = require('events');
 const Providers = require('../Server/metadataProviders');
+
+test('provider request has an absolute wall-clock timeout', async () => {
+    const originalRequest = https.request;
+    class HangingRequest extends EventEmitter {
+        setTimeout() {}
+        end() {}
+        destroy(error) { queueMicrotask(() => this.emit('error', error)); }
+    }
+    https.request = () => new HangingRequest();
+    try {
+        const startedAt = Date.now();
+        const result = await Providers._test.requestOnce('https://example.test', { timeoutMs: 500 });
+        assert.equal(result.kind, 'timeout');
+        assert.ok(Date.now() - startedAt < 1500);
+    } finally {
+        https.request = originalRequest;
+    }
+});
 
 test('AcoustID lookup uses POST form data with correctly encoded space-separated meta', async () => {
     let request;

@@ -48,11 +48,6 @@
         box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
     }
 
-    /* Overlay to close sidebar on tap */
-    .settings-sidebar-overlay {
-        display: none;
-    }
-
     /* --- TOP BAR --- */
     /* viewport-fit=cover extends the page under the status bar / notch, so the
        top inset has to be added back here or the search field and avatar end up
@@ -183,9 +178,9 @@
             isolation: isolate;
         }
 
-        /* Paint the cover on the root scrolling canvas rather than inside the
+/* Paint the cover on the root scrolling canvas rather than inside the
            clipped app shell. Pseudo-elements are ignored by Safari's toolbar
-           tint sampler, but their pixels remain available to Liquid Glass. */
+           tint sampler, so the toolbar keeps reading the player colors. */
         html.player-chrome-active body.player-section-active::before {
             content: '';
             position: absolute;
@@ -441,83 +436,78 @@
 }
 
 /* Settings Modal Specific Mobile Layout */
+#settings-modal {
+    align-items: flex-end;
+    padding: 0;
+}
+
 .settings-modal-box {
-    width: 95% !important;
+    width: 100% !important;
     max-width: none !important;
-    height: 85vh !important;
-    border-radius: 20px !important;
+    height: calc(100dvh - max(8px, env(safe-area-inset-top, 0px))) !important;
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top, 0px))) !important;
+    border-radius: 18px 18px 0 0 !important;
 }
 
-#settings-menu-toggle {
-    display: block !important;
-    background: rgba(255, 255, 255, 0.05);
-    padding: 8px;
-    border-radius: 12px;
-    margin-right: 4px;
-    transition: background 0.2s;
+.settings-modal-box .modal-close-button {
+    width: 44px;
+    height: 44px;
 }
 
-#settings-menu-toggle:active {
-    background: rgba(255, 255, 255, 0.15);
+.settings-modal-box .modal-header {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 
 .settings-sidebar {
-    position: absolute;
-    left: -100%;
-    top: 0 !important;
-    bottom: 0;
-    z-index: 100;
-    width: 260px;
-    background: rgba(0, 0, 0, 0.95) !important;
-    backdrop-filter: blur(40px) !important;
-    -webkit-backdrop-filter: blur(40px) !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
-    transition: left 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
-    display: block !important;
-    padding-top: 0;
-    box-shadow: 20px 0 50px rgba(0, 0, 0, 0.3);
+    position: static;
+    display: flex !important;
+    flex: 0 0 auto;
+    width: 100%;
+    overflow-x: auto;
+    padding: 8px max(10px, env(safe-area-inset-right, 0px)) 8px max(10px, env(safe-area-inset-left, 0px));
+    border-right: 0;
+    border-bottom: 1px solid var(--glass-border);
+    background: var(--settings-sidebar-bg) !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
 }
 
-.settings-sidebar.mobile-active {
-    left: 0;
+.settings-sidebar::-webkit-scrollbar {
+    display: none;
 }
 
 .settings-container {
     flex-direction: column;
-    height: calc(100% - 70px) !important;
+    height: calc(100% - 79px) !important;
     position: relative;
     margin-top: 0 !important;
 }
 
 .settings-content {
-    padding: 30px 20px;
+    padding: 22px max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
     width: 100%;
     overflow-y: auto;
 }
 
 .settings-tab {
-    padding: 18px 24px !important;
-    border-radius: 0 !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
-    margin-bottom: 0 !important;
-    position: relative;
-    background: transparent !important;
-    font-size: 15px !important;
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 44px;
+    padding: 10px 13px !important;
+    border-radius: 999px !important;
+    margin: 0 4px 0 0 !important;
+    background: transparent;
+    font-size: 13px !important;
 }
 
 .settings-tab.active {
-    background: rgba(255, 255, 255, 0.04) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
     color: #fff !important;
 }
 
 .settings-tab.active::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: linear-gradient(to bottom, var(--gradient-1), var(--gradient-2));
+    display: none;
 }
 
 /* Make buttons full width on mobile settings */
@@ -534,6 +524,37 @@
     display: flex;
     justify-content: center;
     align-items: center;
+}
+
+.metadata-configuration--settings .metadata-section-heading {
+    gap: 10px;
+}
+
+.metadata-tool-heading {
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metadata-key-input-row {
+    align-items: stretch;
+    flex-direction: column;
+}
+
+.metadata-configuration--settings .metadata-clear-key-btn {
+    align-self: flex-start;
+    min-height: 42px;
+}
+
+.metadata-settings-actions {
+    position: sticky;
+    bottom: calc(-24px - env(safe-area-inset-bottom, 0px));
+    z-index: 4;
+    margin: 20px -16px calc(-24px - env(safe-area-inset-bottom, 0px)) !important;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--glass-border);
+    background: rgba(18, 18, 20, 0.96);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
 }
 
 /* --- UPLOAD SECTION MOBILE --- */
@@ -716,7 +737,33 @@
     font-size: 12px;
 }
 
-/* --- SMART AUTO ENRICH WORKSPACE --- */
+.library-section-header {
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.library-section-actions {
+    max-width: 100%;
+    margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.library-section-actions .manage-btn {
+    width: 44px;
+    height: 44px;
+}
+
+#ai-autofill-btn {
+    flex: 0 0 44px;
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+}
+
+/* --- SMART METADATA REVIEW WORKSPACE --- */
 #ai-metadata-modal {
     align-items: flex-end;
     padding: 0;
@@ -731,7 +778,13 @@
 
 .ai-workspace-header {
     gap: 10px;
-    padding: 16px 15px 13px;
+    padding: 16px max(15px, env(safe-area-inset-right, 0px)) 13px max(15px, env(safe-area-inset-left, 0px));
+}
+
+.ai-icon-button {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
 }
 
 .ai-workspace-mark {
@@ -750,19 +803,14 @@
 }
 
 .ai-job-overview {
-    padding: 11px 15px 12px;
+    padding: 11px max(15px, env(safe-area-inset-right, 0px)) 12px max(15px, env(safe-area-inset-left, 0px));
 }
 
 .ai-progress-counts {
     gap: 6px 12px;
-    overflow-x: auto;
-    flex-wrap: nowrap;
+    overflow: visible;
+    flex-wrap: wrap;
     padding-bottom: 2px;
-    scrollbar-width: none;
-}
-
-.ai-progress-counts::-webkit-scrollbar {
-    display: none;
 }
 
 .ai-progress-counts span {
@@ -774,15 +822,14 @@
     gap: 4px;
 }
 
-.ai-provider-statuses {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
+.ai-provider-row summary {
+    min-height: 44px;
 }
 
-.ai-provider-statuses::-webkit-scrollbar {
-    display: none;
+.ai-provider-statuses {
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-bottom: 2px;
 }
 
 .ai-provider-chip {
@@ -791,15 +838,21 @@
 
 .ai-review-content {
     gap: 11px;
-    padding: 14px 12px 18px;
+    padding: 14px max(12px, env(safe-area-inset-right, 0px)) 18px max(12px, env(safe-area-inset-left, 0px));
 }
 
 .ai-item-header {
     align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.ai-item-header > div {
+    min-width: 0;
+    flex: 1 1 180px;
 }
 
 .ai-item-header h3 {
-    max-width: 235px;
+    max-width: 100%;
     font-size: 15px;
 }
 
@@ -834,12 +887,22 @@
     padding-left: 21px;
 }
 
+.ai-review-current,
+.ai-review-suggested,
+.ai-suggestion-title,
+.ai-suggestion-detail {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+}
+
 .ai-review-current::before,
 .ai-review-suggested-wrap::before {
     display: block;
     margin-bottom: 2px;
-    color: rgba(255, 255, 255, 0.38);
-    font-size: 8px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
@@ -856,6 +919,9 @@
 .ai-review-row .ai-check-control {
     grid-column: 2;
     grid-row: 1;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
 }
 
 .ai-cover-comparison {
@@ -883,10 +949,20 @@
     grid-column: 1 / -1;
     justify-self: center;
     margin-top: 4px;
+    min-height: 44px;
 }
 
 .ai-suggestions-list {
     grid-template-columns: 1fr;
+}
+
+.ai-candidate-pagination {
+    gap: 6px;
+}
+
+.ai-page-button {
+    min-height: 44px;
+    padding-inline: 10px;
 }
 
 .ai-workspace-state {
@@ -899,7 +975,7 @@
     flex-wrap: wrap;
     gap: 8px;
     min-height: 64px;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
 }
 
 .ai-job-controls,
@@ -909,14 +985,49 @@
 
 .ai-review-actions {
     justify-content: flex-end;
+    flex-wrap: wrap;
 }
 
 .ai-workspace-footer .btn {
-    min-height: 42px;
+    min-height: 44px;
 }
 
 .ai-apply-button {
     flex: 1;
+}
+
+.ai-preflight {
+    padding: 20px max(15px, env(safe-area-inset-right, 0px)) 24px max(15px, env(safe-area-inset-left, 0px));
+}
+
+.ai-preflight-intro {
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.ai-preflight-intro .ai-state-icon {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+}
+
+.ai-preflight-intro h3 {
+    font-size: 18px;
+}
+
+.ai-preflight-method-row {
+    padding: 13px;
+}
+
+.ai-preflight-actions {
+    width: 100%;
+}
+
+.ai-preflight-actions .btn {
+    flex: 1;
+    padding-inline: 14px;
 }
 
 /* --- OWNER METADATA SETTINGS / OOBE --- */
@@ -999,6 +1110,11 @@
 }
 
 @media screen and (max-width: 430px) {
+    .edit-song-review-row .edit-song-cover-preview {
+        width: 120px;
+        height: 120px;
+    }
+
     .metadata-status-grid {
         grid-template-columns: 1fr;
     }
@@ -1008,10 +1124,20 @@
         gap: 5px;
     }
 
-    .ai-workspace-mark,
-    .ai-workspace-heading p,
     .ai-progress-percent {
         display: none;
+    }
+
+    .ai-workspace-mark {
+        display: grid;
+        flex-basis: 34px;
+        height: 34px;
+    }
+
+    .ai-workspace-heading p {
+        display: block;
+        max-width: 220px;
+        font-size: 10px;
     }
 
     .ai-workspace-header {
@@ -1027,7 +1153,6 @@
         font-size: 9px;
     }
 
-    .ai-evidence-panel,
     .ai-cover-panel,
     .ai-candidates-panel {
         padding: 11px;

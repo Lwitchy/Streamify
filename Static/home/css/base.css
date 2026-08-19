@@ -5,7 +5,7 @@
 :root {
     /* Build marker. Read by /Static/diag.html to prove which copy of the
        stylesheets a device actually loaded, rather than guessing at caching. */
-    --asset-version: "4.19";
+    --asset-version: "4.22";
 
     /* Primary background colors.
        #121212 rather than pure #000 on purpose: iOS Safari tints the strip
@@ -24,13 +24,23 @@
     --text-primary: #ffffff;
     --text-secondary: rgba(255, 255, 255, 0.65);
 
-    /* Accent colors (Spotify green) */
+    /* Theme colors. theme.js replaces these before first paint when needed. */
     --accent: #1db954;
     --accent-hover: #1ed760;
+    --accent-rgb: 29, 185, 84;
+    --on-accent: #0b0b0e;
+    --on-gradient: #ffffff;
 
     /* Gradient colors for buttons and visual effects */
     --gradient-1: #4169e1;
     --gradient-2: #8164d7;
+    --gradient-3: #ec4899;
+    --gradient-1-rgb: 65, 105, 225;
+    --gradient-2-rgb: 129, 100, 215;
+    --theme-gradient-alpha-1: 0.11;
+    --theme-gradient-alpha-2: 0.09;
+    --settings-sidebar-bg: rgba(255, 255, 255, 0.02);
+    --settings-content-bg: rgba(0, 0, 0, 0.1);
 
     /* Glass effect border and shadow */
     --glass-border: rgba(255, 255, 255, 0.08);
@@ -69,8 +79,9 @@ body {
     background-color: var(--bg-color);
     /* Dynamic radial gradient creates depth and visual interest */
     background-image:
-        radial-gradient(circle at 15% 50%, rgba(30, 30, 35, 0.9), transparent 25%),
-        radial-gradient(circle at 85% 30%, rgba(20, 20, 25, 0.9), transparent 25%);
+        radial-gradient(circle at 15% 50%, rgba(var(--gradient-1-rgb), var(--theme-gradient-alpha-1)), transparent 28%),
+        radial-gradient(circle at 85% 30%, rgba(var(--gradient-2-rgb), var(--theme-gradient-alpha-2)), transparent 28%),
+        radial-gradient(circle at 50% 100%, rgba(25, 25, 30, 0.88), transparent 38%);
     /* Fixed attachment creates a parallax effect when scrolling */
     background-attachment: fixed;
     color: var(--text-primary);
@@ -89,6 +100,7 @@ body {
     height: 100lvh;
     display: flex;
     overflow: hidden;
+    transition: background-color 0.25s ease;
 }
 
 /* === SCROLLBAR CUSTOMIZATION === */
@@ -138,7 +150,7 @@ body {
 /* * ANIMATED GRADIENT TEXT */
 .gradient-text {
     background: linear-gradient(90deg,
-            #6366f1, #a855f7, #ec4899, #6366f1);
+            var(--gradient-1), var(--gradient-2), var(--gradient-3), var(--gradient-1));
 
     background-size: 200% auto;
     -webkit-background-clip: text;
@@ -189,4 +201,15 @@ body {
     max-height: 500px; /* Increased to allow for larger metadata boxes */
     opacity: 1;
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }

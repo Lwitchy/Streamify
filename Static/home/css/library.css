@@ -19,9 +19,9 @@
 .manage-btn:hover,
 .manage-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     border-color: var(--accent);
-    box-shadow: 0 0 15px rgba(29, 185, 84, 0.4);
+    box-shadow: none;
 }
 
 /* Batch Bar Styling */
@@ -86,14 +86,14 @@
 }
 
 .batch-btn--accent {
-    background: rgba(29, 185, 84, 0.12);
-    border-color: rgba(29, 185, 84, 0.35);
+    background: rgba(var(--accent-rgb), 0.12);
+    border-color: rgba(var(--accent-rgb), 0.35);
     color: var(--accent);
 }
 
 .batch-btn--accent:hover {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 /* Song Row Selection States */
@@ -138,7 +138,7 @@
     content: '\eb27';
     font-family: 'boxicons' !important;
     font-size: 14px;
-    color: #fff;
+    color: var(--on-accent);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -146,8 +146,8 @@
 }
 
 .song-row.selected {
-    background: rgba(29, 185, 84, 0.05);
-    border-color: rgba(29, 185, 84, 0.3);
+    background: rgba(var(--accent-rgb), 0.05);
+    border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 /* Edit Song Modal Styles */
@@ -247,7 +247,7 @@
 .row-edit-btn:hover,
 .row-download-btn:hover {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     transform: scale(1.1);
 }
 
@@ -435,7 +435,7 @@ body.offline-mode .row-download-btn.downloaded {
     width: 120px;
     height: 120px;
     border-radius: 12px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.3));
+    background: linear-gradient(135deg, rgba(var(--gradient-1-rgb), 0.3), rgba(var(--gradient-2-rgb), 0.3));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -501,6 +501,14 @@ body.offline-mode .row-download-btn.downloaded {
 /* Song Row Context Menu (Add to Playlist) */
 .song-row {
     position: relative;
+}
+
+/* Skip layout and paint for library rows that are well outside the viewport.
+   The intrinsic size keeps the scroll range stable while the browser catches
+   up, and does not alter any row or section animation. */
+#trending-list > .song-row:not(.header-row) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 70px;
 }
 
 .row-menu-btn {
@@ -680,18 +688,62 @@ body.offline-mode .row-download-btn.downloaded {
 }
 
 /* ============================================
-   SMART AUTO ENRICH WORKSPACE
+   SMART METADATA REVIEW WORKSPACE
    ============================================ */
 
 #batch-ai-enrich-btn {
-    color: #fff;
-    border: 1px solid rgba(147, 120, 255, 0.42);
-    background: linear-gradient(135deg, #4169e1, #8164d7);
-    box-shadow: 0 8px 22px rgba(65, 105, 225, 0.2);
+    color: var(--text-secondary);
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: none;
+}
+
+#batch-ai-enrich-btn:hover,
+#batch-ai-enrich-btn:focus-visible {
+    color: var(--on-accent);
+    border-color: var(--accent);
+    background: var(--accent);
+    box-shadow: none;
 }
 
 #ai-autofill-btn {
-    display: inline-flex;
+    display: grid;
+    place-items: center;
+}
+
+.edit-song-review-row {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+.edit-song-review-row .edit-song-cover-wrap {
+    margin-bottom: 0;
+}
+
+.edit-metadata-review-btn {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    margin-right: auto;
+    padding: 0;
+    border: 1px solid var(--glass-border);
+    border-radius: 50%;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 19px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.edit-metadata-review-btn:hover,
+.edit-metadata-review-btn:focus-visible {
+    color: #fff;
+    border-color: rgba(var(--gradient-2-rgb), 0.55);
+    background: rgba(var(--gradient-2-rgb), 0.16);
+    outline: none;
+    transform: translateY(-2px);
 }
 
 .ai-sr-only {
@@ -711,9 +763,24 @@ body.offline-mode .row-download-btn.downloaded {
     flex-direction: column;
     overflow: hidden !important;
     color: var(--text-primary);
-    background:
-        radial-gradient(circle at 12% -15%, rgba(98, 112, 255, 0.2), transparent 35%),
-        linear-gradient(155deg, rgba(24, 24, 31, 0.99), rgba(12, 12, 17, 0.99));
+    background: rgba(18, 18, 21, 0.98);
+    backdrop-filter: blur(50px);
+    -webkit-backdrop-filter: blur(50px);
+    animation: aiWorkspaceIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes aiWorkspaceIn {
+    from { opacity: 0; transform: translateY(18px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes aiPanelIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.ai-panel-enter {
+    animation: aiPanelIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .ai-workspace-header {
@@ -748,10 +815,10 @@ body.offline-mode .row-download-btn.downloaded {
     place-items: center;
     flex: 0 0 42px;
     height: 42px;
-    border: 1px solid rgba(147, 120, 255, 0.38);
-    border-radius: 13px;
-    color: #b7a7ff;
-    background: linear-gradient(145deg, rgba(65, 105, 225, 0.22), rgba(129, 100, 215, 0.12));
+    border: 1px solid rgba(var(--gradient-2-rgb), 0.38);
+    border-radius: 50%;
+    color: var(--gradient-3);
+    background: linear-gradient(145deg, rgba(var(--gradient-1-rgb), 0.22), rgba(var(--gradient-2-rgb), 0.12));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
@@ -794,9 +861,9 @@ body.offline-mode .row-download-btn.downloaded {
 
 .ai-stage-badge {
     padding: 4px 8px;
-    border: 1px solid rgba(147, 120, 255, 0.3);
-    color: #c5baff;
-    background: rgba(129, 100, 215, 0.12);
+    border: 1px solid rgba(var(--gradient-2-rgb), 0.3);
+    color: var(--gradient-3);
+    background: rgba(var(--gradient-2-rgb), 0.12);
     font-size: 10px;
     letter-spacing: 0.45px;
     text-transform: uppercase;
@@ -851,7 +918,7 @@ body.offline-mode .row-download-btn.downloaded {
 .ai-check-control input:focus-visible + span,
 .ai-suggestion-card:focus-visible,
 .ai-workspace-footer button:focus-visible {
-    outline: 2px solid #9e8cff;
+    outline: 2px solid rgba(var(--accent-rgb), 0.82);
     outline-offset: 2px;
 }
 
@@ -865,6 +932,21 @@ body.offline-mode .row-download-btn.downloaded {
     justify-content: space-between;
     gap: 16px;
     margin-bottom: 8px;
+}
+
+.ai-job-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ai-job-method {
+    padding: 3px 7px;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 10px;
 }
 
 .ai-stage-label {
@@ -896,8 +978,8 @@ body.offline-mode .row-download-btn.downloaded {
     width: 0;
     height: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, #4f73e8, #9b71e8);
-    box-shadow: 0 0 16px rgba(129, 100, 215, 0.45);
+    background: linear-gradient(90deg, var(--gradient-1), var(--gradient-2));
+    box-shadow: 0 0 16px rgba(var(--gradient-2-rgb), 0.45);
     transition: width 0.35s ease;
 }
 
@@ -908,8 +990,7 @@ body.offline-mode .row-download-btn.downloaded {
     margin-top: 10px;
     color: var(--text-secondary);
     font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0;
 }
 
 .ai-progress-counts strong {
@@ -987,7 +1068,7 @@ body.offline-mode .row-download-btn.downloaded {
 
 .ai-provider-empty {
     padding-top: 3px;
-    color: rgba(255, 255, 255, 0.42);
+    color: rgba(255, 255, 255, 0.68);
     font-size: 10px;
 }
 
@@ -1006,6 +1087,33 @@ body.offline-mode .row-download-btn.downloaded {
     padding: 18px 24px 22px;
 }
 
+.ai-approval-step {
+    display: grid;
+    gap: 14px;
+}
+
+.ai-approval-heading h4 {
+    margin: 4px 0 4px;
+    color: #fff;
+    font-size: 16px;
+}
+
+.ai-approval-heading p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.ai-step-label {
+    display: block;
+    color: var(--accent);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.55px;
+    text-transform: uppercase;
+}
+
 .ai-item-header {
     justify-content: space-between;
     align-items: flex-end;
@@ -1013,7 +1121,7 @@ body.offline-mode .row-download-btn.downloaded {
 }
 
 .ai-item-kicker {
-    color: #9e8cff;
+    color: var(--accent);
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.65px;
@@ -1032,9 +1140,9 @@ body.offline-mode .row-download-btn.downloaded {
 
 .ai-match-score {
     padding: 5px 9px;
-    border: 1px solid rgba(141, 167, 255, 0.28);
-    color: #b8c6ff;
-    background: rgba(65, 105, 225, 0.1);
+    border: 1px solid rgba(var(--gradient-1-rgb), 0.28);
+    color: var(--gradient-3);
+    background: rgba(var(--gradient-1-rgb), 0.1);
     font-size: 10px;
 }
 
@@ -1073,7 +1181,7 @@ body.offline-mode .row-download-btn.downloaded {
 }
 
 .ai-evidence-chip i {
-    color: #9e8cff;
+    color: var(--accent);
     font-size: 12px;
 }
 
@@ -1123,11 +1231,11 @@ body.offline-mode .row-download-btn.downloaded {
 }
 
 .ai-review-row.changed {
-    background: linear-gradient(90deg, rgba(129, 100, 215, 0.045), transparent 45%);
+    background: linear-gradient(90deg, rgba(var(--gradient-2-rgb), 0.07), transparent 45%);
 }
 
 .ai-review-row.unavailable {
-    opacity: 0.58;
+    opacity: 0.78;
 }
 
 .ai-review-label {
@@ -1142,7 +1250,7 @@ body.offline-mode .row-download-btn.downloaded {
 
 .ai-review-label i {
     flex: none;
-    color: #9183dc;
+    color: var(--gradient-2);
     font-size: 14px;
 }
 
@@ -1219,9 +1327,9 @@ body.offline-mode .row-download-btn.downloaded {
 }
 
 .ai-check-control input:checked + span {
-    border-color: #806be3;
-    color: #fff;
-    background: linear-gradient(135deg, #4169e1, #8164d7);
+    border-color: var(--gradient-2);
+    color: var(--on-gradient);
+    background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
 }
 
 .ai-check-control input:disabled + span {
@@ -1267,7 +1375,7 @@ body.offline-mode .row-download-btn.downloaded {
 }
 
 #ai-cover-suggested {
-    border-color: rgba(147, 120, 255, 0.52);
+    border-color: rgba(var(--gradient-2-rgb), 0.52);
 }
 
 .ai-cover-arrow {
@@ -1283,6 +1391,57 @@ body.offline-mode .row-download-btn.downloaded {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+}
+
+.ai-candidate-pagination {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ai-candidate-pagination > span {
+    color: var(--text-secondary);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.ai-page-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 36px;
+    padding: 7px 11px;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.035);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.ai-page-button:first-child {
+    justify-self: start;
+}
+
+.ai-page-button:last-child {
+    justify-self: end;
+}
+
+.ai-page-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+
+.ai-page-button:focus-visible {
+    outline: 2px solid rgba(var(--accent-rgb), 0.82);
+    outline-offset: 2px;
 }
 
 .ai-suggestion-card {
@@ -1303,15 +1462,15 @@ body.offline-mode .row-download-btn.downloaded {
 }
 
 .ai-suggestion-card:hover:not(:disabled) {
-    border-color: rgba(147, 120, 255, 0.42);
-    background: rgba(129, 100, 215, 0.08);
+    border-color: rgba(var(--gradient-2-rgb), 0.42);
+    background: rgba(var(--gradient-2-rgb), 0.08);
     transform: translateY(-1px);
 }
 
 .ai-suggestion-card.active {
-    border-color: #806be3;
-    background: rgba(129, 100, 215, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(147, 120, 255, 0.14);
+    border-color: rgba(var(--accent-rgb), 0.7);
+    background: rgba(var(--accent-rgb), 0.09);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.12);
 }
 
 .ai-suggestion-card:disabled {
@@ -1368,8 +1527,8 @@ body.offline-mode .row-download-btn.downloaded {
 
 .ai-candidate-type {
     padding: 2px 5px;
-    color: #b9acff;
-    background: rgba(129, 100, 215, 0.12);
+    color: var(--gradient-3);
+    background: rgba(var(--gradient-2-rgb), 0.12);
     font-size: 8px;
     letter-spacing: 0.35px;
     text-transform: uppercase;
@@ -1416,14 +1575,14 @@ body.offline-mode .row-download-btn.downloaded {
     place-items: center;
     width: 52px;
     height: 52px;
-    border: 1px solid rgba(147, 120, 255, 0.28);
+    border: 1px solid rgba(var(--gradient-2-rgb), 0.28);
     border-radius: 17px;
-    color: #a998ff;
-    background: rgba(129, 100, 215, 0.09);
+    color: var(--gradient-3);
+    background: rgba(var(--gradient-2-rgb), 0.09);
 }
 
 .ai-state-orbit {
-    box-shadow: 0 0 0 9px rgba(129, 100, 215, 0.035);
+    box-shadow: 0 0 0 9px rgba(var(--gradient-2-rgb), 0.045);
 }
 
 .ai-state-orbit i,
@@ -1455,14 +1614,18 @@ body.offline-mode .row-download-btn.downloaded {
     margin-left: auto;
 }
 
+.ai-review-actions .btn {
+    white-space: nowrap;
+}
+
 .ai-workspace-footer .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-height: 38px;
+    min-height: 42px;
     margin: 0;
-    border-radius: 9px;
+    border-radius: 50px;
     font-size: 12px;
 }
 
@@ -1483,12 +1646,251 @@ body.offline-mode .row-download-btn.downloaded {
 
 .ai-apply-button {
     min-width: 136px;
-    color: #fff;
-    border: 1px solid rgba(147, 120, 255, 0.38);
-    background: linear-gradient(135deg, #4169e1, #8164d7);
-    box-shadow: 0 8px 22px rgba(65, 105, 225, 0.18);
+    color: var(--on-gradient);
+    border: 1px solid rgba(var(--gradient-2-rgb), 0.38);
+    background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+    box-shadow: none;
 }
 
 #ai-metadata-modal[data-stage="applying"] .ai-workspace-scroll {
     cursor: progress;
+}
+
+/* Guided preflight and review refinements */
+.ai-preflight {
+    max-width: 650px;
+    margin: 0 auto;
+    padding: 32px 30px;
+}
+
+.ai-preflight-intro {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    max-width: 700px;
+    margin-bottom: 24px;
+}
+
+.ai-preflight-intro .ai-state-icon {
+    flex: 0 0 54px;
+}
+
+.ai-preflight-intro h3 {
+    margin: 4px 0 6px;
+    font-size: 22px;
+    line-height: 1.25;
+}
+
+.ai-preflight-intro p,
+.ai-preflight-method-row p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.ai-preflight-method-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    background: var(--card-bg);
+}
+
+.ai-preflight-method-row > i {
+    display: grid;
+    place-items: center;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: var(--gradient-3);
+    background: rgba(var(--gradient-2-rgb), 0.12);
+    font-size: 18px;
+}
+
+.ai-preflight-method-row span {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.ai-preflight-method-row strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+.ai-preflight-readiness {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid rgba(29, 185, 84, 0.22);
+    border-radius: var(--border-radius);
+    color: #bceccb;
+    background: rgba(29, 185, 84, 0.07);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.ai-preflight-readiness i {
+    flex: none;
+    font-size: 19px;
+}
+
+.ai-preflight-readiness[data-status="warning"] {
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #f6d79a;
+    background: rgba(245, 158, 11, 0.07);
+}
+
+.ai-preflight-readiness[data-status="blocked"] {
+    border-color: rgba(244, 63, 94, 0.27);
+    color: #ffb7c3;
+    background: rgba(244, 63, 94, 0.07);
+}
+
+.ai-preflight-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    width: 100%;
+}
+
+.ai-preflight-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+}
+
+.ai-provider-row {
+    display: block;
+    margin-top: 10px;
+}
+
+.ai-provider-row summary {
+    display: flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 7px 0;
+    width: fit-content;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ai-provider-row[open] summary {
+    margin-bottom: 8px;
+    color: #fff;
+}
+
+.ai-review-guidance {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 13px 14px;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: var(--border-radius);
+    color: #f5ddb0;
+    background: rgba(245, 158, 11, 0.055);
+}
+
+.ai-review-guidance > i {
+    flex: none;
+    margin-top: 1px;
+    font-size: 19px;
+}
+
+.ai-review-guidance strong {
+    display: block;
+    margin-bottom: 4px;
+    color: #fff0cf;
+    font-size: 12px;
+}
+
+.ai-review-guidance ul {
+    margin: 0;
+    padding-left: 17px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.ai-evidence-panel {
+    padding: 0;
+}
+
+.ai-evidence-panel summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
+    list-style: none;
+}
+
+.ai-evidence-panel summary::-webkit-details-marker {
+    display: none;
+}
+
+.ai-evidence-panel summary i {
+    font-size: 18px;
+    transition: transform 0.2s ease;
+}
+
+.ai-evidence-panel[open] summary i {
+    transform: rotate(180deg);
+}
+
+.ai-evidence-panel .ai-evidence-list {
+    padding: 0 13px 13px;
+}
+
+.ai-state-orbit--paused {
+    box-shadow: none;
+    color: #f5c970;
+    border-color: rgba(245, 158, 11, 0.28);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.ai-state-action {
+    margin-top: 18px;
+    padding: 10px 18px;
+}
+
+.ai-complete-summary {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 18px;
+}
+
+.ai-complete-summary span {
+    padding: 7px 10px;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 11px;
+}
+
+.ai-complete-summary strong {
+    color: #fff;
 }

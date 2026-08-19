@@ -1,0 +1,14 @@
+/* Malvides - brand/logo display face (single weight) */
+@font-face {
+  font-family: 'Malvides';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(Malvides.otf) format('opentype');
+}
+
+.streamify-logo {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}

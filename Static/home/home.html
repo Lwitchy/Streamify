@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -6,18 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Streamify | Home</title>
     <!-- Main CSS Split Modules -->
-    <link rel="stylesheet" href="/Static/home/css/base.css?v=4.19">
-    <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.9">
-    <link rel="stylesheet" href="/Static/home/css/components.css?v=4.8">
-    <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.8">
-    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.16">
-    <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.22">
-    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.21">
-    <link rel="stylesheet" href="/Static/home/css/profile.css?v=4.8">
+    <link rel="stylesheet" href="/Static/home/css/base.css?v=4.22">
+    <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.45">
+    <link rel="stylesheet" href="/Static/home/css/components.css?v=4.10">
+    <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.10">
+    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.42">
+    <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.52">
+    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.38">
+    <link rel="stylesheet" href="/Static/home/css/downloads.css?v=4.34">
+    <link rel="stylesheet" href="/Static/home/css/profile.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/toasts.css?v=4.8">
 
     <!-- Mobile Overrides (Must be last) -->
-    <link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.22" media="(max-width: 768px)">
+<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.26" media="(max-width: 768px)">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -37,17 +38,27 @@
     <link rel="apple-touch-icon" sizes="512x512" href="/Static/icon-512.png">
     <link href='/Static/vendor/boxicons/boxicons.min.css?v=4.8' rel='stylesheet'>
     <link href="/Static/vendor/fonts/outfit.css?v=4.8" rel="stylesheet">
+    <link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
     <link rel="stylesheet" href="/Static/vendor/cropperjs/cropper.min.css?v=4.8">
+<script src="/Static/home/js/experiments.js?v=4.35"></script>
+    <script src="/Static/home/js/theme.js?v=4.36"></script>
 </head>
 
-<body>
+<body class="app-booting">
+
+    <div class="app-boot-screen" id="app-boot-screen" role="status" aria-live="polite"
+        aria-label="Preparing Streamify">
+        <div class="app-boot-intro-wrapper">
+            <h1 class="streamify-logo app-boot-intro-text">Streamify</h1>
+        </div>
+    </div>
 
     <div id="toast-container" role="status" aria-live="polite"></div>
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
         <div class="morph-logo">
-            <span class="morph-text gradient-text" aria-label="Streamify">Streamify</span>
+            <span class="streamify-logo morph-text gradient-text" aria-label="Streamify">Streamify</span>
         </div>
         <div class="sidebar-scroll-area">
             <nav class="sidebar-nav">
@@ -58,10 +69,10 @@
                             <span>Your Library</span>
                         </a>
                     </li>
-                    <li>
-                        <a href="#" id="about-link">
-                            <i class='bx bx-info-circle'></i>
-                            <span>Beta Info</span>
+                    <li class="owner-only-nav hidden">
+                        <a href="#" id="downloads-link">
+                            <i class='bx bx-cloud-download'></i>
+                            <span>Get Music</span>
                         </a>
                     </li>
                 </ul>
@@ -92,7 +103,7 @@
                 style="font-size: 24px; margin-right: 15px; cursor: pointer; display: none;"></i>
 
             <div class="top-bar-logo" id="top-bar-logo">
-                <span class="morph-text gradient-text" aria-label="Streamify">Streamify</span>
+                <span class="streamify-logo morph-text gradient-text" aria-label="Streamify">Streamify</span>
             </div>
 
             <div class="search-wrapper">
@@ -131,35 +142,6 @@
         <!-- Content Container -->
         <div class="content-container">
 
-            <!-- Beta Info Section (Hidden by default) -->
-            <section class="about-section hidden" id="about-section" style="padding: 20px;">
-                <div class="beta-status-card"
-                    style="background: linear-gradient(145deg, #1e1e1e, #121212); border: 1px solid #333; border-radius: 12px; padding: 40px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-                    <div
-                        style="width: 80px; height: 80px; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
-                        <i class='bx bx-error-alt' style="font-size: 40px; color: #fff;"></i>
-                    </div>
-                    <h2 style="font-size: 2rem; color: #fff; margin-bottom: 16px;">Developer Beta Phase</h2>
-                    <p
-                        style="color: #b3b3b3; font-size: 1.1rem; max-width: 600px; margin: 0 auto 24px; line-height: 1.6;">
-                        Streamify is currently under active development. You are accessing the <strong>Developer
-                            Beta</strong> version.
-                        Please be aware that certain features may be experimental, and you may encounter bugs,
-                        performance issues, or intermittent downtime.
-                    </p>
-                    <div
-                        style="background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; padding: 16px; display: inline-block; text-align: left; max-width: 500px; border-radius: 4px;">
-                        <span
-                            style="color: #f59e0b; font-weight: bold; display: block; margin-bottom: 4px;">Warning</span>
-                        <span style="color: #b3b3b3; font-size: 0.95rem;">Always keep backups of your music library. We
-                            recommend caution when interacting with experimental social features.</span>
-                    </div>
-                    <div style="margin-top: 32px; color: #666; font-size: 0.9rem;">
-                        Version: 0.2.0 - Alpha
-                    </div>
-                </div>
-            </section>
-
             <!-- Search Section (Hidden by default) -->
             <section class="search-section hidden" id="search-section">
                 <h2 class="section-title">Search Results</h2>
@@ -182,10 +164,10 @@
 
             <!-- Library Section (song list, hidden by default) -->
             <section class="trending hidden" id="trending-section">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <div class="library-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                     <h2 class="section-title" style="margin-bottom: 0;">Your Library</h2>
-                    <div style="display: flex; gap: 8px;">
-                        <button type="button" id="batch-ai-enrich-btn" class="manage-btn hidden" title="Review library metadata with Smart Auto Enrich" aria-label="Open Smart Auto Enrich">
+                    <div class="library-section-actions" style="display: flex; gap: 8px;">
+                        <button type="button" id="batch-ai-enrich-btn" class="manage-btn hidden" title="Review library metadata" aria-label="Open Smart Metadata Review">
                             <i class='bx bxs-magic-wand'></i>
                         </button>
                         <button id="refresh-library-btn" class="manage-btn hidden" title="Rescan Local Music Library">
@@ -229,6 +211,59 @@
                 </div>
             </section>
 
+            <!-- Downloads Section (Owner only) -->
+            <section class="downloads-section hidden" id="downloads-section">
+                <div class="downloads-header">
+                    <div>
+                        <h2 class="section-title">Get Music</h2>
+                        <p class="downloads-subtitle">
+                            Search Soulseek or paste a Spotify link for its tracklist. Files are saved straight
+                            into your music folder, then added to your library.
+                        </p>
+                        <div class="downloads-folder-path" id="downloads-folder-path"></div>
+                    </div>
+                </div>
+
+                <!-- Only rendered when Soulseek needs attention; silent when it is connected. -->
+                <div id="downloads-source-notice"></div>
+
+                <div class="downloads-search-card">
+                    <form class="downloads-search-form" id="downloads-search-form" autocomplete="off">
+                        <div class="downloads-search-input-wrap">
+                            <i class='bx bx-search' aria-hidden="true"></i>
+                            <input type="search" class="downloads-search-input" id="downloads-search-input"
+                                aria-label="Search for music to download"
+                                placeholder="Artist and song name, or paste a Spotify link">
+                        </div>
+                        <button type="submit" class="downloads-submit-btn" id="downloads-search-btn">
+                            <i class='bx bx-search-alt' aria-hidden="true"></i>
+                            <span>Search</span>
+                        </button>
+                    </form>
+                    <p class="downloads-hint">
+                        Soulseek results come from other users and are often already tagged. Spotify links provide
+                        track names and artwork only; each track is still acquired through Soulseek.
+                    </p>
+                </div>
+
+                <div class="downloads-panel" id="downloads-panel-soulseek"></div>
+
+                <div class="downloads-queue-header">
+                    <h3 class="section-title" style="font-size: 1.3rem; margin-bottom: 0;">
+                        Queue <span id="downloads-queue-count" style="font-size: 0.8rem; color: #b3b3b3;"></span>
+                    </h3>
+                    <div class="downloads-queue-actions">
+                        <button type="button" class="batch-btn" id="downloads-cancel-all-btn" disabled>
+                            <i class='bx bx-stop-circle'></i> Cancel all
+                        </button>
+                        <button type="button" class="batch-btn" id="downloads-clear-btn" disabled>
+                            <i class='bx bx-eraser'></i> Clear finished
+                        </button>
+                    </div>
+                </div>
+                <div class="queue-list" id="downloads-queue-list"></div>
+            </section>
+
             <!-- Upload Section -->
             <section class="upload-section hidden" id="upload-section" style="display: none;">
                 <h2>Upload Music</h2>
@@ -254,7 +289,7 @@
                         </div>
                         <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" id="spotify-use-soulseek" checked
-                                style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-color);">
+                                style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent);">
                             <label for="spotify-use-soulseek"
                                 style="font-size: 13px; color: #b3b3b3; cursor: pointer;">Prefer High Quality
                                 (Soulseek)</label>
@@ -282,7 +317,7 @@
                         </div>
                         <div style="width: 100%; background: #333; height: 8px; border-radius: 4px;">
                             <div id="spotify-progress-bar" class="animated-progress"
-                                style="width: 0%; background: var(--primary-color); height: 100%; border-radius: 4px; transition: width 0.3s ease;">
+                                style="width: 0%; background: var(--accent); height: 100%; border-radius: 4px; transition: width 0.3s ease;">
                             </div>
                         </div>
 
@@ -338,82 +373,6 @@
                     </form>
                 </div>
 
-                <!-- YouTube Section (Locked) -->
-                <!-- YouTube Section (Unlocked) -->
-                <div class="upload-card" id="youtube-upload-card">
-                    <div class="upload-card-header">
-                        <i class='bx bxl-youtube'></i>
-                        <h3>Add songs via YouTube or Link</h3>
-                    </div>
-                    <p>Import your favorite tracks directly from YouTube or web links securely.</p>
-                    <div class="youtube-controls"
-                        style="display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; margin-top: 15px; align-items: stretch;">
-                        <div class="upload-bar"
-                            style="display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 16px; width: 100%; box-sizing: border-box;">
-                            <div class="upload-bar-left" style="flex: 1;">
-                                <input type="text" id="youtube-url" placeholder="Paste YouTube link here..."
-                                    style="width: 100%; background: transparent; border: none; color: #fff; padding: 0; outline: none; font-size: 14px;">
-                            </div>
-                            <div class="upload-bar-right">
-                                <button type="button" class="btn btn-outline btn-sm" id="youtube-import-btn"
-                                    style="white-space: nowrap; padding: 8px 18px;">
-                                    <i class='bx bx-link-external'></i> Import
-                                </button>
-                            </div>
-                        </div>
-
-                        <div id="youtube-options" class="expand-show"
-                            style="border: 1px dashed rgba(255,255,255,0.15); border-radius: 12px; padding: 12px 16px; background: rgba(255,255,255,0.01); display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 720px; box-sizing: border-box;">
-                            <span style="font-size: 13px; color: #b3b3b3;">Audio Optimization (Slow but
-                                compatible)</span>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <label class="switch">
-                                    <input type="checkbox" id="youtube-compress">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="youtube-preview" class="shrink-hide"
-                        style="border: 1px dashed rgba(255,255,255,0.2); border-radius: 8px; padding: 12px; margin-top: 15px; background: rgba(255,255,255,0.02);">
-                        <div style="display: flex; gap: 12px; align-items: flex-start;">
-                            <div id="youtube-preview-img"
-                                style="width: 60px; height: 60px; flex-shrink: 0; background: #333; border-radius: 4px; background-size: cover; background-position: center;">
-                            </div>
-                            <div style="flex: 1; min-width: 0;">
-                                <div id="youtube-preview-title"
-                                    style="font-weight: 600; color: #fff; font-size: 14px; margin-bottom: 4px; line-height: 1.4; white-space: normal; overflow-wrap: break-word;">
-                                    Song Title</div>
-                                <div id="youtube-preview-artist"
-                                    style="color: #b3b3b3; font-size: 12px; margin-bottom: 4px;">Artist Name</div>
-                                <div id="youtube-preview-duration"
-                                    style="color: #1db954; font-size: 11px; font-weight: 600;">0:00</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="youtube-progress-container" style="display: none; margin-top: 20px;">
-                        <div
-                            style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; color: #ccc;">
-                            <span id="youtube-status-text">Processing...</span>
-                            <span id="youtube-percentage">0%</span>
-                        </div>
-                        <div
-                            style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
-                            <div id="youtube-progress-fill"
-                                style="width: 0%; height: 100%; background: linear-gradient(90deg, #ff0000, #ff4d4d); transition: width 0.3s;">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="youtube-ratelimit-info"
-                        style="display: block; margin-top: 15px; font-size: 12px; color: rgba(255,255,255,0.5); text-align: center; font-style: italic; min-height: 20px;">
-                        Checking availability...
-                    </div>
-
-
-                </div>
             </section>
 
 
@@ -545,7 +504,8 @@
             </section>
 
             <!-- DEDICATED PLAYER VIEW (Big Mode Page) -->
-            <section class="player-section hidden" id="player-section">
+            <section class="player-section hidden" id="player-section" role="dialog" aria-modal="true"
+                aria-labelledby="dedicated-player-title">
                 <div class="dedicated-player-view" id="dedicated-player-view">
 
                     <div class="dedicated-header">
@@ -561,7 +521,7 @@
                         <div class="dedicated-art-wrapper">
                             <div class="dedicated-player-backdrop" id="dedicated-player-backdrop"></div>
                             <div class="dedicated-art-container">
-                                <img id="dedicated-player-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234169e1'/%3E%3Cstop offset='1' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='200' height='200' fill='url(%23g)'/%3E%3Ctext x='100' y='125' font-size='80' text-anchor='middle' fill='rgba(255,255,255,0.35)'%3E%E2%99%AA%3C/text%3E%3C/svg%3E" alt="Album Art">
+                                <img id="dedicated-player-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%231a1a1a'/%3E%3C/svg%3E" alt="Album Art">
                             </div>
                         </div>
 
@@ -586,16 +546,19 @@
                                 </div>
 
                                 <div class="dedicated-controls">
-                                    <button class="control-btn" id="dedicated-btn-shuffle"><i
+                                    <button type="button" class="control-btn" id="dedicated-btn-shuffle"
+                                        aria-label="Shuffle" aria-pressed="false"><i
                                             class='bx bx-shuffle'></i></button>
-                                    <button class="control-btn" id="dedicated-btn-prev"><i
+                                    <button type="button" class="control-btn" id="dedicated-btn-prev" aria-label="Previous track"><i
                                             class='bx bx-skip-previous'></i></button>
-                                    <button class="play-pause-btn dedicated-play-pause-btn" id="dedicated-btn-play">
+                                    <button type="button" class="play-pause-btn dedicated-play-pause-btn" id="dedicated-btn-play"
+                                        aria-label="Play">
                                         <i class='bx bx-play' style="margin-left: 4px;"></i>
                                     </button>
-                                    <button class="control-btn" id="dedicated-btn-next"><i
+                                    <button type="button" class="control-btn" id="dedicated-btn-next" aria-label="Next track"><i
                                             class='bx bx-skip-next'></i></button>
-                                    <button class="control-btn" id="dedicated-btn-repeat"><i
+                                    <button type="button" class="control-btn" id="dedicated-btn-repeat"
+                                        aria-label="Repeat off" aria-pressed="false"><i
                                             class='bx bx-repeat'></i></button>
                                 </div>
 
@@ -626,7 +589,7 @@
 
                                     <div id="lyric-editor-controls" class="hidden" style="display: flex; gap: 8px;">
                                         <button class="btn btn-sm" id="save-lyrics-btn"
-                                            style="background: var(--accent); color: #000; border-radius: 30px; padding: 4px 16px; font-weight: 600;">
+                                            style="background: var(--accent); color: var(--on-accent); border-radius: 30px; padding: 4px 16px; font-weight: 600;">
                                             <i class='bx bx-check'></i> Save
                                         </button>
                                         <button class="btn btn-outline btn-sm" id="clear-lyrics-btn"
@@ -650,11 +613,12 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="lyrics-scroll-area" id="lyrics-scroll-area">
+                                <section class="lyrics-scroll-area" id="lyrics-scroll-area"
+                                    aria-label="Synchronized lyrics">
                                     <div class="lyrics-content" id="lyrics-content">
                                         <!-- Lyrics lines injected here -->
                                     </div>
-                                </div>
+                                </section>
                             </div>
                         </div>
                     </div>
@@ -667,7 +631,8 @@
     <footer class="music-player">
         <audio id="audio-player" crossorigin="anonymous"></audio>
         <div class="player-left">
-            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234169e1'/%3E%3Cstop offset='1' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='200' height='200' fill='url(%23g)'/%3E%3Ctext x='100' y='125' font-size='80' text-anchor='middle' fill='rgba(255,255,255,0.35)'%3E%E2%99%AA%3C/text%3E%3C/svg%3E" alt="Album Art" class="now-playing-img" id="player-img">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%231a1a1a'/%3E%3C/svg%3E" alt="Album Art" class="now-playing-img" id="player-img"
+                role="button" tabindex="0" aria-label="Open full-screen player">
             <div class="track-info">
                 <div class="track-name" id="player-title">Select a Song</div>
                 <div class="track-artist" id="player-artist">...</div>
@@ -675,13 +640,13 @@
         </div>
         <div class="player-center">
             <div class="player-controls">
-                <button class="control-btn" id="btn-shuffle"><i class='bx bx-shuffle'></i></button>
-                <button class="control-btn" id="btn-prev"><i class='bx bx-skip-previous'></i></button>
-                <button class="play-pause-btn" id="btn-play">
+                <button type="button" class="control-btn" id="btn-shuffle" aria-label="Shuffle" aria-pressed="false"><i class='bx bx-shuffle'></i></button>
+                <button type="button" class="control-btn" id="btn-prev" aria-label="Previous track"><i class='bx bx-skip-previous'></i></button>
+                <button type="button" class="play-pause-btn" id="btn-play" aria-label="Play">
                     <i class='bx bx-play' style="margin-left: 2px;"></i>
                 </button>
-                <button class="control-btn" id="btn-next"><i class='bx bx-skip-next'></i></button>
-                <button class="control-btn" id="btn-repeat"><i class='bx bx-repeat'></i></button>
+                <button type="button" class="control-btn" id="btn-next" aria-label="Next track"><i class='bx bx-skip-next'></i></button>
+                <button type="button" class="control-btn" id="btn-repeat" aria-label="Repeat off" aria-pressed="false"><i class='bx bx-repeat'></i></button>
             </div>
             <div class="progress-container">
                 <span id="current-time">0:00</span>
@@ -752,7 +717,7 @@
                     <input type="text" id="lyrics-search-artist" class="form-control" placeholder="Artist"
                         style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
                     <button class="btn" id="lyrics-search-btn"
-                        style="background: var(--accent); color: #000; border-radius: 4px; padding: 8px 16px; font-weight: bold;">Search</button>
+                        style="background: var(--accent); color: var(--on-accent); border-radius: 4px; padding: 8px 16px; font-weight: bold;">Search</button>
                 </div>
                 <div id="lyrics-selection-loading" class="hidden" style="text-align: center; padding: 20px;">
                     <i class='bx bx-loader-alt bx-spin' style="font-size: 24px;"></i>
@@ -805,40 +770,75 @@
 
 
     <!-- SETTINGS MODAL -->
-    <div id="settings-modal" class="modal-overlay hidden">
-        <div class="modal-box settings-modal-box">
+    <div id="settings-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal-box settings-modal-box" tabindex="-1">
             <div class="modal-header">
                 <div class="settings-header-left">
-                    <i class='bx bx-menu-alt-left' id="settings-menu-toggle"></i>
-                    <h3>Settings</h3>
+                    <h3 id="settings-title">Settings</h3>
                 </div>
-                <i class='bx bx-x' id="close-modal-btn"></i>
+                <button type="button" class="modal-close-button" id="close-modal-btn" aria-label="Close settings">
+                    <i class='bx bx-x' aria-hidden="true"></i>
+                </button>
             </div>
 
             <div class="settings-container">
-                <div class="settings-sidebar-overlay" id="settings-overlay"></div>
-                <aside class="settings-sidebar">
-                    <div class="settings-tab active" data-tab="profile">
-                        <i class='bx bx-user'></i>
+                <div class="settings-sidebar" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+                    <button type="button" id="settings-tab-profile" class="settings-tab active" data-tab="profile"
+                        role="tab" aria-selected="true" aria-controls="pane-profile" tabindex="0">
+                        <i class='bx bx-user' aria-hidden="true"></i>
                         <span>Profile</span>
-                    </div>
-                    <div class="settings-tab" data-tab="account">
-                        <i class='bx bx-lock-alt'></i>
+                    </button>
+                    <button type="button" id="settings-tab-appearance" class="settings-tab" data-tab="appearance"
+                        role="tab" aria-selected="false" aria-controls="pane-appearance" tabindex="-1">
+                        <i class='bx bx-palette' aria-hidden="true"></i>
+                        <span>Appearance</span>
+                    </button>
+                    <button type="button" id="settings-tab-experimental" class="settings-tab" data-tab="experimental"
+                        role="tab" aria-selected="false" aria-controls="pane-experimental" tabindex="-1">
+                        <i class='bx bx-test-tube' aria-hidden="true"></i>
+                        <span>Experimental Features</span>
+                    </button>
+                    <button type="button" id="settings-tab-account" class="settings-tab" data-tab="account"
+                        role="tab" aria-selected="false" aria-controls="pane-account" tabindex="-1">
+                        <i class='bx bx-lock-alt' aria-hidden="true"></i>
                         <span>Account</span>
-                    </div>
-                    <div id="metadata-settings-tab" class="settings-tab owner-only-setting hidden" data-tab="metadata">
-                        <i class='bx bx-search-alt'></i>
+                    </button>
+                    <button type="button" id="metadata-settings-tab" class="settings-tab owner-only-setting hidden" data-tab="metadata"
+                        role="tab" aria-selected="false" aria-controls="pane-metadata" tabindex="-1">
+                        <i class='bx bx-search-alt' aria-hidden="true"></i>
                         <span>Metadata</span>
-                    </div>
-                    <div class="settings-tab" data-tab="privacy">
-                        <i class='bx bx-shield'></i>
+                    </button>
+                    <button type="button" id="downloads-settings-tab" class="settings-tab owner-only-setting hidden" data-tab="downloads"
+                        role="tab" aria-selected="false" aria-controls="pane-downloads" tabindex="-1">
+                        <i class='bx bx-cloud-download' aria-hidden="true"></i>
+                        <span>Downloads</span>
+                    </button>
+                    <button type="button" id="settings-tab-privacy" class="settings-tab" data-tab="privacy"
+                        role="tab" aria-selected="false" aria-controls="pane-privacy" tabindex="-1">
+                        <i class='bx bx-shield' aria-hidden="true"></i>
                         <span>Privacy</span>
-                    </div>
-                </aside>
+                    </button>
+                    <!-- Desktop only: Discord RPC needs a local socket that a
+                         browser cannot reach. ui.js reveals this tab when
+                         window.streamifyDesktop is present. -->
+                    <button type="button" id="settings-tab-discord" class="settings-tab desktop-only-setting hidden" data-tab="discord"
+                        role="tab" aria-selected="false" aria-controls="pane-discord" tabindex="-1">
+                        <i class='bx bx-game' aria-hidden="true"></i>
+                        <span>Discord</span>
+                    </button>
+                    <!-- Desktop only: there is nothing for a browser or a phone
+                         to update. ui.js reveals this tab when
+                         window.streamifyDesktop is present. -->
+                    <button type="button" id="settings-tab-updates" class="settings-tab desktop-only-setting hidden" data-tab="updates"
+                        role="tab" aria-selected="false" aria-controls="pane-updates" tabindex="-1">
+                        <i class='bx bx-refresh' aria-hidden="true"></i>
+                        <span>Updates</span>
+                    </button>
+                </div>
 
-                <main class="settings-content">
+                <div class="settings-content">
                     <!-- Profile Tab -->
-                    <div class="settings-pane active" id="pane-profile">
+                    <div class="settings-pane active" id="pane-profile" role="tabpanel" aria-labelledby="settings-tab-profile" aria-hidden="false" tabindex="0">
                         <form id="profile-form">
                             <div class="profile-avatar-section">
                                 <div class="avatar-preview-wrap">
@@ -867,8 +867,86 @@
                         </form>
                     </div>
 
+                    <!-- Appearance Tab -->
+                    <div class="settings-pane appearance-pane" id="pane-appearance" role="tabpanel"
+                        aria-labelledby="settings-tab-appearance" aria-hidden="true" tabindex="0">
+                        <div class="appearance-disabled-state" id="themes-disabled-state">
+                            <i class='bx bx-palette' aria-hidden="true"></i>
+                            <div>
+                                <h4>Legacy appearance is active</h4>
+                                <p>Enable Themes under Experimental Features to customize how Streamify looks.</p>
+                            </div>
+                        </div>
+
+                        <div class="hidden" id="themes-appearance-controls" aria-hidden="true">
+<div class="appearance-heading">
+                                <h4>Themes</h4>
+                                <p>Choose a color. Changes are saved on this device.</p>
+                            </div>
+
+                            <fieldset class="theme-picker">
+                                <legend>Color</legend>
+                                <div class="theme-option-grid" id="theme-option-grid"></div>
+                            </fieldset>
+
+                            <div class="appearance-setting-row" id="custom-theme-editor">
+                                <div class="appearance-setting-copy">
+                                    <label class="appearance-setting-label" for="custom-theme-color">Custom color</label>
+                                    <p id="custom-theme-help">Used when Custom is selected.</p>
+                                </div>
+                                <div class="custom-theme-color-control">
+                                    <input type="color" id="custom-theme-color" value="#8b5cf6"
+                                        aria-describedby="custom-theme-help">
+                                    <output id="custom-theme-hex" for="custom-theme-color">#8B5CF6</output>
+                                </div>
+                            </div>
+
+                            <div class="appearance-setting-row">
+                                <div class="appearance-setting-copy">
+                                    <label class="appearance-setting-label" for="overall-color-toggle">Color the whole app</label>
+                                    <p>Also apply the theme color to backgrounds and surfaces.</p>
+                                </div>
+                                <label class="switch appearance-switch">
+                                    <input type="checkbox" id="overall-color-toggle">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Experimental Features Tab -->
+                    <div class="settings-pane experimental-pane" id="pane-experimental" role="tabpanel"
+                        aria-labelledby="settings-tab-experimental" aria-hidden="true" tabindex="0">
+                        <div class="appearance-heading">
+                            <h4>Experimental Features</h4>
+                            <p>Try features that are still in development. Your choices are saved on this device.</p>
+                        </div>
+
+                        <div class="settings-toggle-row experimental-feature-row">
+                            <div>
+                                <div class="experimental-feature-title">
+                                    <strong>Themes</strong>
+                                </div>
+                                <span class="experimental-feature-description" id="experimental-themes-description">
+                                    Adds theme controls under Appearance. Turn it off at any time to restore the legacy look.
+                                </span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="experimental-themes-toggle"
+                                    aria-label="Enable experimental Themes"
+                                    aria-describedby="experimental-themes-description">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="experimental-disclaimer">
+                            <i class='bx bx-info-circle' aria-hidden="true"></i>
+                            <p>Experimental features may change or be removed while they are being tested.</p>
+                        </div>
+                    </div>
+
                     <!-- Account Tab -->
-                    <div class="settings-pane" id="pane-account">
+                    <div class="settings-pane" id="pane-account" role="tabpanel" aria-labelledby="settings-tab-account" aria-hidden="true" tabindex="0">
                         <form id="password-form">
                             <h4 style="margin-bottom: 15px; color: #fff;">Change Password</h4>
                             <div class="input-group">
@@ -945,86 +1023,158 @@
                     </div>
 
                     <!-- Metadata Tab (Owner only) -->
-                    <div class="settings-pane owner-only-setting hidden" id="pane-metadata">
-                        <form id="metadata-settings-form" class="metadata-configuration" data-metadata-scope="settings">
+                    <div class="settings-pane owner-only-setting hidden" id="pane-metadata" role="tabpanel" aria-labelledby="metadata-settings-tab" aria-hidden="true" tabindex="0">
+                        <form id="metadata-settings-form" class="metadata-configuration metadata-configuration--settings" data-metadata-scope="settings">
                             <div class="metadata-section-heading">
-                                <span class="metadata-owner-label">Owner setting</span>
-                                <h4><i class='bx bx-search-alt'></i> Online Metadata Identification</h4>
-                                <p>Choose how Smart Auto Enrich identifies tracks. This controls server-wide lookups.</p>
+                                <div>
+                                    <h4><i class='bx bx-search-alt' aria-hidden="true"></i> Metadata matching</h4>
+                                    <p>Choose how Smart Metadata Review identifies tracks across this server.</p>
+                                </div>
+                                <span class="metadata-unsaved hidden" data-metadata-unsaved>Unsaved</span>
                             </div>
 
                             <div class="metadata-api-notice hidden" data-metadata-api-notice role="status"></div>
+                            <div class="metadata-form-status hidden" data-metadata-form-status role="status" aria-live="polite"></div>
 
                             <fieldset class="metadata-mode-options">
-                                <legend>Lookup mode</legend>
+                                <legend>Matching method</legend>
                                 <label class="metadata-mode-option">
                                     <input type="radio" name="settings-metadata-mode" value="local_only" checked>
                                     <span class="metadata-option-copy">
-                                        <span class="metadata-option-title">Local analysis only</span>
-                                        <span class="metadata-option-description">Read embedded tags and filename hints locally. Nothing is sent.</span>
+                                        <span class="metadata-option-title">Local analysis</span>
+                                        <span class="metadata-option-description">Use embedded tags and filename hints. Nothing leaves your server.</span>
                                     </span>
                                 </label>
                                 <label class="metadata-mode-option">
                                     <input type="radio" name="settings-metadata-mode" value="text_only">
                                     <span class="metadata-option-copy">
                                         <span class="metadata-option-title">Text lookup</span>
-                                        <span class="metadata-option-description">Send title and artist hints to MusicBrainz and Apple.</span>
+                                        <span class="metadata-option-description">Check title and artist hints with MusicBrainz and Apple.</span>
                                     </span>
                                 </label>
                                 <label class="metadata-mode-option">
                                     <input type="radio" name="settings-metadata-mode" value="acoustic_with_text_fallback">
                                     <span class="metadata-option-copy">
-                                        <span class="metadata-option-title-line">
-                                            <span class="metadata-option-title">Acoustic + text fallback</span>
-                                            <span class="metadata-recommended-badge">Recommended</span>
-                                        </span>
-                                        <span class="metadata-option-description">Fingerprint with AcoustID first, then use text lookup when needed.</span>
+                                        <span class="metadata-option-title">Audio fingerprint + text</span>
+                                        <span class="metadata-option-description">Try AcoustID first, then fall back to text lookup when needed.</span>
                                     </span>
                                 </label>
                             </fieldset>
 
-                            <div class="metadata-status-grid" aria-live="polite">
-                                <div class="metadata-status-item">
-                                    <span>AcoustID key</span>
-                                    <strong data-acoustid-status data-status="missing">Not configured</strong>
+                            <section class="metadata-acoustid-fields" data-acoustid-fields aria-labelledby="metadata-acoustid-title" aria-live="polite">
+                                <div class="metadata-tool-heading">
+                                    <div>
+                                        <h5 id="metadata-acoustid-title">Acoustic matching setup</h5>
+                                        <p data-acoustid-source-note>Add an AcoustID application key to make fingerprint matching available.</p>
+                                    </div>
+                                    <strong data-acoustid-status data-status="missing">No key saved</strong>
                                 </div>
-                                <div class="metadata-status-item">
-                                    <span>Fingerprint runtime</span>
+
+                                <div class="metadata-key-entry" data-acoustid-key-entry>
+                                    <label for="settings-acoustid-client-key">Application client key</label>
+                                    <div class="metadata-key-input-row">
+                                        <input id="settings-acoustid-client-key" type="password" data-acoustid-key
+                                            maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"
+                                            aria-describedby="settings-acoustid-help" placeholder="Enter a new client key">
+                                        <button type="button" class="metadata-clear-key-btn hidden" data-clear-acoustid-key>
+                                            Remove key
+                                        </button>
+                                    </div>
+                                    <p id="settings-acoustid-help">
+                                        Create an application at
+                                        <a href="https://acoustid.org/new-application" target="_blank" rel="noopener noreferrer">acoustid.org</a>.
+                                        Saved keys stay masked and are never returned to this page.
+                                    </p>
+                                </div>
+
+                                <div class="metadata-runtime-status">
+                                    <span><i class='bx bx-chip' aria-hidden="true"></i> Fingerprint tool</span>
                                     <strong data-fpcalc-status data-status="unavailable">Unavailable</strong>
                                 </div>
-                            </div>
+                            </section>
 
-                            <div class="metadata-acoustid-fields hidden" data-acoustid-fields>
-                                <label for="settings-acoustid-client-key">AcoustID application client key</label>
-                                <p id="settings-acoustid-help">
-                                    Create an application at
-                                    <a href="https://acoustid.org/new-application" target="_blank" rel="noopener noreferrer">acoustid.org</a>,
-                                    then enter its client key. A configured value stays masked and is never returned to this page.
-                                </p>
-                                <input id="settings-acoustid-client-key" type="password" data-acoustid-key
-                                    maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false"
-                                    aria-describedby="settings-acoustid-help" placeholder="Enter application client key">
-                                <button type="button" class="metadata-clear-key-btn hidden" data-clear-acoustid-key>
-                                    <i class='bx bx-trash'></i> Clear configured key
-                                </button>
-                            </div>
+                            <details class="metadata-privacy-note">
+                                <summary><i class='bx bx-shield-quarter' aria-hidden="true"></i><span>Privacy and external services</span><i class='bx bx-chevron-down' aria-hidden="true"></i></summary>
+                                <p>Local analysis sends nothing. Text lookup sends title and artist hints to MusicBrainz and Apple. Streamify creates fingerprints locally; AcoustID receives only a fingerprint and duration, never audio. Free AcoustID use is non-commercial and rate limited.</p>
+                            </details>
 
-                            <aside class="metadata-privacy-note">
-                                <i class='bx bx-shield-quarter' aria-hidden="true"></i>
-                                <div>
-                                    <strong>What leaves your server</strong>
-                                    <p>Local analysis sends nothing. Text lookup sends title and artist hints to MusicBrainz and Apple. Streamify creates the fingerprint locally; AcoustID receives only the fingerprint and duration, never audio. Free AcoustID use is non-commercial and limited to a maximum of 3 requests per second.</p>
-                                </div>
-                            </aside>
-
-                            <div class="modal-actions">
-                                <button type="submit" class="btn" data-save-metadata>Save Metadata Settings</button>
+                            <div class="modal-actions metadata-settings-actions">
+                                <button type="button" class="btn btn-outline" id="open-metadata-review-btn">Open metadata review</button>
+                                <button type="submit" class="btn" data-save-metadata>Save changes</button>
                             </div>
                         </form>
                     </div>
 
+                    <!-- Downloads Tab (Owner only) -->
+                    <div class="settings-pane owner-only-setting hidden" id="pane-downloads" role="tabpanel"
+                        aria-labelledby="downloads-settings-tab" aria-hidden="true" tabindex="0">
+                        <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                            <i class='bx bx-network-chart' style="color: var(--accent);"></i>
+                            Soulseek account
+                        </h4>
+                        <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 14px; line-height: 1.5;">
+                            Soulseek is a peer-to-peer network where people share their own music files, usually
+                            properly tagged and at high bitrates. An account is free &mdash; you just pick a username
+                            and password at
+                            <a href="https://www.slsknet.org/" target="_blank" rel="noopener noreferrer"
+                                style="color: var(--accent);">slsknet.org</a>.
+                            A configured account is required before Streamify can search or download music.
+                        </p>
+                        <div style="background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; padding: 12px 14px; border-radius: 4px; margin-bottom: 18px;">
+                            <span style="color: #f59e0b; font-weight: 600; font-size: 12.5px; display: block; margin-bottom: 4px;">
+                                <i class='bx bx-info-circle'></i> What connecting does
+                            </span>
+                            <span style="color: #b3b3b3; font-size: 12.5px; line-height: 1.5;">
+                                Signing in keeps a connection open to the Soulseek network and, as the protocol
+                                requires, listens on TCP port 2234 for incoming peer transfers. Streamify shares no
+                                folders, but only enable this on a network you trust. Your password is stored on this
+                                server so it can reconnect automatically.
+                            </span>
+                        </div>
+
+                        <form id="downloads-settings-form">
+                            <div class="input-group">
+                                <label for="soulseek-username">Soulseek username</label>
+                                <input type="text" id="soulseek-username" autocomplete="off" spellcheck="false"
+                                    placeholder="Your Soulseek username">
+                            </div>
+                            <div class="input-group">
+                                <label for="soulseek-password">Soulseek password</label>
+                                <input type="password" id="soulseek-password" autocomplete="new-password"
+                                    placeholder="Your Soulseek password">
+                            </div>
+
+                            <div class="downloads-setting-status" id="downloads-settings-status" role="status"
+                                aria-live="polite"></div>
+
+                            <div class="modal-actions" style="gap: 8px; flex-wrap: wrap;">
+                                <button type="submit" class="btn">Save</button>
+                                <button type="button" class="btn btn-outline" id="soulseek-test-btn">
+                                    <i class='bx bx-plug'></i> Test connection
+                                </button>
+                                <button type="button" class="btn btn-outline" id="soulseek-clear-btn"
+                                    style="border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
+                                    Remove
+                                </button>
+                            </div>
+                        </form>
+
+                        <div style="margin: 25px 0; border-top: 1px solid rgba(255,255,255,0.06);"></div>
+
+                        <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                            <i class='bx bx-folder-open' style="color: var(--accent);"></i>
+                            Where downloads are saved
+                        </h4>
+                        <p style="color: #b3b3b3; font-size: 13px; line-height: 1.5;">
+                            Downloads go into a <strong>Streamify Downloads</strong> folder inside your first
+                            configured music directory, so they are picked up by the normal library scan. Change the
+                            music directory under <strong>Account</strong>.
+                        </p>
+                        <div class="downloads-folder-path" id="downloads-settings-folder" style="margin-top: 12px;"></div>
+                    </div>
+
                     <!-- Privacy Tab -->
-                    <div class="settings-pane" id="pane-privacy">
+                    <div class="settings-pane" id="pane-privacy" role="tabpanel" aria-labelledby="settings-tab-privacy" aria-hidden="true" tabindex="0">
                         <div class="security-settings">
                             <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
                                 <i class='bx bx-data' style="color: var(--accent);"></i>
@@ -1064,7 +1214,185 @@
                             </button>
                         </div>
                     </div>
-                </main>
+
+                    <!-- Discord Tab (desktop app only) -->
+                    <div class="settings-pane desktop-only-setting hidden" id="pane-discord" role="tabpanel"
+                        aria-labelledby="settings-tab-discord" aria-hidden="true" tabindex="0">
+                        <div class="security-settings">
+                            <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <i class='bx bx-game' style="color: var(--accent);"></i>
+                                Discord Rich Presence
+                            </h4>
+                            <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">
+                                Shows what you are listening to on your Discord profile, where everyone who can see
+                                your profile can read it. Off unless you turn it on.
+                            </p>
+
+                            <div class="settings-toggle-row">
+                                <div>
+                                    <strong style="display: block; font-size: 14px; margin-bottom: 4px;">Enable Rich
+                                        Presence</strong>
+                                    <span style="font-size: 12px; color: #888;">Discord must be running on this
+                                        computer.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="discord-rpc-toggle">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="downloads-setting-status" id="discord-settings-status" role="status"
+                                aria-live="polite"></div>
+
+                            <h4 style="margin: 25px 0 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <i class='bx bx-image' style="color: var(--accent);"></i>
+                                Album Art
+                            </h4>
+                            <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 15px; line-height: 1.5;">
+                                Discord loads cover images from its own servers, so it cannot see artwork stored on
+                                your machine or LAN. Streamify first reuses an existing public cover, then follows the
+                                lookup policy you choose below. Uncertain matches always use the Streamify logo.
+                            </p>
+
+                            <fieldset class="metadata-mode-options discord-artwork-options" id="discord-artwork-modes">
+                                <legend>Artwork policy</legend>
+                                <label class="metadata-mode-option">
+                                    <input type="radio" name="discord-artwork-mode" value="app_logo">
+                                    <span class="metadata-option-copy">
+                                        <span class="metadata-option-title">Always use Streamify logo</span>
+                                        <span class="metadata-option-description">Do not send song artwork to Discord, even when a public cover is available.</span>
+                                    </span>
+                                </label>
+                                <label class="metadata-mode-option">
+                                    <input type="radio" name="discord-artwork-mode" value="stored_only" checked>
+                                    <span class="metadata-option-copy">
+                                        <span class="metadata-option-title">Stored and public covers only</span>
+                                        <span class="metadata-option-description">Never search for artwork. Use known public URLs, your public Streamify server, or the logo.</span>
+                                    </span>
+                                </label>
+                                <label class="metadata-mode-option">
+                                    <input type="radio" name="discord-artwork-mode" value="youtube_exact">
+                                    <span class="metadata-option-copy">
+                                        <span class="metadata-option-title">Exact YouTube match</span>
+                                        <span class="metadata-option-description">Match title, artist, remix/version and duration. Ambiguous results are rejected.</span>
+                                    </span>
+                                </label>
+                                <label class="metadata-mode-option">
+                                    <input type="radio" name="discord-artwork-mode" value="apple_only">
+                                    <span class="metadata-option-copy">
+                                        <span class="metadata-option-title">Apple Music artwork only</span>
+                                        <span class="metadata-option-description">Search Apple by title and artist without contacting YouTube.</span>
+                                    </span>
+                                </label>
+                                <label class="metadata-mode-option">
+                                    <input type="radio" name="discord-artwork-mode" value="best_effort">
+                                    <span class="metadata-option-copy">
+                                        <span class="metadata-option-title">Best available match</span>
+                                        <span class="metadata-option-description">Try an exact YouTube thumbnail first, then fall back to Apple artwork.</span>
+                                    </span>
+                                </label>
+                            </fieldset>
+
+                            <details class="discord-artwork-note">
+                                <summary><i class='bx bx-info-circle' aria-hidden="true"></i><span>Why every local cover cannot be used</span><i class='bx bx-chevron-down' aria-hidden="true"></i></summary>
+                                <p>Discord fetches image URLs from the public internet; it cannot read files from this computer. Online modes send track metadata only when no usable public cover exists. YouTube search uses no account, cookies, audio streaming or downloading. Apple-only never contacts YouTube. Successful matches are cached for 30 days.</p>
+                            </details>
+
+                            <div class="modal-actions discord-artwork-actions">
+                                <button type="button" class="btn btn-outline" id="discord-art-refresh">
+                                    <i class='bx bx-refresh'></i> Refresh current artwork
+                                </button>
+                            </div>
+
+                            <div id="discord-public-url-setting" class="owner-only-setting hidden">
+                                <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                    <i class='bx bx-globe' style="color: var(--accent);"></i>
+                                    Public server address
+                                </h4>
+                                <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 15px; line-height: 1.5;">
+                                    If this Streamify server is reachable from the internet over HTTPS through a reverse
+                                    proxy or tunnel, enter its address. Discord can then show the exact embedded or
+                                    uploaded cover without searching another service. This setting affects every user.
+                                </p>
+                                <form id="discord-public-url-form" autocomplete="off">
+                                    <div class="setting-group">
+                                        <label for="discord-public-url">Public URL</label>
+                                        <input type="url" id="discord-public-url" placeholder="https://music.example.com"
+                                            spellcheck="false" autocomplete="off">
+                                    </div>
+                                    <div class="downloads-setting-status" id="discord-public-url-status" role="status"
+                                        aria-live="polite"></div>
+                                    <div class="modal-actions" style="gap: 8px; flex-wrap: wrap;">
+                                        <button type="submit" class="btn">Save</button>
+                                        <button type="button" class="btn btn-outline" id="discord-public-url-clear">Clear</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Updates Tab (desktop app only) -->
+                    <div class="settings-pane desktop-only-setting hidden" id="pane-updates" role="tabpanel"
+                        aria-labelledby="settings-tab-updates" aria-hidden="true" tabindex="0">
+                        <div class="security-settings">
+                            <h4 style="margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <i class='bx bx-refresh' style="color: var(--accent);"></i>
+                                Automatic updates
+                            </h4>
+                            <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">
+                                Streamify checks its GitHub releases for a newer version and downloads it in the
+                                background. Nothing is installed while you are using the app &mdash; the update is
+                                applied the next time Streamify quits, or immediately if you press
+                                <strong>Restart and install</strong>.
+                            </p>
+
+                            <!-- Server-wide, so only the Owner sees the switch. Everyone
+                                 else still gets the status and the manual check. -->
+                            <div class="settings-toggle-row owner-only-setting hidden" id="auto-update-setting">
+                                <div>
+                                    <strong style="display: block; font-size: 14px; margin-bottom: 4px;">Check for
+                                        updates automatically</strong>
+                                    <span style="font-size: 12px; color: #888;">Applies to this server for everyone.
+                                        When off, Streamify never contacts GitHub on its own.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="auto-update-toggle" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="update-version-row">
+                                <span>Installed version</span>
+                                <strong id="update-current-version">&mdash;</strong>
+                            </div>
+
+                            <div class="downloads-setting-status" id="update-status" role="status"
+                                aria-live="polite"></div>
+
+                            <div class="update-progress hidden" id="update-progress">
+                                <div class="update-progress-track">
+                                    <div class="update-progress-fill" id="update-progress-fill"></div>
+                                </div>
+                            </div>
+
+                            <div id="update-notes-wrap" class="hidden">
+                                <h4 style="margin: 25px 0 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                    <i class='bx bx-news' style="color: var(--accent);"></i>
+                                    What&rsquo;s new in <span id="update-notes-version"></span>
+                                </h4>
+                                <pre class="update-notes" id="update-notes"></pre>
+                            </div>
+
+                            <div class="modal-actions update-actions">
+                                <button type="button" class="btn" id="update-check-btn">Check now</button>
+                                <button type="button" class="btn hidden" id="update-download-btn">Download update</button>
+                                <button type="button" class="btn hidden" id="update-install-btn">Restart and install</button>
+                                <button type="button" class="btn btn-outline" id="update-releases-btn">View
+                                    releases</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1144,8 +1472,9 @@
             </div>
             <div class="edit-song-content" style="padding: 15px 0;">
                 <input type="hidden" id="edit-song-id">
+                <input type="hidden" id="edit-song-metadata-revision">
 
-                <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 15px;">
+                <div class="edit-song-review-row">
                     <div class="edit-song-cover-wrap">
                         <div class="edit-song-cover-preview">
                             <img id="edit-song-cover-img"
@@ -1156,9 +1485,6 @@
                         </div>
                         <input type="file" id="song-cover-upload" accept="image/*" style="display: none;">
                     </div>
-                    <button type="button" id="ai-autofill-btn" class="btn hidden" style="background: linear-gradient(90deg, #4169e1, #8164d7); color: #fff; font-weight: 600; padding: 10px 16px; border-radius: 8px; border: none; align-items: center; gap: 8px; cursor: pointer; transition: transform 0.2s;">
-                        <i class='bx bxs-magic-wand' style="font-size: 1.2rem;"></i> Smart Auto Enrich
-                    </button>
                 </div>
 
                 <div class="input-group">
@@ -1193,13 +1519,17 @@
                 </div>
             </div>
             <div class="modal-actions" style="margin-top: 10px;">
+                <button type="button" id="ai-autofill-btn" class="edit-metadata-review-btn hidden"
+                    title="Smart Metadata Review" aria-label="Review metadata for this song">
+                    <i class='bx bxs-magic-wand' aria-hidden="true"></i>
+                </button>
                 <button type="button" class="btn btn-outline" id="cancel-edit-song">Cancel</button>
                 <button type="button" class="btn" id="save-song-changes">Save Changes</button>
             </div>
         </div>
     </div>
 
-    <!-- SMART AUTO ENRICH WORKSPACE -->
+    <!-- SMART METADATA REVIEW WORKSPACE -->
     <div id="ai-metadata-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
         aria-labelledby="ai-workspace-title" aria-describedby="ai-workspace-description" data-stage="idle">
         <div class="modal-box ai-enrich-workspace" role="document" tabindex="-1">
@@ -1208,18 +1538,17 @@
                     <span class="ai-workspace-mark" aria-hidden="true"><i class='bx bxs-magic-wand'></i></span>
                     <div>
                         <div class="ai-workspace-title-line">
-                            <h2 id="ai-workspace-title">Smart Auto Enrich</h2>
-                            <span id="ai-stage-badge" class="ai-stage-badge">Idle</span>
+                            <h2 id="ai-workspace-title">Smart Metadata Review</h2>
                         </div>
-                        <p id="ai-workspace-description">Review evidence before changing library metadata.</p>
+                        <p id="ai-workspace-description">Find reliable matches and choose what belongs in your library.</p>
                     </div>
                 </div>
-                <button type="button" class="ai-icon-button" id="close-ai-metadata-modal" aria-label="Close Smart Auto Enrich">
+                <button type="button" class="ai-icon-button" id="close-ai-metadata-modal" aria-label="Close Smart Metadata Review">
                     <i class='bx bx-x' aria-hidden="true"></i>
                 </button>
             </header>
 
-            <section class="ai-job-overview" aria-label="Enrichment job progress">
+            <section id="ai-job-overview" class="ai-job-overview hidden" aria-label="Metadata scan progress">
                 <div class="ai-job-status-line">
                     <div>
                         <span id="ai-stage-label" class="ai-stage-label">Ready</span>
@@ -1227,103 +1556,145 @@
                     </div>
                     <span id="ai-progress-percent" class="ai-progress-percent">0%</span>
                 </div>
-                <div id="ai-progress-track" class="ai-progress-track" role="progressbar" aria-label="Job progress"
+                <div id="ai-progress-track" class="ai-progress-track" role="progressbar" aria-label="Tracks scanned"
                     aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                     <span id="ai-progress-fill"></span>
                 </div>
                 <div class="ai-progress-counts" aria-live="polite">
-                    <span><strong id="ai-count-processed">0</strong> processed</span>
-                    <span><strong id="ai-count-total">0</strong> total</span>
-                    <span><strong id="ai-count-matched">0</strong> matched</span>
-                    <span><strong id="ai-count-review">0</strong> review</span>
-                    <span><strong id="ai-count-unidentified">0</strong> unidentified</span>
+                    <span><strong id="ai-count-processed">0</strong>/<strong id="ai-count-total">0</strong> scanned</span>
+                    <span><strong id="ai-count-approved">0</strong> approved</span>
+                    <span><strong id="ai-count-review">0</strong> waiting</span>
+                    <span><strong id="ai-count-errors">0</strong> issues</span>
                 </div>
-                <div class="ai-provider-row">
-                    <span class="ai-overview-label">Sources</span>
+                <details class="ai-provider-row">
+                    <summary>Source status</summary>
                     <div id="ai-provider-statuses" class="ai-provider-statuses">
                         <span class="ai-provider-empty">Waiting for source status</span>
                     </div>
-                </div>
+                </details>
             </section>
 
             <div class="ai-workspace-scroll">
-                <section id="ai-review-loading" class="ai-workspace-state" aria-live="polite">
-                    <span class="ai-state-orbit" aria-hidden="true"><i class='bx bx-loader-alt bx-spin'></i></span>
-                    <h3 id="ai-loading-title">Preparing your library</h3>
-                    <p id="ai-loading-message">Creating a safe review session. Nothing is changed without a decision.</p>
+                <section id="ai-review-preflight" class="ai-preflight hidden" aria-labelledby="ai-preflight-title" tabindex="-1">
+                    <div class="ai-preflight-intro">
+                        <span class="ai-state-icon" aria-hidden="true"><i class='bx bx-library'></i></span>
+                        <div>
+                            <h3 id="ai-preflight-title">Review your library metadata</h3>
+                            <p>Scan unfinished tracks and review reliable matches before applying them.</p>
+                        </div>
+                    </div>
+                    <div class="ai-preflight-method-row">
+                        <i class='bx bx-search-alt' aria-hidden="true"></i>
+                        <div><span>Lookup method</span><strong id="ai-preflight-method">Checking settings...</strong><p id="ai-preflight-method-detail">Loading metadata settings.</p></div>
+                    </div>
+                    <div id="ai-preflight-readiness" class="ai-preflight-readiness" role="status" aria-live="polite">
+                        <i class='bx bx-loader-alt bx-spin' aria-hidden="true"></i>
+                        <span>Checking metadata tools...</span>
+                    </div>
                 </section>
 
-                <section id="ai-review-content" class="ai-review-content hidden" aria-label="Current review item">
+                <section id="ai-review-loading" class="ai-workspace-state" aria-live="polite" tabindex="-1">
+                    <span id="ai-loading-icon" class="ai-state-orbit" aria-hidden="true"><i class='bx bx-loader-alt bx-spin'></i></span>
+                    <h3 id="ai-loading-title">Preparing your library</h3>
+                    <p id="ai-loading-message">Starting the metadata scan.</p>
+                </section>
+
+                <section id="ai-review-content" class="ai-review-content hidden" aria-label="Current review item" tabindex="-1">
                     <div class="ai-item-header">
                         <div>
-                            <span id="ai-item-kicker" class="ai-item-kicker">Current item</span>
                             <h3 id="ai-item-title">Untitled track</h3>
                         </div>
-                        <span id="ai-match-score" class="ai-match-score hidden"></span>
                     </div>
-
-                    <section id="ai-evidence-section" class="ai-evidence-panel" aria-labelledby="ai-evidence-title">
-                        <div class="ai-panel-heading">
-                            <h4 id="ai-evidence-title">Match evidence</h4>
-                            <span>Signals returned by the server</span>
-                        </div>
-                        <div id="ai-evidence-list" class="ai-evidence-list"></div>
-                    </section>
-
-                    <section class="ai-comparison-panel" aria-labelledby="ai-comparison-title">
-                        <div class="ai-panel-heading">
-                            <h4 id="ai-comparison-title">Metadata comparison</h4>
-                            <span>Only checked fields will be applied</span>
-                        </div>
-                        <div class="ai-comparison-head" aria-hidden="true">
-                            <span>Field</span><span>Current</span><span>Suggested</span><span>Use</span>
-                        </div>
-                        <div id="ai-fields-container" class="ai-fields-container"></div>
-                    </section>
-
-                    <section id="ai-cover-section" class="ai-cover-panel hidden" aria-labelledby="ai-cover-title">
-                        <div class="ai-panel-heading">
-                            <h4 id="ai-cover-title">Cover comparison</h4>
-                            <span id="ai-cover-note">Cover changes are staged until Apply</span>
-                        </div>
-                        <div class="ai-cover-comparison">
-                            <figure>
-                                <figcaption>Current</figcaption>
-                                <img id="ai-cover-current" src="" alt="Current cover">
-                            </figure>
-                            <i class='bx bx-right-arrow-alt ai-cover-arrow' aria-hidden="true"></i>
-                            <figure>
-                                <figcaption>Suggested</figcaption>
-                                <img id="ai-cover-suggested" src="" alt="Suggested cover">
-                            </figure>
-                            <label class="ai-check-control ai-cover-check">
-                                <input type="checkbox" id="ai-accept-cover" data-field="coverUrl">
-                                <span aria-hidden="true"><i class='bx bx-check'></i></span>
-                                <span>Use cover</span>
-                            </label>
-                        </div>
-                    </section>
 
                     <section id="ai-suggestions-section" class="ai-candidates-panel hidden" aria-labelledby="ai-candidates-title">
                         <div class="ai-panel-heading">
-                            <h4 id="ai-candidates-title">Release and alternative candidates</h4>
-                            <span>Choose a candidate before selecting fields</span>
+                            <div>
+                                <span class="ai-step-label">Step 1 of 2</span>
+                                <h4 id="ai-candidates-title">Choose the right match</h4>
+                            </div>
+                            <span>Select one result, then review its fields</span>
                         </div>
                         <div id="ai-suggestions-list" class="ai-suggestions-list"></div>
+                        <div id="ai-candidate-pagination" class="ai-candidate-pagination hidden">
+                            <button type="button" class="ai-page-button" id="ai-candidates-previous" aria-label="Previous matching results">
+                                <i class='bx bx-chevron-left' aria-hidden="true"></i> Previous
+                            </button>
+                            <span id="ai-candidate-page-status">Page 1 of 1</span>
+                            <button type="button" class="ai-page-button" id="ai-candidates-next" aria-label="Next matching results">
+                                Next <i class='bx bx-chevron-right' aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </section>
+
+                    <div id="ai-approval-step" class="ai-approval-step hidden">
+                        <div class="ai-approval-heading">
+                            <span class="ai-step-label">Step 2 of 2</span>
+                            <h4>Approve metadata fields</h4>
+                            <p>Review the selected match and choose exactly what Streamify should change.</p>
+                        </div>
+
+                        <aside id="ai-review-guidance" class="ai-review-guidance hidden" aria-live="polite"></aside>
+
+                        <section class="ai-comparison-panel" aria-labelledby="ai-comparison-title">
+                            <div class="ai-panel-heading">
+                                <h4 id="ai-comparison-title">Choose metadata</h4>
+                                <span>Only selected fields will change</span>
+                            </div>
+                            <div class="ai-comparison-head" aria-hidden="true">
+                                <span>Field</span><span>In your library</span><span>Suggested</span><span>Use</span>
+                            </div>
+                            <div id="ai-fields-container" class="ai-fields-container"></div>
+                        </section>
+
+                        <section id="ai-cover-section" class="ai-cover-panel hidden" aria-labelledby="ai-cover-title">
+                            <div class="ai-panel-heading">
+                                <h4 id="ai-cover-title">Choose artwork</h4>
+                                <span id="ai-cover-note">Artwork changes only after approval</span>
+                            </div>
+                            <div class="ai-cover-comparison">
+                                <figure>
+                                    <figcaption>Current</figcaption>
+                                    <img id="ai-cover-current" src="" alt="Current cover">
+                                </figure>
+                                <i class='bx bx-right-arrow-alt ai-cover-arrow' aria-hidden="true"></i>
+                                <figure>
+                                    <figcaption>Suggested</figcaption>
+                                    <img id="ai-cover-suggested" src="" alt="Suggested cover">
+                                </figure>
+                                <label class="ai-check-control ai-cover-check">
+                                    <input type="checkbox" id="ai-accept-cover" data-field="coverUrl">
+                                    <span aria-hidden="true"><i class='bx bx-check'></i></span>
+                                    <span>Use cover</span>
+                                </label>
+                            </div>
+                        </section>
+
+                        <details id="ai-evidence-section" class="ai-evidence-panel">
+                            <summary><span id="ai-evidence-title">Why Streamify suggested this match</span><i class='bx bx-chevron-down' aria-hidden="true"></i></summary>
+                            <div id="ai-evidence-list" class="ai-evidence-list"></div>
+                        </details>
+                    </div>
                 </section>
 
-                <section id="ai-review-empty" class="ai-workspace-state hidden" role="status" aria-live="polite">
+                <section id="ai-review-empty" class="ai-workspace-state hidden" role="status" aria-live="polite" tabindex="-1">
                     <span id="ai-empty-icon" class="ai-state-icon" aria-hidden="true"><i class='bx bx-search-alt'></i></span>
                     <h3 id="ai-empty-title">No reliable match</h3>
                     <p id="ai-empty-message">Current metadata has been preserved.</p>
                     <p id="ai-empty-detail" class="ai-state-detail">You can skip this item and edit it manually later.</p>
+                    <button type="button" id="ai-empty-settings-action" class="btn btn-outline ai-state-action hidden">Review metadata settings</button>
                 </section>
 
-                <section id="ai-review-complete" class="ai-workspace-state hidden" role="status" aria-live="polite">
+                <section id="ai-review-complete" class="ai-workspace-state hidden" role="status" aria-live="polite" tabindex="-1">
                     <span class="ai-state-icon ai-state-icon--success" aria-hidden="true"><i class='bx bx-check'></i></span>
                     <h3 id="ai-complete-title">Review complete</h3>
                     <p id="ai-complete-message">Your approved metadata changes have been saved.</p>
+                    <div id="ai-complete-summary" class="ai-complete-summary hidden">
+                        <span><strong id="ai-complete-automatic">0</strong> automatic</span>
+                        <span><strong id="ai-complete-approved">0</strong> approved</span>
+                        <span><strong id="ai-complete-skipped">0</strong> skipped</span>
+                        <span><strong id="ai-complete-unmatched">0</strong> no match</span>
+                        <span><strong id="ai-complete-errors">0</strong> issues</span>
+                    </div>
                 </section>
             </div>
 
@@ -1336,10 +1707,24 @@
                         <i class='bx bx-stop-circle' aria-hidden="true"></i><span>Cancel run</span>
                     </button>
                 </div>
+                <div id="ai-preflight-actions" class="ai-preflight-actions hidden">
+                    <button type="button" class="btn btn-outline" id="ai-preflight-settings">
+                        <i class='bx bx-cog' aria-hidden="true"></i><span>Metadata settings</span>
+                    </button>
+                    <button type="button" class="btn" id="ai-start-review">
+                        <i class='bx bx-search-alt' aria-hidden="true"></i><span>Start review</span>
+                    </button>
+                </div>
                 <div class="ai-review-actions">
+                    <button type="button" class="btn btn-outline hidden" id="ai-back-to-matches">
+                        <i class='bx bx-left-arrow-alt' aria-hidden="true"></i><span>Back to matches</span>
+                    </button>
                     <button type="button" class="btn btn-outline hidden" id="cancel-ai-metadata">Skip</button>
+                    <button type="button" class="btn hidden" id="ai-review-selected-match">
+                        <span>Review selected match</span><i class='bx bx-right-arrow-alt' aria-hidden="true"></i>
+                    </button>
                     <button type="button" class="btn ai-apply-button hidden" id="apply-ai-metadata">
-                        <i class='bx bx-check' aria-hidden="true"></i><span>Apply selected</span>
+                        <i class='bx bx-check' aria-hidden="true"></i><span>Apply selected fields</span>
                     </button>
                 </div>
                 <span id="ai-action-status" class="ai-sr-only" aria-live="assertive"></span>
@@ -1621,12 +2006,53 @@
         </div>
     </div>
 
-    <script src="/Static/home/js/config.js?v=4.20"></script>
+    <!-- Download confirmation. Handles both a single picked track and a whole
+         resolved playlist, so nothing is ever queued without an explicit yes. -->
+    <div id="downloads-confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
+        aria-labelledby="downloads-confirm-title">
+        <div class="modal-box" tabindex="-1" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 id="downloads-confirm-title">Download this track?</h3>
+                <button type="button" class="modal-close-button" id="downloads-confirm-close"
+                    aria-label="Close">
+                    <i class='bx bx-x' aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <!-- Single-track summary -->
+            <div id="downloads-confirm-single"></div>
+
+            <!-- Multi-track list (playlists and albums) -->
+            <div class="resolve-preview-list hidden" id="downloads-confirm-list"></div>
+
+            <p class="download-confirm-note" id="downloads-confirm-note"></p>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" id="downloads-confirm-cancel">Cancel</button>
+                <button type="button" class="btn" id="downloads-confirm-accept">
+                    <i class='bx bx-download'></i> Download
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Socket.IO is served by our own server; there is no CDN request here.
+         It powers live download progress. Loaded before the page scripts so
+         window.io exists by the time downloads.js connects. -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/Static/home/js/config.js?v=4.22"></script>
     <script src="/Static/vendor/cropperjs/cropper.min.js?v=4.8"></script>
-    <script src="/Static/home/js/offline.js?v=4.20"></script>
-    <script src="/Static/home/js/player.js?v=4.23"></script>
-    <script src="/Static/home/js/api_v2.js?v=4.25"></script>
-    <script src="/Static/home/js/ui.js?v=4.23"></script>
+    <script src="/Static/home/js/offline.js?v=4.38"></script>
+    <!-- Must load before player.js: loadSong() and syncPlaybackUI() call into
+         window.StreamifyDiscord as soon as playback starts. -->
+    <script src="/Static/home/js/discord.js?v=4.33"></script>
+    <!-- Must load before ui.js: activateSettingsTab() calls into
+         window.StreamifyUpdates when the Updates pane is opened. -->
+    <script src="/Static/home/js/updates.js?v=4.46"></script>
+    <script src="/Static/home/js/player.js?v=4.43"></script>
+    <script src="/Static/home/js/api_v2.js?v=4.42"></script>
+    <script src="/Static/home/js/downloads.js?v=4.43"></script>
+    <script src="/Static/home/js/ui.js?v=4.50"></script>
 </body>
 
 </html>

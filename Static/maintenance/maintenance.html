@@ -1,18 +1,29 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Streamify - Maintenance</title>
     <link href="/Static/vendor/fonts/outfit.css" rel="stylesheet">
+    <link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
     <style>
         :root {
             --bg-color: #000;
             --text-primary: #ffffff;
             --text-secondary: rgba(255, 255, 255, 0.65);
             --accent: #1db954;
+            --accent-hover: #1ed760;
+            --accent-rgb: 29, 185, 84;
+            --on-accent: #0b0b0e;
+            --on-gradient: #ffffff;
             --gradient-1: #4169e1;
             --gradient-2: #8164d7;
+            --gradient-3: #ec4899;
+            --gradient-1-rgb: 65, 105, 225;
+            --gradient-2-rgb: 129, 100, 215;
+            --theme-gradient-alpha-1: 0.11;
+            --theme-gradient-alpha-2: 0.09;
+            --card-bg: rgba(255, 255, 255, 0.02);
             --glass-border: rgba(255, 255, 255, 0.08);
             --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
         }
@@ -27,8 +38,8 @@
         body {
             background-color: var(--bg-color);
             background-image:
-                radial-gradient(circle at 15% 50%, rgba(30, 30, 35, 0.9), transparent 25%),
-                radial-gradient(circle at 85% 30%, rgba(20, 20, 25, 0.9), transparent 25%);
+                radial-gradient(circle at 15% 50%, rgba(var(--gradient-1-rgb), var(--theme-gradient-alpha-1)), transparent 28%),
+                radial-gradient(circle at 85% 30%, rgba(var(--gradient-2-rgb), var(--theme-gradient-alpha-2)), transparent 28%);
             color: var(--text-primary);
             height: 100vh;
             display: flex;
@@ -39,7 +50,7 @@
         }
 
         .maintenance-card {
-            background: rgba(255, 255, 255, 0.02);
+            background: var(--card-bg);
             backdrop-filter: blur(40px);
             -webkit-backdrop-filter: blur(40px);
             border: 1px solid var(--glass-border);
@@ -52,7 +63,7 @@
         }
 
         .gradient-text {
-            background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899, #6366f1);
+            background: linear-gradient(90deg, var(--gradient-1), var(--gradient-2), var(--gradient-3), var(--gradient-1));
             background-size: 200% auto;
             -webkit-background-clip: text;
             background-clip: text;
@@ -65,10 +76,10 @@
         }
 
         .morph-text {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 42px;
-            font-weight: 900;
-            letter-spacing: -1px;
+            font-weight: 760;
+            letter-spacing: -0.055em;
             margin-bottom: 20px;
             display: inline-block;
         }
@@ -90,8 +101,8 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            background: rgba(29, 185, 84, 0.1);
-            border: 1px solid rgba(29, 185, 84, 0.3);
+            background: rgba(var(--accent-rgb), 0.1);
+            border: 1px solid rgba(var(--accent-rgb), 0.3);
             color: var(--accent);
             padding: 8px 16px;
             border-radius: 50px;
@@ -116,8 +127,8 @@
         }
 
         .reload-btn {
-            background: linear-gradient(90deg, #6366f1, #a855f7);
-            color: white;
+            background: linear-gradient(90deg, var(--gradient-1), var(--gradient-2));
+            color: var(--on-gradient);
             border: none;
             padding: 14px 28px;
             border-radius: 12px;
@@ -125,13 +136,13 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+            box-shadow: none;
             margin-top: 10px;
         }
 
         .reload-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+            box-shadow: none;
             filter: brightness(1.1);
         }
 
@@ -143,11 +154,13 @@
             from { opacity: 0; transform: translateY(40px); }
             to { opacity: 1; transform: translateY(0); }
         }
-    </style>
+</style>
+    <script src="/Static/home/js/experiments.js?v=4.35"></script>
+    <script src="/Static/home/js/theme.js?v=4.36"></script>
 </head>
 <body>
     <div class="maintenance-card">
-        <div class="morph-text gradient-text">Streamify</div>
+        <div class="streamify-logo morph-text gradient-text">Streamify</div>
         <h1 id="maintenance-title">Under Maintenance</h1>
         <p id="maintenance-msg">Streamify is undergoing scheduled maintenance to bring you the best audio experience. Check back soon!</p>
         <button class="reload-btn" onclick="location.reload()">Try Again</button>

@@ -115,7 +115,7 @@ input:checked + .slider:before {
 }
 
 .play-btn-overlay i {
-    color: white;
+    color: var(--on-gradient);
     font-size: 24px;
     margin-left: 4px;
 }
@@ -174,8 +174,8 @@ input:checked + .slider:before {
 /* Highlight the currently playing song */
 .song-row.playing {
     color: #fff;
-    background: linear-gradient(90deg, rgba(65, 105, 225, 0.2), rgba(129, 100, 215, 0.1));
-    border: 1px solid rgba(65, 105, 225, 0.3);
+    background: linear-gradient(90deg, rgba(var(--gradient-1-rgb), 0.2), rgba(var(--gradient-2-rgb), 0.1));
+    border: 1px solid rgba(var(--gradient-1-rgb), 0.3);
 }
 
 .edit-btn-container {
@@ -251,20 +251,20 @@ input:checked + .slider:before {
 
 /* Primary button with gradient background */
 .btn {
-    background: linear-gradient(90deg, #4169e1, #8164d7);
-    color: white;
+    background: linear-gradient(90deg, var(--gradient-1), var(--gradient-2));
+    color: var(--on-gradient);
     border: none;
     padding: 12px 32px;
     border-radius: 50px;
     font-weight: 700;
     cursor: pointer;
     transition: var(--transition);
-    box-shadow: 0 4px 15px rgba(65, 105, 225, 0.4);
+    box-shadow: none;
 }
 
 .btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(65, 105, 225, 0.6);
+    box-shadow: none;
 }
 
 /* Outline button variant - transparent with border */
@@ -280,34 +280,22 @@ input:checked + .slider:before {
     border-color: rgba(255, 255, 255, 0.4);
     background: rgba(255, 255, 255, 0.1);
     transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(255, 255, 255, 0.05);
-    /* Subtle white glow instead of harsh blue */
+    box-shadow: none;
 }
 
 /* === SPECIAL EFFECTS - Thanks/Like button animation === */
 
-/* Active glow state for thank button */
+/* Active state for thank button */
 .glow-active {
     color: #ff4d6d !important;
-    text-shadow: 0 0 10px #ff4d6d, 0 0 20px #ff4d6d !important;
+    text-shadow: none !important;
     background: rgba(255, 77, 109, 0.1) !important;
     border-color: rgba(255, 77, 109, 0.3) !important;
-    animation: thanksPulse 1.5s infinite alternate;
+    box-shadow: none !important;
 }
 
 .glow-active i {
     color: #ff4d6d !important;
-}
-
-/* Pulsing animation for thanks button */
-@keyframes thanksPulse {
-    from {
-        box-shadow: 0 0 5px rgba(255, 77, 109, 0.2);
-    }
-
-    to {
-        box-shadow: 0 0 20px rgba(255, 77, 109, 0.6);
-    }
 }
 
 /* Floating particle effect (hearts/icons) */

@@ -8,6 +8,50 @@ directories:
   buildResources: build
 
 # ---------------------------------------------------------------------------
+# Auto-update feed.
+#
+# This block does two separate jobs:
+#
+#   1. `--publish always` creates a GitHub release tagged v${version} and
+#      uploads every artifact plus the generated latest.yml / latest-linux.yml
+#      manifests to it.
+#   2. electron-builder bakes the same settings into app-update.yml inside the
+#      packaged app, which is the ONLY thing electron-updater reads at runtime.
+#      Without this block electron/updater.js has no feed and every check fails
+#      with "No published versions on GitHub".
+#
+# HOW AN INSTALLED CLIENT FINDS AN UPDATE
+#   GET /Lwitchy/Streamify/releases/latest      -> tag_name  (GitHub's "Latest")
+#   GET /releases/download/<tag>/latest.yml     -> version + sha512 + filename
+#   GET /releases/download/<tag>/<filename>     -> the installer
+# All three must line up, so latest.yml has to live in the SAME release as the
+# installer it describes.
+#
+# WHY draft AND NOT release
+# The release is created as a draft and stays invisible until you press
+# "Publish release" on GitHub. That matters because /releases/latest ignores
+# drafts: an interrupted upload can never leave clients staring at a published
+# release whose installer is missing or half-written. Flip it to public only
+# once every asset has finished uploading. Pre-releases are ignored too, so a
+# release marked "pre-release" updates nobody.
+#
+# Publishing needs a GitHub token with `repo` scope in GH_TOKEN:
+#     $env:GH_TOKEN = "ghp_..."; npm run release
+# The existing `npm run build:*` scripts keep using `--publish never` and only
+# produce artifacts locally; app-update.yml is still baked in either way.
+#
+# Only NSIS (Windows) and AppImage (Linux) can update themselves. deb and
+# tar.gz are owned by the package manager and the portable build has nothing
+# to overwrite; electron/updater.js detects those cases and reports them
+# instead of failing silently.
+# ---------------------------------------------------------------------------
+publish:
+  provider: github
+  owner: Lwitchy
+  repo: Streamify
+  releaseType: draft
+
+# ---------------------------------------------------------------------------
 # What goes into the app bundle.
 # The server, its runtime assets and the frontend all ship; developer-only
 # material and the user's local data do not.
@@ -73,6 +117,60 @@ nsis:
 
 portable:
   artifactName: ${productName}-Portable-${version}.${ext}
+
+# ---------------------------------------------------------------------------
+# Linux.
+#
+# These targets cannot be produced from a Windows host directly: electron-
+# builder needs dpkg/fakeroot/appimagetool, and the native sqlite3 binding
+# would be the Windows .node file. Build them inside the official container
+# instead — `build_installer.bat linux` does this for you.
+# ---------------------------------------------------------------------------
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]
+  icon: build/icon.png
+  executableName: streamify
+  category: AudioVideo
+  synopsis: Self-hosted music streaming server and player
+  description: >-
+    Streamify is a self-hosted music streaming server with a desktop player and
+    an installable PWA, so phones and other machines on the same network can
+    stream the same library.
+  # deb refuses to build without a maintainer, and package.json has no author.
+  maintainer: witchyy <98178721+Lwitchy@users.noreply.github.com>
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  desktop:
+    entry:
+      Name: Streamify
+      Comment: Self-hosted music streaming
+      Categories: AudioVideo;Audio;Player;Network;
+      StartupWMClass: Streamify
+      Terminal: false
+      Type: Application
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+deb:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  packageCategory: sound
+  priority: optional
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
 
 # Native modules are rebuilt explicitly with `npm run rebuild`; normal server
 # installs do not require electron-builder to be present.

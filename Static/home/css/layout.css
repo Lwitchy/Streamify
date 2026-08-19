@@ -49,15 +49,14 @@
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    min-height: 44px;
+    min-height: 48px;
 }
 
 .morph-text {
-    font-family: 'Outfit', sans-serif;
-    font-size: 26px;
-    font-weight: 900;
-    /* Boldest weight for premium feel */
-    letter-spacing: -1px;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 30px;
+    font-weight: 760;
+    letter-spacing: -0.055em;
 
     /* Start state: invisible + blurred + slightly smaller */
     opacity: 0;
@@ -95,7 +94,7 @@
         opacity: 1;
         filter: blur(0px);
         transform: scale(1);
-        letter-spacing: -0.5px;
+        letter-spacing: -1.5px;
     }
 }
 
@@ -242,7 +241,7 @@ body {
 }
 
 body.player-section-active .top-bar-logo {
-    width: 140px;
+    width: 150px;
     opacity: 1;
     margin-right: 24px;
 }
@@ -259,7 +258,7 @@ body.player-section-active .top-bar-logo {
 
 .nav-arrows i:hover {
     background: rgba(255, 255, 255, 0.25);
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+    box-shadow: none;
 }
 
 .icon-wrapper {
@@ -343,6 +342,7 @@ body.player-section-active .top-bar-logo {
     height: 28px;
     border-radius: 50%;
     background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+    color: var(--on-gradient);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -357,6 +357,69 @@ body.player-section-active .top-bar-logo {
 .content-container {
     padding: 32px;
     animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Cold-start paint gate. The app's existing animations are paused at frame
+   zero while data, first-viewport covers, fonts, and retained player layers are
+   prepared behind a static surface. Removing .app-booting resumes every
+   original duration/easing from the beginning. */
+body.app-booting .content-container,
+body.app-booting .sidebar-nav li,
+body.app-booting .sidebar .morph-text,
+body.app-booting .top-bar .morph-text,
+body.app-booting .fade-in-animate {
+    animation-play-state: paused !important;
+}
+
+.app-boot-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    background-color: var(--bg-color);
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(var(--gradient-1-rgb), var(--theme-gradient-alpha-1)), transparent 28%),
+        radial-gradient(circle at 85% 30%, rgba(var(--gradient-2-rgb), var(--theme-gradient-alpha-2)), transparent 28%);
+    opacity: 1;
+    transition: opacity 1s cubic-bezier(0.25, 0.8, 0.25, 1);
+    pointer-events: all;
+}
+
+.app-boot-screen-exit {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.app-boot-intro-wrapper {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    opacity: 1;
+    transform: translate(-50%, -50%);
+    transition:
+        opacity 1s cubic-bezier(0.25, 0.8, 0.25, 1),
+        filter 1s cubic-bezier(0.25, 0.8, 0.25, 1),
+        transform 1s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.app-boot-intro-text {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 68px;
+    font-weight: 760;
+    letter-spacing: -0.055em;
+    margin: 0;
+    background: linear-gradient(90deg,
+        var(--gradient-1), var(--gradient-2), var(--gradient-3), var(--gradient-1));
+    background-size: 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: gradient-anim 5s linear infinite;
+}
+
+.app-boot-screen-exit .app-boot-intro-wrapper {
+    opacity: 0;
+    filter: blur(20px);
+    transform: translate(-50%, -60%) scale(1.1);
 }
 
 /* Utility class to force re-trigger animation when sections become visible */
@@ -513,7 +576,7 @@ h2,
 }
 
 .notif-item.unread {
-    background: rgba(65, 105, 225, 0.08);
+    background: rgba(var(--gradient-1-rgb), 0.08);
 }
 
 .notif-item-avatar {

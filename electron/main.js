@@ -79,6 +79,21 @@ function writeLog(level, ...parts) {
     console.log(line);
 }
 
+/* Chromium can silently fall back to software rendering when a graphics driver
+ * is blocklisted. Electron documents GPU status as valid only after this event,
+ * so record it once for diagnosing first-animation jank without changing any
+ * acceleration flags or user settings. */
+app.once('gpu-info-update', () => {
+    try {
+        writeLog('INFO', 'GPU feature status:', app.getGPUFeatureStatus());
+    } catch (error) {
+        writeLog('WARN', 'Could not read GPU feature status:', error);
+    }
+    app.getGPUInfo('basic')
+        .then(info => writeLog('INFO', 'GPU basic info:', info))
+        .catch(error => writeLog('WARN', 'Could not read GPU basic info:', error));
+});
+
 process.on('uncaughtException', (err) => {
     writeLog('FATAL', 'Uncaught exception:', err);
 });
@@ -127,6 +142,7 @@ let tray = null;
 let serverInfo = null;
 let serverModule = null;
 let serverOrigin = null;
+let updater = null;
 let isQuitting = false;
 let shutdownPromise = null;
 let shutdownComplete = false;
@@ -146,6 +162,14 @@ function isTrustedServerUrl(value) {
         parsed.username === '' &&
         parsed.password === ''
     );
+}
+
+function isTrustedServerCertificateUrl(value) {
+    const parsed = parseUrl(value);
+    if (!parsed) return false;
+    // WebSocket TLS uses the same certificate and endpoint as the HTTPS app.
+    if (parsed.protocol === 'wss:') parsed.protocol = 'https:';
+    return isTrustedServerUrl(parsed.href);
 }
 
 function isConnectPageUrl(value) {
@@ -279,6 +303,23 @@ function shutdownServer() {
 
     const moduleToStop = serverModule;
     shutdownPromise = (async () => {
+        // Drop the Discord card before anything else. It is synchronous and
+        // instant, and a card left up after the app is gone is the one failure
+        // users actually notice. Runs even when the server never started.
+        try {
+            if (discordPresence) discordPresence.destroy();
+        } catch (err) {
+            writeLog('WARN', 'Discord presence teardown failed:', err);
+        }
+
+        // Stop the update timers before the database closes: a scheduled check
+        // would otherwise try to read the Owner switch out of a closed handle.
+        try {
+            if (updater) updater.destroy();
+        } catch (err) {
+            writeLog('WARN', 'Updater teardown failed:', err);
+        }
+
         if (!moduleToStop) {
             writeLog('INFO', 'No server process needed shutdown.');
             return;
@@ -316,6 +357,24 @@ function continueQuitAfterShutdown() {
 function requestQuit() {
     isQuitting = true;
     app.quit();
+}
+
+/**
+ * Graceful shutdown for the update path.
+ *
+ * quitAndInstall() spawns the installer and then calls app.quit() itself, so
+ * the database and the listening socket must already be released by the time
+ * it runs. Marking the shutdown complete also lets that app.quit() through the
+ * before-quit guard below instead of being deferred a second time.
+ */
+async function shutdownForUpdate() {
+    isQuitting = true;
+    quitContinuationScheduled = true;
+    try {
+        await shutdownServer();
+    } finally {
+        shutdownComplete = true;
+    }
 }
 
 function handleWindowsSessionEnd(win) {
@@ -694,7 +753,6 @@ function getTrustedIpcSender(event) {
             connectWindow &&
             !connectWindow.isDestroyed() &&
             event.sender === connectWindow.webContents &&
-            frame.origin === 'null' &&
             isConnectPageUrl(frame.url)
         ) {
             return 'connect';
@@ -766,6 +824,128 @@ ipcMain.handle('streamify:getConnectionInfo', async (event) => {
 ipcMain.handle('streamify:openExternal', async (event, url) => {
     assertIpcSender(event, ['main'], 'openExternal');
     return openExternalSafely(url, 'renderer IPC');
+});
+
+/* ------------------------------------------------------------------ *
+ * Discord Rich Presence
+ * ------------------------------------------------------------------ *
+ * The renderer owns playback state, so it drives presence; the main process
+ * owns the pipe, because Discord's IPC needs Node and the renderer is
+ * sandboxed. These three channels are the whole surface.
+ *
+ * Everything is opt-in: presence stays disabled until the renderer enables it
+ * from the settings pane, and disabling clears the card immediately.
+ */
+
+/** Discord application id. Public by design - it is not a secret. */
+const DISCORD_CLIENT_ID = '1538257130539323513';
+
+let discordPresence = null;
+
+function getDiscordPresence() {
+    if (!discordPresence) {
+        const { DiscordPresence } = require(path.join(__dirname, 'discord-presence.js'));
+        discordPresence = new DiscordPresence({
+            clientId: DISCORD_CLIENT_ID,
+            log: (level, ...parts) => writeLog(level, ...parts),
+        });
+    }
+    return discordPresence;
+}
+
+ipcMain.handle('streamify:discord:setActivity', async (event, activity) => {
+    assertIpcSender(event, ['main'], 'discord:setActivity');
+
+    const presence = getDiscordPresence();
+    if (activity === null || activity === undefined) {
+        presence.setActivity(null);
+    } else {
+        presence.enable();
+        presence.setActivity(activity);
+    }
+    return presence.status();
+});
+
+ipcMain.handle('streamify:discord:setEnabled', async (event, enabled) => {
+    assertIpcSender(event, ['main'], 'discord:setEnabled');
+
+    const presence = getDiscordPresence();
+    if (enabled === true) presence.enable();
+    else presence.disable();
+    return presence.status();
+});
+
+ipcMain.handle('streamify:discord:getStatus', async (event) => {
+    assertIpcSender(event, ['main'], 'discord:getStatus');
+    return getDiscordPresence().status();
+});
+
+/* ------------------------------------------------------------------ *
+ * Auto-update
+ * ------------------------------------------------------------------ *
+ * electron/updater.js owns the electron-updater lifecycle. This section is
+ * only the seam: it creates the updater once the server (and therefore the
+ * database holding the Owner switch) is up, and forwards status to whichever
+ * main window is currently loaded.
+ *
+ * Note what is NOT exposed: there is no channel that writes the switch. It is
+ * server-wide Owner state, changed through POST /api/settings/updates, which
+ * is role-checked. Anything reachable here is either a read or a local action
+ * on this machine.
+ */
+
+function broadcastUpdateState(status) {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!isTrustedServerUrl(mainWindow.webContents.getURL())) return;
+    mainWindow.webContents.send('streamify:updates:state', status);
+}
+
+/**
+ * Reads a system_config row directly. The server runs in this very process, so
+ * an HTTP round trip to ourselves would only add a session we do not have.
+ */
+async function readServerSetting(key) {
+    const database = require(path.join(REPO_ROOT, 'Server', 'database.js'));
+    if (!database || typeof database.getSystemConfigValue !== 'function') return null;
+    return database.getSystemConfigValue(key);
+}
+
+function getUpdater() {
+    if (updater) return updater;
+
+    const { createUpdater } = require(path.join(__dirname, 'updater.js'));
+    updater = createUpdater({
+        log: (level, ...parts) => writeLog(level, ...parts),
+        broadcast: broadcastUpdateState,
+        beforeInstall: shutdownForUpdate,
+        readSetting: readServerSetting,
+    });
+    return updater;
+}
+
+ipcMain.handle('streamify:updates:getStatus', async (event) => {
+    assertIpcSender(event, ['main'], 'updates:getStatus');
+    return getUpdater().getStatus();
+});
+
+ipcMain.handle('streamify:updates:check', async (event) => {
+    assertIpcSender(event, ['main'], 'updates:check');
+    return getUpdater().check({ manual: true });
+});
+
+ipcMain.handle('streamify:updates:download', async (event) => {
+    assertIpcSender(event, ['main'], 'updates:download');
+    return getUpdater().download();
+});
+
+ipcMain.handle('streamify:updates:install', async (event) => {
+    assertIpcSender(event, ['main'], 'updates:install');
+    return getUpdater().installNow();
+});
+
+ipcMain.handle('streamify:updates:refreshPolicy', async (event) => {
+    assertIpcSender(event, ['main'], 'updates:refreshPolicy');
+    return getUpdater().refreshPolicy();
 });
 
 /**
@@ -872,15 +1052,15 @@ app.on('child-process-gone', (_event, details) => {
  *
  * `npm run gen-cert` produces a self-signed cert so that phones on the LAN get
  * a secure context. Electron would otherwise refuse to load it. We scope the
- * exception as tightly as possible: only our own loopback origin on our own
- * port. Any other certificate error is still rejected.
+ * exception as tightly as possible: only our own loopback HTTPS/WSS endpoint
+ * on our own port. Any other certificate error is still rejected.
  */
 app.on('certificate-error', (event, webContents, url, error, _certificate, callback) => {
     if (
         mainWindow &&
         !mainWindow.isDestroyed() &&
         webContents === mainWindow.webContents &&
-        isTrustedServerUrl(url)
+        isTrustedServerCertificateUrl(url)
     ) {
         event.preventDefault();
         writeLog('WARN', `Accepted local server certificate (${error}).`);
@@ -909,6 +1089,16 @@ app.whenReady().then(async () => {
     } catch (err) {
         writeLog('ERROR', 'Window/tray creation failed:', err);
         await showErrorWindowSafely(err);
+    }
+
+    // After the window, so the first check never competes with the first
+    // paint, and after the server, so the Owner switch is readable.
+    try {
+        if (!isQuitting) await getUpdater().start();
+    } catch (err) {
+        // An updater that cannot start is an inconvenience, not a failure:
+        // the app itself is already running fine.
+        writeLog('ERROR', 'Auto-update could not start:', err);
     }
 
     app.on('activate', () => {

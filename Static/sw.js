@@ -1,6 +1,6 @@
 // Bump this whenever cached app-shell assets change. Old shell caches are
 // removed during activation so clients cannot retain stale CSS or JavaScript.
-const CACHE_NAME = 'streamify-app-shell-v53';
+const CACHE_NAME = 'streamify-app-shell-v92';
 const MEDIA_CACHE_PREFIX = 'streamify-media-cache-';
 const OFFLINE_STATE_CACHE_NAME = 'streamify-offline-state-v1';
 const ACTIVE_USER_STATE_URL = '/__streamify_offline_state__/active-user';
@@ -11,16 +11,17 @@ const APP_SHELL = [
   '/favicon.ico',
   '/Static/icon-192.png',
   '/Static/icon-512.png',
-  '/Static/home/css/base.css?v=4.19',
-  '/Static/home/css/layout.css?v=4.9',
-  '/Static/home/css/components.css?v=4.8',
-  '/Static/home/css/upload.css?v=4.8',
-  '/Static/home/css/player.css?v=4.16',
-  '/Static/home/css/modals.css?v=4.22',
-  '/Static/home/css/library.css?v=4.21',
-  '/Static/home/css/profile.css?v=4.8',
+  '/Static/home/css/base.css?v=4.22',
+  '/Static/home/css/layout.css?v=4.45',
+  '/Static/home/css/components.css?v=4.10',
+  '/Static/home/css/upload.css?v=4.10',
+  '/Static/home/css/player.css?v=4.42',
+  '/Static/home/css/modals.css?v=4.52',
+  '/Static/home/css/library.css?v=4.38',
+  '/Static/home/css/downloads.css?v=4.34',
+  '/Static/home/css/profile.css?v=4.10',
   '/Static/home/css/toasts.css?v=4.8',
-  '/Static/home/css/home_mobile.css?v=4.22',
+'/Static/home/css/home_mobile.css?v=4.26',
   '/Static/vendor/boxicons/boxicons.min.css?v=4.8',
   '/Static/vendor/boxicons/fonts/boxicons.eot',
   '/Static/vendor/boxicons/fonts/boxicons.woff2',
@@ -30,13 +31,20 @@ const APP_SHELL = [
   '/Static/vendor/fonts/outfit.css?v=4.8',
   '/Static/vendor/fonts/outfit-latin.woff2',
   '/Static/vendor/fonts/outfit-latin-ext.woff2',
+  '/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44',
+  '/Static/vendor/fonts/PlusJakartaSans-VariableFont_wght.ttf',
+  '/Static/home/js/experiments.js?v=4.35',
+'/Static/home/js/theme.js?v=4.36',
   '/Static/vendor/cropperjs/cropper.min.css?v=4.8',
-  '/Static/home/js/config.js?v=4.20',
+  '/Static/home/js/config.js?v=4.22',
   '/Static/vendor/cropperjs/cropper.min.js?v=4.8',
-  '/Static/home/js/offline.js?v=4.20',
-  '/Static/home/js/player.js?v=4.23',
-  '/Static/home/js/api_v2.js?v=4.25',
-  '/Static/home/js/ui.js?v=4.23'
+  '/Static/home/js/offline.js?v=4.38',
+  '/Static/home/js/discord.js?v=4.33',
+  '/Static/home/js/updates.js?v=4.46',
+  '/Static/home/js/player.js?v=4.43',
+  '/Static/home/js/api_v2.js?v=4.42',
+  '/Static/home/js/downloads.js?v=4.43',
+  '/Static/home/js/ui.js?v=4.50'
 ];
 
 let activeUserKey;

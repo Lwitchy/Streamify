@@ -10,6 +10,76 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+    let resolveFirstVisualPaint;
+    let firstVisualPaintResolved = false;
+    const firstVisualPaint = new Promise(resolve => {
+        resolveFirstVisualPaint = resolve;
+    });
+    window.streamifyAfterFirstPaint = callback => firstVisualPaint.then(() => callback());
+    window.streamifyAfterStartupMotion = callback => firstVisualPaint.then(() => new Promise(resolve => {
+        setTimeout(resolve, 950);
+    })).then(() => callback());
+
+    const scheduleIdle = (callback, timeout = 4000) => {
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(callback, { timeout });
+        } else {
+            setTimeout(callback, 0);
+        }
+    };
+
+    const nextPaint = () => new Promise(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+
+    function finishInitialVisualPaint() {
+        if (firstVisualPaintResolved) return;
+        firstVisualPaintResolved = true;
+
+        requestAnimationFrame(() => {
+            document.body.classList.remove('app-booting');
+            const bootScreen = document.getElementById('app-boot-screen');
+            if (bootScreen) bootScreen.classList.add('app-boot-screen-exit');
+
+            // The next rAF runs after Chromium has had an opportunity to paint
+            // the populated library and start the unchanged entrance animation.
+            requestAnimationFrame(() => resolveFirstVisualPaint());
+            setTimeout(() => bootScreen?.remove(), 1100);
+        });
+    }
+    setTimeout(() => {
+        if (!firstVisualPaintResolved) {
+            console.warn('[INITIAL PAINT] Startup gate timed out; revealing the available shell.');
+            finishInitialVisualPaint();
+        }
+    }, 15000);
+
+    /* Chromium initializes some filter shaders and compositor paths lazily.
+       Warm a tiny isolated layer while the app is idle so the cost is not paid
+       on the user's first player/lyrics click. All real animation CSS remains
+       unchanged. */
+    const warmPlayerPipeline = () => {
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const warmup = document.createElement('div');
+        warmup.className = 'player-pipeline-warmup';
+        warmup.textContent = 'Aa';
+        document.body.appendChild(warmup);
+
+        const animation = warmup.animate([
+            { transform: 'translateZ(0) scale(0.94)', opacity: 0.005, filter: 'blur(8px) brightness(0.6) saturate(1.5)' },
+            { transform: 'translate3d(0, -2px, 0) scale(1.04)', opacity: 0.012, filter: 'blur(0px) brightness(0.6) saturate(1.5)' }
+        ], {
+            duration: 180,
+            easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+            fill: 'both'
+        });
+        const cleanup = () => warmup.remove();
+        animation.finished.then(cleanup, cleanup);
+        setTimeout(cleanup, 600);
+    };
+
+    window.streamifyAfterStartupMotion(() => scheduleIdle(warmPlayerPipeline, 2500));
+
     /* ===================================================
      * PWA Service Worker Registration
      * ===================================================
@@ -18,11 +88,24 @@ document.addEventListener('DOMContentLoaded', () => {
      * A phone on a plain-HTTP LAN address cannot register one, so we skip it
      * and tell the user what that costs instead of throwing an error into the
      * console on every page load.
-     */
+    */
     if (window.StreamifyEnv && window.StreamifyEnv.canUseServiceWorker) {
-        navigator.serviceWorker.register('/sw.js?v=2.8')
-            .then(reg => console.log('[SW] Registered successfully:', reg.scope))
-            .catch(err => console.error('[SW] Registration failed:', err));
+        const registerServiceWorker = () => {
+            navigator.serviceWorker.register('/sw.js?v=4.45')
+                .then(reg => console.log('[SW] Registered successfully:', reg.scope))
+                .catch(err => console.error('[SW] Registration failed:', err));
+        };
+        const scheduleRegistration = () => scheduleIdle(registerServiceWorker, 4000);
+
+        // A cache install can fetch the entire app shell. Let the first library
+        // paint win that bandwidth and CPU time; an existing worker continues
+        // controlling the page while registration waits for an idle period.
+        const pageLoaded = document.readyState === 'complete'
+            ? Promise.resolve()
+            : new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
+        Promise.all([pageLoaded, firstVisualPaint])
+            .then(() => new Promise(resolve => setTimeout(resolve, 1200)))
+            .then(scheduleRegistration);
     } else if (window.StreamifyEnv && !window.StreamifyEnv.isSecure) {
         console.info(
             '[SW] Skipped: this page is not a secure context. ' +
@@ -44,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('You are offline. Switching to Offline Library.', 'warning');
 
             // Disable other links
-            ['upload-link', 'about-link'].forEach(id => {
+            ['upload-link'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
                     el.style.pointerEvents = 'none';
@@ -60,11 +143,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Disable manage library button since we can't edit songs offline
-            const manageBtn = document.getElementById('manage-library-btn');
-            if (manageBtn) {
-                manageBtn.style.pointerEvents = 'none';
-                manageBtn.style.opacity = '0.5';
-            }
+            ['manage-library-btn'].forEach(id => {
+                const button = document.getElementById(id);
+                if (!button) return;
+                button.disabled = true;
+                button.style.pointerEvents = 'none';
+                button.style.opacity = '0.5';
+            });
             if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode && typeof clearLibrarySelection === 'function') {
                 clearLibrarySelection();
             }
@@ -98,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('You are back online.', 'success');
 
             // Re-enable links
-            ['upload-link', 'about-link'].forEach(id => {
+            ['upload-link'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
                     el.style.pointerEvents = 'auto';
@@ -114,11 +199,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Re-enable manage library button
-            const manageBtn = document.getElementById('manage-library-btn');
-            if (manageBtn) {
-                manageBtn.style.pointerEvents = 'auto';
-                manageBtn.style.opacity = '1';
-            }
+            ['manage-library-btn'].forEach(id => {
+                const button = document.getElementById(id);
+                if (!button) return;
+                button.disabled = false;
+                button.style.pointerEvents = 'auto';
+                button.style.opacity = '1';
+            });
 
             // Trigger fetch refresh
             if (typeof fetchLibrary === 'function') fetchLibrary();
@@ -240,7 +327,9 @@ document.addEventListener('DOMContentLoaded', () => {
         mode: 'local_only',
         acoustidConfigured: false,
         acoustidKeySource: null,
+        acoustidStoredKeyConfigured: false,
         fpcalcAvailable: false,
+        fpcalcSource: null,
         acoustidStatusKnown: false,
         fpcalcStatusKnown: false,
         apiSupport: 'unknown',
@@ -274,6 +363,14 @@ document.addEventListener('DOMContentLoaded', () => {
         notice.classList.toggle('hidden', !message);
     }
 
+    function setMetadataFormStatus(scope, message, type = '') {
+        const status = scope && scope.querySelector('[data-metadata-form-status]');
+        if (!status) return;
+        status.textContent = message || '';
+        status.dataset.status = type;
+        status.classList.toggle('hidden', !message);
+    }
+
     function renderMetadataScope(scope, forceMode = false) {
         if (!scope) return;
 
@@ -285,14 +382,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const mode = selectedMetadataMode(scope);
         const isAcoustic = mode === 'acoustic_with_text_fallback';
+        const isSettingsScope = scope.dataset.metadataScope === 'settings';
         const busy = scope.dataset.metadataBusy === 'true';
         const controlsUnavailable = metadataSettingsState.loading || busy || metadataSettingsState.apiSupport === 'missing';
         const keyInput = scope.querySelector('[data-acoustid-key]');
         const keyStatus = scope.querySelector('[data-acoustid-status]');
         const fpcalcStatus = scope.querySelector('[data-fpcalc-status]');
         const acoustidFields = scope.querySelector('[data-acoustid-fields]');
+        const keySourceNote = scope.querySelector('[data-acoustid-source-note]');
         const clearKeyButton = scope.querySelector('[data-clear-acoustid-key]');
         const saveButton = scope.querySelector('[data-save-metadata]');
+        const openReviewButton = scope.querySelector('#open-metadata-review-btn');
+        const unsavedBadge = scope.querySelector('[data-metadata-unsaved]');
+        const isEnvironmentKey = metadataSettingsState.acoustidKeySource === 'environment';
 
         scope.querySelectorAll('.metadata-mode-option').forEach(option => {
             const radio = option.querySelector('input[type="radio"]');
@@ -302,30 +404,47 @@ document.addEventListener('DOMContentLoaded', () => {
             input.disabled = controlsUnavailable;
         });
 
-        if (acoustidFields) acoustidFields.classList.toggle('hidden', !isAcoustic);
+        if (acoustidFields) acoustidFields.classList.toggle('hidden', !isSettingsScope && !isAcoustic);
+        if (keySourceNote) {
+            keySourceNote.textContent = isEnvironmentKey
+                ? (metadataSettingsState.acoustidStoredKeyConfigured
+                    ? 'The active key is managed by the server environment. A saved fallback key is also stored and can be removed below.'
+                    : 'The active key is managed by the ACOUSTID_CLIENT_KEY environment variable. Change it on the server.')
+                : (metadataSettingsState.acoustidConfigured
+                    ? 'A key is saved. Enter a new key only if you want to replace it.'
+                    : 'Add an AcoustID application key to make fingerprint matching available.');
+        }
         if (keyInput) {
-            keyInput.disabled = controlsUnavailable;
+            keyInput.disabled = controlsUnavailable || isEnvironmentKey;
             keyInput.required = isAcoustic && !metadataSettingsState.acoustidConfigured && metadataSettingsState.apiSupport !== 'missing';
-            keyInput.placeholder = metadataSettingsState.acoustidConfigured
-                ? 'Configured key is masked'
+            keyInput.placeholder = isEnvironmentKey
+                ? 'Managed by server environment'
+                : metadataSettingsState.acoustidConfigured
+                ? 'Enter a replacement key'
                 : 'Enter application client key';
         }
         if (clearKeyButton) {
             clearKeyButton.classList.toggle(
                 'hidden',
-                !metadataSettingsState.acoustidConfigured ||
-                metadataSettingsState.acoustidKeySource === 'environment' ||
+                !metadataSettingsState.acoustidStoredKeyConfigured ||
                 metadataSettingsState.apiSupport === 'missing' ||
                 metadataSettingsState.clearKeyUnsupported
             );
             clearKeyButton.disabled = metadataSettingsState.loading || busy;
+            clearKeyButton.textContent = isEnvironmentKey ? 'Remove saved fallback key' : 'Remove key';
         }
         if (saveButton) {
             saveButton.disabled = controlsUnavailable;
             saveButton.innerHTML = busy
                 ? "<i class='bx bx-loader-alt bx-spin'></i> Saving..."
-                : 'Save Metadata Settings';
+                : 'Save changes';
         }
+        if (openReviewButton) {
+            const hasUnsavedChanges = scope.dataset.metadataDirty === 'true';
+            openReviewButton.disabled = controlsUnavailable || hasUnsavedChanges;
+            openReviewButton.title = hasUnsavedChanges ? 'Save your metadata settings before opening a review' : '';
+        }
+        if (unsavedBadge) unsavedBadge.classList.toggle('hidden', scope.dataset.metadataDirty !== 'true');
 
         if (keyStatus && fpcalcStatus) {
             if (metadataSettingsState.loading) {
@@ -337,15 +456,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const statusesReadable = metadataSettingsState.apiSupport === 'available' && !metadataSettingsState.loadFailed;
                 if (statusesReadable && metadataSettingsState.acoustidStatusKnown) {
                     keyStatus.textContent = metadataSettingsState.acoustidConfigured
-                        ? (metadataSettingsState.acoustidKeySource === 'environment' ? 'Configured by environment' : 'Configured')
-                        : 'Not configured';
+                        ? (metadataSettingsState.acoustidKeySource === 'environment' ? 'Managed by server' : 'Key saved')
+                        : 'No key saved';
                     keyStatus.dataset.status = metadataSettingsState.acoustidConfigured ? 'configured' : 'missing';
                 } else {
                     keyStatus.textContent = 'Status unavailable';
                     keyStatus.dataset.status = 'unknown';
                 }
                 if (statusesReadable && metadataSettingsState.fpcalcStatusKnown) {
-                    fpcalcStatus.textContent = metadataSettingsState.fpcalcAvailable ? 'Available' : 'Unavailable';
+                    const sourceLabels = {
+                        bundled: 'Bundled',
+                        'bundled-x64-emulation': 'Bundled (compatible)',
+                        environment: 'Server configured',
+                        path: 'Found on server'
+                    };
+                    fpcalcStatus.textContent = metadataSettingsState.fpcalcAvailable
+                        ? (sourceLabels[metadataSettingsState.fpcalcSource] || 'Ready')
+                        : 'Unavailable';
                     fpcalcStatus.dataset.status = metadataSettingsState.fpcalcAvailable ? 'available' : 'unavailable';
                 } else {
                     fpcalcStatus.textContent = 'Status unavailable';
@@ -355,9 +482,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (metadataSettingsState.apiSupport === 'missing') {
-            setMetadataNotice(scope, 'This server does not expose metadata settings. This step will be skipped, and basic setup can continue without changing metadata behavior.');
+            setMetadataNotice(scope, isSettingsScope
+                ? 'Metadata settings are unavailable on this server.'
+                : 'This server does not expose metadata settings. Setup will continue with local analysis.');
         } else if (metadataSettingsState.loadFailed) {
-            setMetadataNotice(scope, 'Current metadata settings could not be loaded. Local-only setup can still continue, or you can retry by saving a choice.');
+            setMetadataNotice(scope, isSettingsScope
+                ? 'Current metadata settings could not be loaded. Choose a method and save to try again.'
+                : 'Current metadata settings could not be loaded. Setup can still continue with local analysis.');
         } else if (metadataSettingsState.clearKeyUnsupported) {
             setMetadataNotice(scope, 'This server does not expose AcoustID key removal. Lookup modes can still be saved.');
         } else {
@@ -386,7 +517,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     metadataSettingsState.mode = 'local_only';
                     metadataSettingsState.acoustidConfigured = false;
                     metadataSettingsState.acoustidKeySource = null;
+                    metadataSettingsState.acoustidStoredKeyConfigured = false;
                     metadataSettingsState.fpcalcAvailable = false;
+                    metadataSettingsState.fpcalcSource = null;
                     metadataSettingsState.acoustidStatusKnown = false;
                     metadataSettingsState.fpcalcStatusKnown = false;
                     clearMetadataKeyInputs();
@@ -399,7 +532,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 metadataSettingsState.mode = normalizeMetadataMode(data.mode);
                 metadataSettingsState.acoustidConfigured = data.acoustid_configured === true;
                 metadataSettingsState.acoustidKeySource = data.acoustid_key_source || null;
+                metadataSettingsState.acoustidStoredKeyConfigured = typeof data.acoustid_stored_key_configured === 'boolean'
+                    ? data.acoustid_stored_key_configured
+                    : data.acoustid_key_source === 'stored';
                 metadataSettingsState.fpcalcAvailable = data.fpcalc_available === true;
+                metadataSettingsState.fpcalcSource = data.fpcalc_source || null;
                 metadataSettingsState.acoustidStatusKnown = typeof data.acoustid_configured === 'boolean';
                 metadataSettingsState.fpcalcStatusKnown = typeof data.fpcalc_available === 'boolean';
                 return true;
@@ -433,17 +570,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const mode = selectedMetadataMode(scope);
         const keyInput = scope.querySelector('[data-acoustid-key]');
         if (mode === 'acoustic_with_text_fallback' && !metadataSettingsState.acoustidConfigured && (!keyInput || !keyInput.value.trim())) {
+            setMetadataFormStatus(scope, 'Add an AcoustID application key before selecting audio fingerprint matching.', 'error');
             showToast('Enter an AcoustID application client key to use acoustic lookup.', 'warning');
             if (keyInput) keyInput.focus();
             return false;
         }
 
         const payload = { mode };
-        if (mode === 'acoustic_with_text_fallback' && keyInput && keyInput.value.trim()) {
+        if (keyInput && keyInput.value.trim()) {
             payload.acoustid_client_key = keyInput.value.trim();
         }
 
         scope.dataset.metadataBusy = 'true';
+        setMetadataFormStatus(scope, '', '');
         renderMetadataScope(scope);
 
         try {
@@ -460,7 +599,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 metadataSettingsState.mode = 'local_only';
                 metadataSettingsState.acoustidConfigured = false;
                 metadataSettingsState.acoustidKeySource = null;
+                metadataSettingsState.acoustidStoredKeyConfigured = false;
                 metadataSettingsState.fpcalcAvailable = false;
+                metadataSettingsState.fpcalcSource = null;
                 metadataSettingsState.acoustidStatusKnown = false;
                 metadataSettingsState.fpcalcStatusKnown = false;
                 clearMetadataKeyInputs();
@@ -484,13 +625,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             metadataSettingsState.acoustidKeySource = data.acoustid_key_source ||
                 (metadataSettingsState.acoustidConfigured ? 'stored' : null);
+            if (typeof data.acoustid_stored_key_configured === 'boolean') {
+                metadataSettingsState.acoustidStoredKeyConfigured = data.acoustid_stored_key_configured;
+            } else if (payload.acoustid_client_key) {
+                metadataSettingsState.acoustidStoredKeyConfigured = true;
+            }
             if (typeof data.fpcalc_available === 'boolean') {
                 metadataSettingsState.fpcalcAvailable = data.fpcalc_available;
                 metadataSettingsState.fpcalcStatusKnown = true;
             }
+            metadataSettingsState.fpcalcSource = data.fpcalc_source || null;
             clearMetadataKeyInputs();
             metadataScopes().forEach(item => delete item.dataset.metadataDirty);
             renderMetadataScopes(true);
+            setMetadataFormStatus(scope, 'Metadata settings saved.', 'success');
             showToast('Metadata settings saved.', 'success');
             return true;
         } catch (error) {
@@ -499,6 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('Local-only setup will continue; the metadata preference could not be saved.', 'warning');
                 return true;
             }
+            setMetadataFormStatus(scope, error.message || 'Could not save metadata settings.', 'error');
             showToast(error.message || 'Could not save metadata settings.', 'error');
             return false;
         } finally {
@@ -509,8 +658,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function clearAcoustidKey(scope) {
         if (!scope || metadataSettingsState.apiSupport === 'missing') return;
+        if (!window.confirm('Remove the saved AcoustID key? Acoustic matching will switch to text lookup if no server-managed key is available.')) return;
 
         scope.dataset.metadataBusy = 'true';
+        setMetadataFormStatus(scope, '', '');
         renderMetadataScope(scope);
         try {
             const response = await fetch(metadataEndpoint() + '/acoustid-key', {
@@ -532,20 +683,29 @@ document.addEventListener('DOMContentLoaded', () => {
             metadataSettingsState.apiSupport = 'available';
             metadataSettingsState.loadFailed = false;
             metadataSettingsState.clearKeyUnsupported = false;
+            metadataSettingsState.mode = normalizeMetadataMode(data.mode);
             metadataSettingsState.acoustidConfigured = data.acoustid_configured === true;
             metadataSettingsState.acoustidKeySource = data.acoustid_key_source || null;
+            metadataSettingsState.acoustidStoredKeyConfigured = data.acoustid_stored_key_configured === true;
             metadataSettingsState.acoustidStatusKnown = true;
             if (typeof data.fpcalc_available === 'boolean') {
                 metadataSettingsState.fpcalcAvailable = data.fpcalc_available;
                 metadataSettingsState.fpcalcStatusKnown = true;
             }
+            metadataSettingsState.fpcalcSource = data.fpcalc_source || null;
             clearMetadataKeyInputs();
-            renderMetadataScopes();
-            showToast(metadataSettingsState.acoustidConfigured
-                ? 'Stored key cleared; the environment-provided key remains active.'
-                : 'AcoustID application client key cleared.', 'success');
+            metadataScopes().forEach(item => delete item.dataset.metadataDirty);
+            renderMetadataScopes(true);
+            const message = metadataSettingsState.acoustidConfigured
+                ? 'Stored key removed; the server-managed key remains active.'
+                : (data.mode_changed
+                    ? 'Key removed. Matching switched to text lookup because acoustic matching requires a key.'
+                    : 'AcoustID application key removed.');
+            setMetadataFormStatus(scope, message, 'success');
+            showToast(message, 'success');
         } catch (error) {
             console.warn('[METADATA SETTINGS] Could not clear key:', error.message);
+            setMetadataFormStatus(scope, error.message || 'Could not remove the AcoustID key.', 'error');
             showToast(error.message || 'Could not clear the AcoustID key.', 'error');
         } finally {
             delete scope.dataset.metadataBusy;
@@ -557,9 +717,19 @@ document.addEventListener('DOMContentLoaded', () => {
         scope.querySelectorAll('input[type="radio"]').forEach(input => {
             input.addEventListener('change', () => {
                 scope.dataset.metadataDirty = 'true';
+                setMetadataFormStatus(scope, '', '');
                 renderMetadataScope(scope);
             });
         });
+
+        const keyInput = scope.querySelector('[data-acoustid-key]');
+        if (keyInput) {
+            keyInput.addEventListener('input', () => {
+                scope.dataset.metadataDirty = 'true';
+                setMetadataFormStatus(scope, '', '');
+                renderMetadataScope(scope);
+            });
+        }
 
         const clearKeyButton = scope.querySelector('[data-clear-acoustid-key]');
         if (clearKeyButton) clearKeyButton.addEventListener('click', () => clearAcoustidKey(scope));
@@ -575,6 +745,300 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderMetadataScopes();
 
+    /* --- Appearance settings -------------------------------------------
+     * Theme state is applied by theme.js in <head> to prevent a flash of the
+     * default palette. This block only keeps the controls in sync with that
+* shared controller. */
+    const themeOptionGrid = document.getElementById('theme-option-grid');
+    const customThemeColor = document.getElementById('custom-theme-color');
+    const customThemeHex = document.getElementById('custom-theme-hex');
+    const overallColorToggle = document.getElementById('overall-color-toggle');
+    const themesExperimentToggle = document.getElementById('experimental-themes-toggle');
+    const themesAppearanceControls = document.getElementById('themes-appearance-controls');
+    const themesDisabledState = document.getElementById('themes-disabled-state');
+
+    const renderThemeOptions = () => {
+        if (!themeOptionGrid || !window.StreamifyTheme) return;
+        const state = window.StreamifyTheme.getState();
+        const options = [
+            ...Object.entries(window.StreamifyTheme.presets),
+            ['custom', { name: 'Custom', accent: state.customColor }]
+        ];
+
+        themeOptionGrid.replaceChildren(...options.map(([value, definition]) => {
+            const label = document.createElement('label');
+            label.className = 'theme-option';
+            label.dataset.themeOption = value;
+
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = 'color-theme';
+            input.value = value;
+
+            const swatch = document.createElement('span');
+            swatch.className = 'theme-swatch';
+            swatch.setAttribute('aria-hidden', 'true');
+            swatch.style.setProperty('--option-color', definition.accent);
+
+            const name = document.createElement('span');
+            name.textContent = definition.name;
+            label.append(input, swatch, name);
+            return label;
+        }));
+    };
+
+renderThemeOptions();
+    const themeInputs = document.querySelectorAll('input[name="color-theme"]');
+
+    const syncExperimentalSettings = () => {
+        const experiments = window.StreamifyExperiments;
+        const enabled = Boolean(experiments && experiments.isEnabled('themes'));
+        if (themesExperimentToggle) {
+            themesExperimentToggle.checked = enabled;
+            themesExperimentToggle.disabled = !experiments;
+        }
+        if (themesAppearanceControls) {
+            themesAppearanceControls.classList.toggle('hidden', !enabled);
+            themesAppearanceControls.setAttribute('aria-hidden', String(!enabled));
+        }
+        if (themesDisabledState) {
+            themesDisabledState.classList.toggle('hidden', enabled);
+            themesDisabledState.setAttribute('aria-hidden', String(enabled));
+        }
+    };
+
+const syncAppearanceSettings = () => {
+        if (!window.StreamifyTheme) return;
+        const state = window.StreamifyTheme.getState();
+        themeInputs.forEach(input => { input.checked = input.value === state.preset; });
+        if (customThemeColor) customThemeColor.value = state.customColor;
+        if (customThemeHex) customThemeHex.value = state.customColor.toUpperCase();
+        if (overallColorToggle) overallColorToggle.checked = state.scope === 'overall';
+        const customSwatch = themeOptionGrid?.querySelector('[data-theme-option="custom"] .theme-swatch');
+        if (customSwatch) customSwatch.style.setProperty('--option-color', state.customColor);
+    };
+
+themeInputs.forEach(input => {
+        input.addEventListener('change', () => {
+            if (!input.checked || !window.StreamifyTheme) return;
+            window.StreamifyTheme.setTheme(input.value, customThemeColor?.value);
+        });
+    });
+
+    if (customThemeColor) {
+        const applyCustomTheme = () => {
+            if (!window.StreamifyTheme) return;
+            window.StreamifyTheme.setTheme('custom', customThemeColor.value);
+        };
+        customThemeColor.addEventListener('input', applyCustomTheme);
+    }
+
+    if (overallColorToggle) {
+        overallColorToggle.addEventListener('change', () => {
+            if (!window.StreamifyTheme) return;
+            const state = window.StreamifyTheme.getState();
+            window.StreamifyTheme.setTheme(state.preset, state.customColor, {
+                scope: overallColorToggle.checked ? 'overall' : 'accent'
+            });
+        });
+    }
+
+    if (themesExperimentToggle) {
+        themesExperimentToggle.addEventListener('change', () => {
+            if (!window.StreamifyExperiments) return;
+            window.StreamifyExperiments.setEnabled('themes', themesExperimentToggle.checked);
+        });
+    }
+
+    window.addEventListener('streamifythemechange', syncAppearanceSettings);
+    window.addEventListener('streamifyexperimentchange', event => {
+        if (!event.detail || event.detail.feature === 'themes') syncExperimentalSettings();
+    });
+    syncExperimentalSettings();
+    syncAppearanceSettings();
+
+    const visibleSettingsTabs = () => Array.from(settingsTabs).filter(tab => !tab.classList.contains('hidden'));
+    const settingsTabList = document.querySelector('.settings-sidebar[role="tablist"]');
+    const updateSettingsTabOrientation = () => {
+        if (settingsTabList) settingsTabList.setAttribute('aria-orientation', window.innerWidth <= 768 ? 'horizontal' : 'vertical');
+    };
+    updateSettingsTabOrientation();
+    window.addEventListener('resize', updateSettingsTabOrientation);
+
+    const activateSettingsTab = target => {
+        const availableTabs = visibleSettingsTabs();
+        const targetTab = availableTabs.find(tab => tab.dataset.tab === target) || availableTabs[0];
+        if (!targetTab) return;
+
+        settingsTabs.forEach(tab => {
+            const active = tab === targetTab;
+            tab.classList.toggle('active', active);
+            tab.setAttribute('aria-selected', String(active));
+            tab.tabIndex = active ? 0 : -1;
+        });
+        settingsPanes.forEach(pane => {
+            const active = pane.id === `pane-${targetTab.dataset.tab}`;
+            pane.classList.toggle('active', active);
+            pane.setAttribute('aria-hidden', String(!active));
+        });
+
+        const isOwnerRole = appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner';
+        if (targetTab.dataset.tab === 'account') {
+            loadSessions();
+            if (appCache.user && appCache.user.role === 'Owner') loadMusicDirectories();
+        } else if (targetTab.dataset.tab === 'metadata' && isOwnerRole) {
+            loadMetadataSettings();
+        } else if (targetTab.dataset.tab === 'downloads' && isOwnerRole) {
+            loadDownloadSettings();
+        } else if (targetTab.dataset.tab === 'discord') {
+            loadDiscordSettings();
+        }
+
+        // The Discord pane polls its connection status while it is open, so a
+        // silent failure (Discord closed) is visible instead of mysterious.
+        setDiscordStatusPolling(targetTab.dataset.tab === 'discord');
+
+        // The updater pushes its own state, so the pane only has to say when
+        // it is worth painting.
+        if (window.StreamifyUpdates && window.StreamifyUpdates.isSupported()) {
+            if (targetTab.dataset.tab === 'updates') window.StreamifyUpdates.load();
+            else window.StreamifyUpdates.unload();
+        }
+    };
+
+    /* --- Downloads settings (Soulseek account) --- */
+
+    const downloadSettingsStatus = (message, kind = '') => {
+        const target = document.getElementById('downloads-settings-status');
+        if (!target) return;
+        target.textContent = message || '';
+        target.className = `downloads-setting-status${kind ? ` is-${kind}` : ''}`;
+    };
+
+    function renderDownloadSettings(data) {
+        const usernameInput = document.getElementById('soulseek-username');
+        const passwordInput = document.getElementById('soulseek-password');
+        const folder = document.getElementById('downloads-settings-folder');
+        const soulseek = (data && data.soulseek) || {};
+
+        if (usernameInput) {
+            usernameInput.value = soulseek.username || '';
+            // Credentials pinned via SLSK_USER/SLSK_PASS win over the database,
+            // so editing them here would have no effect.
+            usernameInput.disabled = Boolean(soulseek.fromEnvironment);
+        }
+        if (passwordInput) {
+            // The stored password is never sent back to the browser.
+            passwordInput.value = '';
+            passwordInput.placeholder = soulseek.configured ? 'Saved - type to replace' : 'Your Soulseek password';
+            passwordInput.disabled = Boolean(soulseek.fromEnvironment);
+        }
+        if (folder) {
+            folder.textContent = data && data.downloadFolder
+                ? data.downloadFolder
+                : 'No music directory configured yet.';
+        }
+
+        if (soulseek.fromEnvironment) {
+            downloadSettingsStatus('Using SLSK_USER / SLSK_PASS from the environment.', 'ok');
+        } else if (soulseek.connected) {
+            downloadSettingsStatus(`Connected as ${soulseek.connectedAs || soulseek.username}.`, 'ok');
+        } else if (soulseek.configured) {
+            downloadSettingsStatus(soulseek.error || 'Saved. Use "Test connection" to verify.', soulseek.error ? 'error' : '');
+        } else {
+            downloadSettingsStatus('Not configured. Add an account to enable music search.', '');
+        }
+    }
+
+    async function loadDownloadSettings() {
+        try {
+            const res = await fetch('/api/settings/downloads');
+            if (!res.ok) return;
+            renderDownloadSettings(await res.json());
+        } catch (err) {
+            console.error('[DOWNLOAD SETTINGS]', err);
+        }
+    }
+
+    const downloadSettingsForm = document.getElementById('downloads-settings-form');
+    if (downloadSettingsForm) {
+        downloadSettingsForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            const username = document.getElementById('soulseek-username')?.value.trim();
+            const password = document.getElementById('soulseek-password')?.value;
+
+            if (!username || !password) {
+                downloadSettingsStatus('Enter both a username and a password.', 'error');
+                return;
+            }
+
+            downloadSettingsStatus('Saving...', 'busy');
+            try {
+                const res = await fetch('/api/settings/downloads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not save.');
+
+                renderDownloadSettings(data);
+                downloadSettingsStatus('Saved. Testing the connection...', 'busy');
+                await testSoulseekConnection();
+                showToast('Soulseek account saved.', 'success');
+            } catch (err) {
+                downloadSettingsStatus(err.message, 'error');
+            }
+        });
+    }
+
+    async function testSoulseekConnection() {
+        downloadSettingsStatus('Connecting to Soulseek...', 'busy');
+        try {
+            const res = await fetch('/api/settings/downloads/test', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Could not reach Soulseek.');
+
+            if (data.ok) downloadSettingsStatus('Connected successfully.', 'ok');
+            else downloadSettingsStatus(data.error || 'Could not connect.', 'error');
+            return data.ok;
+        } catch (err) {
+            downloadSettingsStatus(err.message, 'error');
+            return false;
+        }
+    }
+
+    const soulseekTestBtn = document.getElementById('soulseek-test-btn');
+    if (soulseekTestBtn) {
+        soulseekTestBtn.addEventListener('click', async () => {
+            soulseekTestBtn.disabled = true;
+            try { await testSoulseekConnection(); } finally { soulseekTestBtn.disabled = false; }
+        });
+    }
+
+    const soulseekClearBtn = document.getElementById('soulseek-clear-btn');
+    if (soulseekClearBtn) {
+        soulseekClearBtn.addEventListener('click', async () => {
+            if (!window.confirm('Remove the saved Soulseek account? Music search and Spotify imports will stop working.')) return;
+            try {
+                const res = await fetch('/api/settings/downloads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clear: true })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not remove.');
+                renderDownloadSettings(data);
+                showToast('Soulseek account removed.', 'success');
+            } catch (err) {
+                downloadSettingsStatus(err.message, 'error');
+            }
+        });
+    }
+
+    // Used by the "Add account" shortcut on the Get Music page.
+    window.openDownloadSettings = () => openSettings('downloads');
+
     const applyOwnerOnlyControls = () => {
         const isOwner = appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner';
         const musicDirectoriesSetting = document.getElementById('music-directories-setting');
@@ -583,35 +1047,184 @@ document.addEventListener('DOMContentLoaded', () => {
         const autoFillButton = document.getElementById('ai-autofill-btn');
         const metadataTab = document.getElementById('metadata-settings-tab');
         const metadataPane = document.getElementById('pane-metadata');
+        const downloadsTab = document.getElementById('downloads-settings-tab');
+        const downloadsPane = document.getElementById('pane-downloads');
+        const downloadsNav = document.querySelector('.owner-only-nav');
         if (musicDirectoriesSetting) musicDirectoriesSetting.classList.toggle('hidden', !isOwner);
         if (refreshButton) refreshButton.classList.toggle('hidden', !isOwner);
         if (batchEnrichButton) batchEnrichButton.classList.toggle('hidden', !isOwner);
         if (autoFillButton) autoFillButton.classList.toggle('hidden', !isOwner);
         if (metadataTab) metadataTab.classList.toggle('hidden', !isOwner);
         if (metadataPane) metadataPane.classList.toggle('hidden', !isOwner);
+        if (downloadsTab) downloadsTab.classList.toggle('hidden', !isOwner);
+        if (downloadsPane) downloadsPane.classList.toggle('hidden', !isOwner);
+        // Server routes are Owner-gated too; this only removes the entry point.
+        if (downloadsNav) downloadsNav.classList.toggle('hidden', !isOwner);
 
         if (!isOwner && metadataPane && metadataPane.classList.contains('active')) {
-            settingsTabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === 'profile'));
-            settingsPanes.forEach(pane => pane.classList.toggle('active', pane.id === 'pane-profile'));
+            activateSettingsTab('profile');
         }
+        if (!isOwner && downloadsPane && downloadsPane.classList.contains('active')) {
+            activateSettingsTab('profile');
+        }
+
+        // The public-URL field configures the server itself, so it stays Owner
+        // only even though the rest of the Discord pane is per-device.
+        const discordPublicUrlSetting = document.getElementById('discord-public-url-setting');
+        if (discordPublicUrlSetting) discordPublicUrlSetting.classList.toggle('hidden', !isOwner);
+
+        // Auto-update is server-wide: everyone can read the status and run a
+        // manual check, but only the Owner sees the switch.
+        const autoUpdateSetting = document.getElementById('auto-update-setting');
+        if (autoUpdateSetting) autoUpdateSetting.classList.toggle('hidden', !isOwner);
     };
 
-    const openSettings = async () => {
+    /* --- Discord Rich Presence settings ---------------------------------
+     * Gated on the desktop app rather than on a role: Discord's RPC runs over
+     * a local socket, so the whole pane is meaningless in a browser or on a
+     * phone. The toggles are per-device (localStorage), because presence
+     * belongs to the machine Discord is running on, not to the account. */
+
+    const discordSettingsStatus = (message, kind = '') => {
+        const target = document.getElementById('discord-settings-status');
+        if (!target) return;
+        target.textContent = message || '';
+        target.className = `downloads-setting-status${kind ? ` is-${kind}` : ''}`;
+    };
+
+    const renderDiscordStatus = status => {
+        const toggle = document.getElementById('discord-rpc-toggle');
+        const enabled = Boolean(toggle && toggle.checked);
+
+        if (!enabled) {
+            discordSettingsStatus('Rich Presence is off. Nothing is shared with Discord.', '');
+            return;
+        }
+        if (!status) {
+            discordSettingsStatus('Could not reach the desktop app.', 'error');
+            return;
+        }
+        if (!status.configured) {
+            discordSettingsStatus('This build has no Discord application ID.', 'error');
+            return;
+        }
+        if (status.connected) {
+            discordSettingsStatus(
+                status.user ? `Connected to Discord as ${status.user}.` : 'Connected to Discord.', 'ok');
+            return;
+        }
+        if (status.connecting) {
+            discordSettingsStatus('Looking for Discord...', 'busy');
+            return;
+        }
+        discordSettingsStatus(
+            status.error || 'Discord is not running. It will connect automatically once you start it.', 'busy');
+    };
+
+    const refreshDiscordStatus = async () => {
+        if (!window.StreamifyDiscord || !window.StreamifyDiscord.isSupported()) return;
+        renderDiscordStatus(await window.StreamifyDiscord.getStatus());
+    };
+
+    let discordStatusTimer = null;
+    // A declaration, not a const: activateSettingsTab is defined above this
+    // point and calls it, so hoisting keeps the order safe either way.
+    function setDiscordStatusPolling(active) {
+        clearInterval(discordStatusTimer);
+        discordStatusTimer = null;
+        if (!active || !window.StreamifyDiscord || !window.StreamifyDiscord.isSupported()) return;
+        // Reconnects run on a backoff of up to a minute, so a slow poll is
+        // enough to reflect them. It stops as soon as the pane is left.
+        discordStatusTimer = setInterval(refreshDiscordStatus, 3000);
+    }
+
+    async function loadDiscordSettings() {
+        if (!window.StreamifyDiscord || !window.StreamifyDiscord.isSupported()) return;
+
+        const toggle = document.getElementById('discord-rpc-toggle');
+        if (toggle) toggle.checked = window.StreamifyDiscord.isEnabled();
+        const artworkMode = window.StreamifyDiscord.artworkMode();
+        document.querySelectorAll('input[name="discord-artwork-mode"]').forEach(input => {
+            input.checked = input.value === artworkMode;
+        });
+
+        await refreshDiscordStatus();
+
+        // The public URL is server state and Owner-gated; a non-Owner simply
+        // never sees the field, and the request would be rejected anyway.
+        const isOwner = appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner';
+        if (!isOwner) return;
+
+        try {
+            const res = await fetch((window.API_BASE_URL || '') + '/api/settings/discord');
+            if (!res.ok) return;
+            const data = await res.json();
+            const input = document.getElementById('discord-public-url');
+            if (input) input.value = data.publicUrl || '';
+        } catch (err) {
+            console.error('[DISCORD SETTINGS]', err);
+        }
+    }
+
+    /* Reveals the Discord and Updates panes in the desktop app. The markup
+     * ships hidden so a browser never shows a tab it cannot use.
+     *
+     * Gated on the preload bridge itself rather than on any one feature: both
+     * panes need Node in the main process, and neither is meaningful without
+     * it. Each pane still guards its own bridge before calling into it. */
+    const applyDesktopOnlyControls = () => {
+        const isDesktop = Boolean(window.streamifyDesktop);
+        document.querySelectorAll('.desktop-only-setting').forEach(el => {
+            el.classList.toggle('hidden', !isDesktop);
+        });
+    };
+
+    let settingsReturnFocus = null;
+    const openSettings = async (targetTab = null) => {
         if (userMenu) userMenu.classList.remove('show');
         if (userPill) userPill.setAttribute('aria-expanded', 'false');
+        const activeElement = document.activeElement;
+        const activeInHiddenModal = activeElement && activeElement.closest && activeElement.closest('.modal-overlay.hidden');
+        settingsReturnFocus = activeElement && activeElement !== document.body && !activeInHiddenModal
+            ? activeElement
+            : settingsBtn;
         settingsModal.classList.remove('hidden');
+        requestAnimationFrame(() => settingsModal.querySelector('.settings-modal-box')?.focus());
         if (!appCache.user) await fetchCurrentUser();
         populateSettings();
-        const metadataPane = document.getElementById('pane-metadata');
         const isOwner = appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner';
-        if (isOwner && metadataPane && metadataPane.classList.contains('active')) loadMetadataSettings();
+        activateSettingsTab(targetTab === 'metadata' && !isOwner ? 'profile' : (targetTab || document.querySelector('.settings-tab.active')?.dataset.tab || 'profile'));
+        requestAnimationFrame(() => {
+            const activeTab = document.querySelector('.settings-tab.active');
+            if (activeTab) activeTab.focus();
+            else settingsModal.querySelector('.settings-modal-box')?.focus();
+        });
     };
 
-    const closeSettings = () => settingsModal && settingsModal.classList.add('hidden');
+    const closeSettings = (force = false) => {
+        const metadataForm = document.getElementById('metadata-settings-form');
+        const hasUnsavedMetadata = metadataForm && metadataForm.dataset.metadataDirty === 'true';
+        if (!force && hasUnsavedMetadata && !window.confirm('Discard unsaved metadata settings?')) return false;
+        if (hasUnsavedMetadata) {
+            delete metadataForm.dataset.metadataDirty;
+            clearMetadataKeyInputs();
+            setMetadataFormStatus(metadataForm, '', '');
+            renderMetadataScopes(true);
+        }
+        if (settingsModal) settingsModal.classList.add('hidden');
+        setDiscordStatusPolling(false);
+        if (window.StreamifyUpdates && window.StreamifyUpdates.isSupported()) window.StreamifyUpdates.unload();
+        if (settingsReturnFocus && settingsReturnFocus.isConnected) settingsReturnFocus.focus();
+        settingsReturnFocus = null;
+        return true;
+    };
+    window.openMetadataSettings = () => openSettings('metadata');
 
     const populateSettings = () => {
+        syncAppearanceSettings();
         if (!appCache.user) return;
         applyOwnerOnlyControls();
+        applyDesktopOnlyControls();
         const dispNameInput = document.getElementById('settings-display-name');
         const bioInput = document.getElementById('settings-bio');
         const preview = document.getElementById('settings-avatar-preview');
@@ -644,28 +1257,52 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (settingsBtn) settingsBtn.addEventListener('click', e => { e.preventDefault(); openSettings(); });
-    if (closeModalBtn) closeModalBtn.addEventListener('click', closeSettings);
+    if (closeModalBtn) closeModalBtn.addEventListener('click', () => closeSettings());
     if (settingsModal) settingsModal.addEventListener('click', e => { if (e.target === settingsModal) closeSettings(); });
 
     // Tab Switching
     settingsTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const target = tab.dataset.tab;
-            settingsTabs.forEach(t => t.classList.remove('active'));
-            settingsPanes.forEach(p => p.classList.remove('active'));
-            tab.classList.add('active');
-            const pane = document.getElementById(`pane-${target}`);
-            if (pane) {
-                pane.classList.add('active');
-                if (target === 'account') {
-                    loadSessions();
-                    if (appCache.user && appCache.user.role === 'Owner') loadMusicDirectories();
-                } else if (target === 'metadata' && appCache.user && String(appCache.user.role || '').toLowerCase() === 'owner') {
-                    loadMetadataSettings();
-                }
+        tab.addEventListener('click', () => activateSettingsTab(tab.dataset.tab));
+        tab.addEventListener('keydown', event => {
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const tabs = visibleSettingsTabs();
+            const currentIndex = Math.max(0, tabs.indexOf(tab));
+            let nextIndex = currentIndex;
+            if (event.key === 'Home') nextIndex = 0;
+            else if (event.key === 'End') nextIndex = tabs.length - 1;
+            else nextIndex = (currentIndex + (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) + tabs.length) % tabs.length;
+            const nextTab = tabs[nextIndex];
+            if (nextTab) {
+                activateSettingsTab(nextTab.dataset.tab);
+                nextTab.focus();
             }
         });
     });
+
+    if (settingsModal) {
+        settingsModal.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeSettings();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = Array.from(settingsModal.querySelectorAll(
+                'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+            )).filter(element => !element.classList.contains('hidden') && element.getClientRects().length > 0);
+            if (!focusable.length) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    }
 
     async function loadMusicDirectories() {
         const listEl = document.getElementById('music-dirs-list');
@@ -886,41 +1523,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'bx-devices';
     }
 
-    const settingsToggle = document.getElementById('settings-menu-toggle');
-    const settingsSidebar = document.querySelector('.settings-sidebar');
-    const settingsOverlay = document.getElementById('settings-overlay');
-
-    const toggleSettingsMenu = (show) => {
-        if (settingsSidebar) settingsSidebar.classList.toggle('mobile-active', show);
-        if (settingsOverlay) settingsOverlay.classList.toggle('active', show);
-    };
-
-    if (settingsToggle && settingsSidebar) {
-        settingsToggle.addEventListener('click', e => {
-            e.stopPropagation();
-            const isClosing = settingsSidebar.classList.contains('mobile-active');
-            toggleSettingsMenu(!isClosing);
-        });
-
-        document.addEventListener('click', e => {
-            if (settingsSidebar.classList.contains('mobile-active') &&
-                !settingsSidebar.contains(e.target) &&
-                !settingsToggle.contains(e.target)) {
-                toggleSettingsMenu(false);
-            }
-        });
-
-        if (settingsOverlay) {
-            settingsOverlay.addEventListener('click', () => toggleSettingsMenu(false));
-        }
-
-        settingsTabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                if (window.innerWidth <= 768) toggleSettingsMenu(false);
-            });
-        });
-    }
-
     // Profile Form Submission
     const profileForm = document.getElementById('profile-form');
     if (profileForm) {
@@ -1070,6 +1672,95 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    /* --- Discord Rich Presence --- */
+
+    const discordRpcToggle = document.getElementById('discord-rpc-toggle');
+    if (discordRpcToggle) {
+        discordRpcToggle.addEventListener('change', async (e) => {
+            if (!window.StreamifyDiscord || !window.StreamifyDiscord.isSupported()) return;
+
+            const requested = e.target.checked;
+            e.target.disabled = true;
+            discordSettingsStatus(requested ? 'Looking for Discord...' : 'Turning off...', 'busy');
+
+            const status = await window.StreamifyDiscord.setEnabled(requested);
+            e.target.disabled = false;
+
+            if (requested && !status) {
+                // The bridge itself failed, which is not the same as Discord
+                // being closed. Roll the toggle back rather than lie about it.
+                e.target.checked = false;
+                await window.StreamifyDiscord.setEnabled(false);
+            }
+            renderDiscordStatus(status);
+        });
+    }
+
+    document.querySelectorAll('input[name="discord-artwork-mode"]').forEach(input => {
+        input.addEventListener('change', event => {
+            if (!event.target.checked || !window.StreamifyDiscord || !window.StreamifyDiscord.isSupported()) return;
+            window.StreamifyDiscord.setArtworkMode(event.target.value);
+            const messages = {
+                app_logo: 'Discord will always use the Streamify logo.',
+                stored_only: 'Discord artwork will use stored and public covers only.',
+                youtube_exact: 'Missing Discord artwork will use exact YouTube matches.',
+                apple_only: 'Missing Discord artwork will use Apple Music matches only.',
+                best_effort: 'Missing Discord artwork will use YouTube, then Apple as a fallback.'
+            };
+            showToast(messages[event.target.value] || 'Discord artwork setting updated.', 'success');
+        });
+    });
+
+    const discordArtRefresh = document.getElementById('discord-art-refresh');
+    if (discordArtRefresh) {
+        discordArtRefresh.addEventListener('click', async () => {
+            if (!window.StreamifyDiscord || !window.StreamifyDiscord.isSupported()) return;
+            discordArtRefresh.disabled = true;
+            const refreshed = await window.StreamifyDiscord.refreshArtwork();
+            discordArtRefresh.disabled = false;
+            showToast(
+                refreshed ? 'Artwork cache cleared. The current track will be checked again.' : 'Play a library track before refreshing its artwork.',
+                refreshed ? 'success' : 'info');
+        });
+    }
+
+    const discordPublicUrlForm = document.getElementById('discord-public-url-form');
+    if (discordPublicUrlForm) {
+        const publicUrlStatus = (message, kind = '') => {
+            const target = document.getElementById('discord-public-url-status');
+            if (!target) return;
+            target.textContent = message || '';
+            target.className = `downloads-setting-status${kind ? ` is-${kind}` : ''}`;
+        };
+
+        discordPublicUrlForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('discord-public-url');
+            const publicUrl = input ? input.value.trim() : '';
+
+            publicUrlStatus('Saving...', 'busy');
+            try {
+                const res = await fetch((window.API_BASE_URL || '') + '/api/settings/discord', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ publicUrl })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not save.');
+
+                if (input) input.value = data.publicUrl || '';
+                publicUrlStatus(
+                    data.publicUrl
+                        ? 'Saved. Discord will now load your own cover art.'
+                        : 'Cleared. Discord will use matched or fallback artwork.',
+                    'ok');
+            } catch (err) {
+                publicUrlStatus(err.message, 'error');
+            }
+        });
+    }
+
     /* ===================================================
      * AVATAR CROP & UPLOAD
      * =================================================== */
@@ -1138,6 +1829,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const discordPublicUrlClear = document.getElementById('discord-public-url-clear');
+    if (discordPublicUrlClear && discordPublicUrlForm) {
+        discordPublicUrlClear.addEventListener('click', () => {
+            const input = document.getElementById('discord-public-url');
+            if (input) input.value = '';
+            discordPublicUrlForm.requestSubmit();
+        });
+    }
+
     if (cancelCropBtn) cancelCropBtn.addEventListener('click', closeCrop);
     if (closeCropBtn) closeCropBtn.addEventListener('click', closeCrop);
 
@@ -1191,9 +1891,9 @@ document.addEventListener('DOMContentLoaded', () => {
      * =================================================== */
     const homeLink = document.getElementById('home-link');
     const libraryLink = document.getElementById('library-link');
+    const downloadsLink = document.getElementById('downloads-link');
     const peopleLink = document.getElementById('people-link');
     const uploadLink = document.getElementById('upload-link');
-    const aboutLink = document.getElementById('about-link');
     const thanksLink = document.getElementById('thanks-link');
     const sidebarLogo = document.querySelector('.morph-logo');
 
@@ -1209,9 +1909,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     const trendingSection = document.getElementById('trending-section');
+    const downloadsSection = document.getElementById('downloads-section');
     const uploadSection = document.getElementById('upload-section');
     const searchSection = document.getElementById('search-section');
-    const aboutSection = document.getElementById('about-section');
     const profileDetailSection = document.getElementById('profile-detail-section');
     const playlistDetailSection = document.getElementById('playlist-detail-section');
     const playerSection = document.getElementById('player-section'); // Added player section reference
@@ -1228,12 +1928,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        section.classList.remove('hidden', 'fade-in-animate');
-        void section.offsetWidth;
+        // hideAllSections removes this class before every normal navigation.
+        // Add it back while revealing the section so the same animation starts
+        // without a synchronous offsetWidth layout flush on the click frame.
+        section.classList.remove('fade-in-animate');
         section.classList.add('fade-in-animate');
+        section.classList.remove('hidden');
     }
 
-    function hideAllSections() {
+    function hideAllSections({ preserveDedicatedPlayer = false } = {}) {
+        if (
+            !preserveDedicatedPlayer &&
+            document.body.classList.contains('desktop-player-overlay-enabled') &&
+            document.body.classList.contains('player-section-active') &&
+            typeof window.closeDesktopPlayerOverlay === 'function'
+        ) {
+            window.closeDesktopPlayerOverlay({ animateUnderlay: false, focusCover: false });
+        }
         if (typeof window.cancelPlaylistDetailRequest === 'function') window.cancelPlaylistDetailRequest();
         if (window.currentActiveView !== 'playlist') {
             window.requestedPlaylistId = null;
@@ -1244,22 +1955,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.currentActiveView !== 'search' && typeof window.cancelSearchRequest === 'function') {
             window.cancelSearchRequest(false);
         }
-        [trendingSection, uploadSection, searchSection, aboutSection, profileDetailSection, playlistDetailSection, playerSection].forEach(sec => {
+        if (window.currentActiveView !== 'downloads' && window.StreamifyDownloads) {
+            window.StreamifyDownloads.close();
+        }
+        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection];
+        if (!document.body.classList.contains('desktop-player-overlay-enabled')) routedSections.push(playerSection);
+        routedSections.forEach(sec => {
             if (sec) { sec.classList.add('hidden'); sec.classList.remove('fade-in-animate'); }
         });
         document.querySelector('.main-content')?.classList.remove('no-scroll');
-        if (typeof window.setDedicatedPlayerActive === 'function') {
-            window.setDedicatedPlayerActive(false);
-        } else {
-            document.body.classList.remove('player-section-active');
-            document.documentElement.classList.remove('player-chrome-active');
+        if (!preserveDedicatedPlayer) {
+            if (typeof window.setDedicatedPlayerActive === 'function') {
+                window.setDedicatedPlayerActive(false);
+            } else {
+                document.body.classList.remove('player-section-active');
+                document.documentElement.classList.remove('player-chrome-active');
+            }
+            // Restore the flat app colour behind the browser toolbars; the
+            // album-tinted value only applies inside the full-screen player.
+            if (typeof setThemeColor === 'function' && typeof DEFAULT_THEME_COLOR !== 'undefined') {
+                setThemeColor(DEFAULT_THEME_COLOR);
+            }
         }
-        // Restore the flat app colour behind the browser toolbars; the
-        // album-tinted value only applies inside the full-screen player.
-        if (typeof setThemeColor === 'function' && typeof DEFAULT_THEME_COLOR !== 'undefined') {
-            setThemeColor(DEFAULT_THEME_COLOR);
-        }
-        [libraryLink, uploadLink, aboutLink].forEach(l => l && l.classList.remove('active'));
+        [libraryLink, downloadsLink, uploadLink].forEach(l => l && l.classList.remove('active'));
         document.querySelectorAll('.sidebar-playlist-link').forEach(l => l.classList.remove('active'));
         // Reset edit modes on view switch to prevent stale UI state
         if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode) {
@@ -1303,6 +2021,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    if (downloadsLink) {
+        downloadsLink.addEventListener('click', e => {
+            e.preventDefault();
+            if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
+            if (window.location.pathname !== '/home' || window.location.hash !== '#downloads') {
+                history.pushState({ view: 'downloads' }, '', '/home#downloads');
+            }
+            window.currentActiveView = 'downloads';
+            hideAllSections();
+            downloadsLink.classList.add('active');
+            showSection(downloadsSection);
+            // Loads the queue and opens the progress socket on first view.
+            if (window.StreamifyDownloads) window.StreamifyDownloads.open();
+            document.title = "Streamify | Get Music";
+        });
+    }
+
     if (uploadLink) {
         uploadLink.addEventListener('click', e => {
             e.preventDefault();
@@ -1314,20 +2049,6 @@ document.addEventListener('DOMContentLoaded', () => {
             hideAllSections();
             uploadLink.classList.add('active');
             showSection(uploadSection);
-        });
-    }
-
-    if (aboutLink) {
-        aboutLink.addEventListener('click', e => {
-            e.preventDefault();
-            if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
-            if (window.location.pathname !== '/home' || window.location.hash !== '#about') {
-                history.pushState({ view: 'about' }, '', '/home#about');
-            }
-            window.currentActiveView = 'about';
-            hideAllSections();
-            aboutLink.classList.add('active');
-            showSection(aboutSection);
         });
     }
 
@@ -1808,14 +2529,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const changeCoverBtn = document.getElementById('change-song-cover-btn');
     const songCoverInput = document.getElementById('song-cover-upload');
     const aiAutofillBtn = document.getElementById('ai-autofill-btn');
+    const openMetadataReviewBtn = document.getElementById('open-metadata-review-btn');
 
-    // Smart Auto Enrich workspace elements
+    // Smart Metadata Review workspace elements
     const aiMetadataModal = document.getElementById('ai-metadata-modal');
     const closeAiModalBtn = document.getElementById('close-ai-metadata-modal');
     const cancelAiModalBtn = document.getElementById('cancel-ai-metadata');
     const applyAiModalBtn = document.getElementById('apply-ai-metadata');
     const pauseAiJobBtn = document.getElementById('ai-pause-job');
     const cancelAiJobBtn = document.getElementById('ai-cancel-job');
+    const startAiReviewBtn = document.getElementById('ai-start-review');
+    const reviewSelectedMatchBtn = document.getElementById('ai-review-selected-match');
+    const backToMatchesBtn = document.getElementById('ai-back-to-matches');
+    const aiPreflightSettingsBtn = document.getElementById('ai-preflight-settings');
+    const aiEmptySettingsBtn = document.getElementById('ai-empty-settings-action');
     let aiModalReturnFocus = null;
 
     const closeEditSong = () => {
@@ -1880,12 +2607,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    if (openMetadataReviewBtn) {
+        openMetadataReviewBtn.addEventListener('click', () => {
+            if (!closeSettings(true)) return;
+            aiModalReturnFocus = settingsBtn;
+            if (typeof enrichBatchSongs === 'function') enrichBatchSongs();
+        });
+    }
+
     if (pauseAiJobBtn) pauseAiJobBtn.addEventListener('click', () => {
         if (typeof window.toggleSmartMetadataPause === 'function') window.toggleSmartMetadataPause();
     });
 
     if (cancelAiJobBtn) cancelAiJobBtn.addEventListener('click', () => {
         if (typeof window.cancelSmartMetadataJob === 'function') window.cancelSmartMetadataJob();
+    });
+
+    if (startAiReviewBtn) startAiReviewBtn.addEventListener('click', () => {
+        if (typeof window.startSmartMetadataReview === 'function') window.startSmartMetadataReview();
+    });
+
+    if (reviewSelectedMatchBtn) reviewSelectedMatchBtn.addEventListener('click', () => {
+        if (typeof window.reviewSelectedMetadataMatch === 'function') window.reviewSelectedMetadataMatch();
+    });
+
+    if (backToMatchesBtn) backToMatchesBtn.addEventListener('click', () => {
+        if (typeof window.backToMetadataMatches === 'function') window.backToMetadataMatches();
+    });
+
+    [aiPreflightSettingsBtn, aiEmptySettingsBtn].forEach(button => {
+        if (!button) return;
+        button.addEventListener('click', () => {
+            if (typeof window.openMetadataSettingsFromReview === 'function') window.openMetadataSettingsFromReview();
+        });
     });
 
     if (aiMetadataModal) {
@@ -2156,6 +2910,64 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ===================================================
      * INITIAL ROUTING & NAVIGATION
      * =================================================== */
+    function isInitialLibraryRoute() {
+        const path = window.location.pathname;
+        const hash = window.location.hash;
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('playlist') || path.startsWith('/profile/')) return false;
+        if (path !== '/home' && path !== '/') return false;
+        return !hash || hash === '#library' || hash === '#feed' || hash === '#people';
+    }
+
+    async function preloadInitialLibraryVisuals(songs) {
+        const urls = Array.from(new Set((songs || [])
+            .slice(0, 12)
+            .map(song => safeImageURL(song && song.cover))
+            .filter(Boolean)));
+        const imageWork = Promise.allSettled(urls.map(url => new Promise(resolve => {
+            const image = new Image();
+            image.decoding = 'async';
+            image.onload = () => {
+                if (typeof image.decode === 'function') image.decode().catch(() => undefined).finally(resolve);
+                else resolve();
+            };
+            image.onerror = resolve;
+            image.src = url;
+        })));
+        const fontWork = document.fonts?.ready || Promise.resolve();
+        const timeout = new Promise(resolve => setTimeout(resolve, 700));
+        await Promise.race([Promise.allSettled([imageWork, fontWork]), timeout]);
+    }
+
+    async function revealInitialLibrary(libraryPromise) {
+        if (window.location.pathname !== '/home' && window.location.pathname !== '/') return false;
+
+        window.currentActiveView = 'library';
+        hideAllSections();
+        libraryLink?.classList.add('active');
+        document.title = 'Streamify | Library';
+        if (window.location.hash !== '#library') {
+            history.replaceState({ view: 'library' }, '', '/home#library');
+        }
+
+        const songs = await libraryPromise;
+        if (window.currentActiveView !== 'library') return false;
+
+        const list = document.getElementById('trending-list');
+        renderSongList(Array.isArray(songs) ? songs : [], list, {
+            allowHiddenInitialBatch: true,
+            deferSecondaryWork: true,
+            deferRemainingBatches: true
+        });
+        await preloadInitialLibraryVisuals(songs);
+
+        // The DOM and first viewport covers now exist before either unchanged
+        // entrance animation starts, so the animation cannot be invalidated
+        // halfway through by the library response.
+        showSection(trendingSection);
+        return true;
+    }
+
     function handleRouting() {
         const path = window.location.pathname;
         const hash = window.location.hash;
@@ -2185,11 +2997,17 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (hash === '#library') {
                 if (libraryLink) libraryLink.click();
                 return;
+            } else if (hash === '#downloads') {
+                // Owner-only view: fall back to the library for everyone else.
+                if (downloadsLink && !downloadsLink.closest('.owner-only-nav.hidden')) downloadsLink.click();
+                else if (libraryLink) libraryLink.click();
+                return;
             } else if (hash === '#upload') {
                 if (uploadLink) uploadLink.click();
                 return;
             } else if (hash === '#about') {
-                if (aboutLink) aboutLink.click();
+                // The Beta Info page is gone; keep old bookmarks working.
+                if (libraryLink) libraryLink.click();
                 return;
             } else if (hash.startsWith('#playlist-')) {
                 const pid = hash.replace('#playlist-', '');
@@ -2296,9 +3114,37 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ===================================================
      * INITIAL DATA FETCH
      * =================================================== */
+    const primeLibraryOnLaunch = isInitialLibraryRoute();
+    const initialLibraryPromise = primeLibraryOnLaunch
+        ? fetchLibrary(false, { render: false })
+        : null;
     const currentUserPromise = fetchCurrentUser();
-    fetchPlaylists(true); // Force refresh to bypass in-memory JS cache on page load
-    Promise.resolve(currentUserPromise).then(applyOwnerOnlyControls).finally(handleRouting);
+    Promise.resolve(currentUserPromise).then(applyOwnerOnlyControls).finally(async () => {
+        try {
+            if (primeLibraryOnLaunch) {
+                const revealed = await revealInitialLibrary(initialLibraryPromise);
+                if (!revealed) handleRouting();
+            } else {
+                handleRouting();
+            }
+
+            // Allocate the real retained player and its large backdrop while a
+            // static boot surface still covers the app, not during first use.
+            if (typeof window.prepareDesktopPlayerOverlay === 'function') {
+                await window.prepareDesktopPlayerOverlay();
+            }
+            await nextPaint();
+        } catch (error) {
+            console.error('[INITIAL PAINT]', error);
+            handleRouting();
+        } finally {
+            finishInitialVisualPaint();
+        }
+    });
+    window.streamifyAfterStartupMotion(() => scheduleIdle(() => fetchPlaylists(true), 2000));
+    // Desktop-only panes depend on the preload bridge, not on the user, so
+    // they can be revealed immediately.
+    applyDesktopOnlyControls();
     window.addEventListener('hashchange', handleRouting);
 
     /* ===================================================
@@ -2447,7 +3293,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const avatarUrl = u.avatar || '';
                             const avatarHtml = avatarUrl
                                 ? `<img src="${avatarUrl}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-                                : `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#4169e1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">${(u.display_name || u.username).charAt(0).toUpperCase()}</div>`;
+                                : `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--gradient-1),var(--gradient-2));color:var(--on-gradient);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">${(u.display_name || u.username).charAt(0).toUpperCase()}</div>`;
                             item.style.cssText = `padding:10px 14px;cursor:pointer;font-size:13px;color:var(--text-primary);border-bottom:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;gap:10px;${i === 0 ? 'background:rgba(255,255,255,0.08);' : ''}`;
                             item.innerHTML = `${avatarHtml}<div style="display:flex;flex-direction:column;gap:1px;"><strong style="font-size:13px;">@${u.username}</strong>${u.display_name && u.display_name !== u.username ? `<span style="color:var(--text-secondary);font-size:11px;">${u.display_name}</span>` : ''}</div>`;
 
@@ -2556,7 +3402,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Init DM socket listeners after socket is ready
     if (typeof initDmSocketListeners === 'function') {
-        setTimeout(() => initDmSocketListeners(), 1000);
+        window.streamifyAfterFirstPaint(() => setTimeout(() => initDmSocketListeners(), 1000));
     }
 
     /* ===================================================
@@ -2798,5 +3644,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Trigger OOBE Check on Load
-    initOOBEWizard();
+    window.streamifyAfterStartupMotion(initOOBEWizard);
 });

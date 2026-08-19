@@ -1,2 +1,13 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Batch files must be checked out with CRLF, whatever core.autocrlf says.
+#
+# cmd.exe does not read a .bat into memory: it seeks through the file by
+# byte offset as it executes. In an LF-only file those offsets drift, and
+# GOTO lands on the wrong line - build_installer.bat silently jumped into
+# the middle of a different label. A linear script survives this, so the
+# breakage only shows up once the file grows labels, which makes it a
+# genuinely nasty thing to debug.
+*.bat text eol=crlf
+*.cmd text eol=crlf

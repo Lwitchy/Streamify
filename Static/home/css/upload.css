@@ -107,7 +107,7 @@
 
 .upload-bar:focus-within {
     border-color: var(--accent);
-    box-shadow: 0 0 20px rgba(29, 185, 84, 0.1);
+    box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.16);
 }
 
 .upload-bar-left {
@@ -174,8 +174,9 @@
     padding: 8px 20px;
     margin-left: 10px;
     pointer-events: all;
-    background: linear-gradient(90deg, #1db954, #1ed760);
-    box-shadow: 0 6px 15px rgba(29, 185, 84, 0.3);
+    color: var(--on-accent);
+    background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+    box-shadow: none;
 }
 
 /* --- LOCKED BADGE --- */

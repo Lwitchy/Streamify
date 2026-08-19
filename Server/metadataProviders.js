@@ -157,10 +157,12 @@ function requestOnce(url, options = {}) {
         let received = 0;
         const chunks = [];
         let timedOut = false;
+        let wallClockTimer = null;
         let onAbort = () => {};
         const finish = result => {
             if (settled) return;
             settled = true;
+            if (wallClockTimer) clearTimeout(wallClockTimer);
             if (signal) signal.removeEventListener('abort', onAbort);
             resolve(result);
         };
@@ -179,6 +181,7 @@ function requestOnce(url, options = {}) {
             headers['Content-Type'] = options.contentType || 'application/x-www-form-urlencoded';
             headers['Content-Length'] = String(body.length);
         }
+        const timeoutMs = Math.max(500, Number(options.timeoutMs) || 7000);
         const request = https.request(parsed, {
             method,
             headers
@@ -211,10 +214,15 @@ function requestOnce(url, options = {}) {
             else if (error.code === 'ERESPONSETOOLARGE') finish({ kind: 'provider_error', detail: 'response_too_large' });
             else finish({ kind: 'network', code: error.code || 'ENETWORK' });
         });
-        request.setTimeout(Math.max(500, Number(options.timeoutMs) || 7000), () => {
+        const timeoutRequest = () => {
             timedOut = true;
             request.destroy(Object.assign(new Error('Request timed out'), { code: 'ETIMEDOUT' }));
-        });
+        };
+        // request.setTimeout only measures socket inactivity and does not cover
+        // DNS/TLS setup or a response that continuously trickles bytes.
+        wallClockTimer = setTimeout(timeoutRequest, timeoutMs);
+        wallClockTimer.unref?.();
+        request.setTimeout(timeoutMs, timeoutRequest);
         request.end(body.length ? body : undefined);
     });
 }
@@ -903,6 +911,7 @@ module.exports = {
         validMusicBrainzId,
         requestBodyBuffer,
         requestKey,
+        requestOnce,
         cache,
         schedulers,
         inFlight

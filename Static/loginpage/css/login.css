@@ -1,3 +1,21 @@
+  :root {
+    --bg-color: #121212;
+    --accent: #1db954;
+    --accent-hover: #1ed760;
+    --accent-rgb: 29, 185, 84;
+    --on-accent: #0b0b0e;
+    --on-gradient: #ffffff;
+    --gradient-1: #4169e1;
+    --gradient-2: #8164d7;
+    --gradient-3: #ec4899;
+    --gradient-1-rgb: 65, 105, 225;
+    --gradient-2-rgb: 129, 100, 215;
+    --theme-gradient-alpha-1: 0.11;
+    --theme-gradient-alpha-2: 0.09;
+    --card-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.05);
+  }
+
   * {
     margin: 0;
     padding: 0;
@@ -10,9 +28,9 @@
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background-color: #000;
-    background-image: radial-gradient(circle at 15% 50%, rgba(30, 30, 35, 0.9), transparent 25%),
-      radial-gradient(circle at 85% 30%, rgba(20, 20, 25, 0.9), transparent 25%);
+    background-color: var(--bg-color);
+    background-image: radial-gradient(circle at 15% 50%, rgba(var(--gradient-1-rgb), var(--theme-gradient-alpha-1)), transparent 28%),
+      radial-gradient(circle at 85% 30%, rgba(var(--gradient-2-rgb), var(--theme-gradient-alpha-2)), transparent 28%);
     overflow: hidden;
   }
 
@@ -33,12 +51,13 @@
   }
 
   .header .brand h2 {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-size: 32px;
     margin: 0;
     display: flex;
     align-items: center;
-    font-weight: 800;
-    letter-spacing: -0.5px;
+    font-weight: 760;
+    letter-spacing: -0.055em;
   }
 
   .header .premium {
@@ -76,8 +95,8 @@
     position: absolute;
     width: 100%;
     padding: 40px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
     border-radius: 20px;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -147,20 +166,20 @@
   button.btn {
     width: 100%;
     height: 50px;
-    background: linear-gradient(90deg, #4169e1, #8164d7);
+    background: linear-gradient(90deg, var(--gradient-1), var(--gradient-2));
     border: none;
     border-radius: 12px;
-    color: #fff;
+    color: var(--on-gradient);
     font-size: 16px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
     margin-top: 10px;
-    box-shadow: 0 5px 15px rgba(65, 105, 225, 0.3);
+    box-shadow: none;
   }
 
   button.btn:hover {
-    box-shadow: 0 8px 20px rgba(65, 105, 225, 0.5);
+    box-shadow: none;
     transform: translateY(-2px);
   }
 
@@ -181,7 +200,7 @@
   }
 
   .toggle-link a:hover {
-    color: #8164d7;
+    color: var(--accent);
   }
 
   /* Animations */
@@ -224,11 +243,11 @@
   }
 
   .intro-text {
-    font-family: 'Outfit', sans-serif;
-    font-size: 70px;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 68px;
     margin: 0;
-    font-weight: 900;
-    letter-spacing: -3px;
+    font-weight: 760;
+    letter-spacing: -0.055em;
   }
 
   .intro-premium {
@@ -250,7 +269,7 @@
   .gradient-background,
   .gradient-text {
     background: linear-gradient(90deg,
-        #6366f1, #a855f7, #ec4899, #6366f1);
+        var(--gradient-1), var(--gradient-2), var(--gradient-3), var(--gradient-1));
     background-size: 200%;
     -webkit-background-clip: text;
     background-clip: text;
@@ -296,9 +315,9 @@
 
   /* Live Count Highlight */
   .live-count {
-    color: #8164d7;
+    color: var(--accent);
     font-weight: 700;
-    text-shadow: 0 0 10px rgba(129, 100, 215, 0.3);
+    text-shadow: 0 0 10px rgba(var(--accent-rgb), 0.3);
   }
 
   /* Security Badges Layout */

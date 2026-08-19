@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Streamify Diagnostics</title>
+<link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
 <style>
     body {
         margin: 0; padding: 18px 16px 60px;
@@ -40,7 +41,7 @@
 </head>
 <body>
 
-<h1>Streamify Diagnostics</h1>
+<h1><span class="streamify-logo">Streamify</span> Diagnostics</h1>
 <p class="sub">Open this on the device that is misbehaving.</p>
 
 <div id="verdict"></div>
@@ -89,7 +90,7 @@
         // ---- 1. Which CSS is actually loaded? --------------------------
         const assetVersion = getComputedStyle(document.documentElement)
             .getPropertyValue('--asset-version').trim().replace(/"/g, '');
-        const EXPECTED = '4.19';
+        const EXPECTED = '4.22';
         const cssFresh = assetVersion === EXPECTED;
 
         section('Stylesheet build');
