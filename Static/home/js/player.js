@@ -611,6 +611,7 @@ let _seekStallTimer = null;
 audio.addEventListener('seeking', () => {
     clearTimeout(_seekStallTimer);
     _seekStallTimer = setTimeout(() => {
+        isSeekingPending = false;
         if (!audio.seeking) return; // Already recovered on its own
         const t  = audio.currentTime;
         const wasPlaying = isPlaying;
@@ -627,6 +628,7 @@ audio.addEventListener('seeking', () => {
 });
 audio.addEventListener('seeked', () => {
     clearTimeout(_seekStallTimer);
+    isSeekingPending = false;
     if (isLyricsActive) {
         updateActiveLyric();
         startDesktopLyricsSync();
@@ -659,7 +661,10 @@ audio.addEventListener('timeupdate', e => {
         flushTelemetry();
     }
 
+    // Prevent background timeupdate from overriding slider while scrubbing or seeking
+    if (isScrubbing || isSeekingPending) return;
     if (!duration) return;
+
     progressBar.style.width = `${(currentTime / duration) * 100}%`;
     currTimeEl.textContent = fmt(currentTime);
     durTimeEl.textContent = fmt(duration);
@@ -684,63 +689,126 @@ audio.addEventListener('timeupdate', e => {
     }
 });
 
-/* ========== PROGRESS BAR DRAG ========== */
+/* ========== HIGH-PERFORMANCE PROGRESS BAR SCRUB & SEEK ========== */
 
-let isDraggingProgress = false;
-let isDraggingDedicatedProgress = false;
+let isScrubbing = false;
+let isSeekingPending = false;
+let pendingSeekFraction = 0;
+let activeScrubContainer = null;
 
-function updateProgressFromEvent(e, containerElem) {
-    if (!canSeek || !audio.duration) return;
-    const rect = containerElem.getBoundingClientRect();
-    let clientX = Math.max(rect.left, Math.min(e.clientX || e.touches[0].clientX, rect.right));
-    audio.currentTime = ((clientX - rect.left) / rect.width) * audio.duration;
+function applyScrubVisual(fraction) {
+    if (!audio.duration || !Number.isFinite(audio.duration)) return;
+    const clamped = Math.max(0, Math.min(1, fraction));
+    const pct = clamped * 100;
+    const targetSeconds = clamped * audio.duration;
+    const formatted = fmt(targetSeconds);
+
+    progressBar.style.width = `${pct}%`;
+    currTimeEl.textContent = formatted;
+
+    if (dedicatedProgressBar) dedicatedProgressBar.style.width = `${pct}%`;
+    if (dedicatedCurrTimeEl) dedicatedCurrTimeEl.textContent = formatted;
 }
 
-progressContainer.addEventListener('mousedown', e => { isDraggingProgress = true; updateProgressFromEvent(e, progressContainer); });
-document.addEventListener('mousemove', e => {
-    if (isDraggingProgress) updateProgressFromEvent(e, progressContainer);
-    if (isDraggingDedicatedProgress) updateProgressFromEvent(e, dedicatedProgressContainer);
-});
-document.addEventListener('mouseup', () => {
-    isDraggingProgress = false;
-    isDraggingDedicatedProgress = false;
-});
+function calculateScrubFraction(e, containerElem) {
+    const rect = containerElem.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    const clientX = e.touches && e.touches.length > 0
+        ? e.touches[0].clientX
+        : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : e.clientX);
+    const clampedX = Math.max(rect.left, Math.min(clientX, rect.right));
+    return (clampedX - rect.left) / rect.width;
+}
 
-/* Touch support for progress bar */
-progressContainer.addEventListener('touchstart', e => {
-    if (e.touches.length === 1) { isDraggingProgress = true; updateProgressFromEvent(e, progressContainer); }
-}, { passive: true });
-document.addEventListener('touchmove', e => {
-    if (isDraggingProgress && e.touches.length === 1) updateProgressFromEvent(e, progressContainer);
-    if (isDraggingDedicatedProgress && e.touches.length === 1) updateProgressFromEvent(e, dedicatedProgressContainer);
-}, { passive: true });
-document.addEventListener('touchend', () => {
-    isDraggingProgress = false;
-    isDraggingDedicatedProgress = false;
-});
+function startScrubbing(e, containerElem) {
+    if (!canSeek || !audio.duration || !Number.isFinite(audio.duration)) return;
+    isScrubbing = true;
+    activeScrubContainer = containerElem;
+    containerElem.classList.add('scrubbing');
 
-progressContainer.addEventListener('wheel', e => {
+    pendingSeekFraction = calculateScrubFraction(e, containerElem);
+    applyScrubVisual(pendingSeekFraction);
+}
+
+function updateScrubbing(e) {
+    if (!isScrubbing || !activeScrubContainer) return;
+    pendingSeekFraction = calculateScrubFraction(e, activeScrubContainer);
+    applyScrubVisual(pendingSeekFraction);
+}
+
+function commitScrubbing(e) {
+    if (!isScrubbing) return;
+    isScrubbing = false;
+
+    if (activeScrubContainer) {
+        activeScrubContainer.classList.remove('scrubbing');
+        if (e) {
+            pendingSeekFraction = calculateScrubFraction(e, activeScrubContainer);
+            applyScrubVisual(pendingSeekFraction);
+        }
+        activeScrubContainer = null;
+    }
+
+    if (canSeek && audio.duration && Number.isFinite(audio.duration)) {
+        const targetTime = Math.max(0, Math.min(audio.duration, pendingSeekFraction * audio.duration));
+        isSeekingPending = true;
+        audio.currentTime = targetTime;
+    }
+}
+
+// Mouse events on standard progress bar
+progressContainer.addEventListener('mousedown', e => {
     e.preventDefault();
-    if (!canSeek || !audio.duration) return;
-    audio.currentTime = e.deltaY < 0
-        ? Math.min(audio.currentTime + 5, audio.duration)
-        : Math.max(audio.currentTime - 5, 0);
+    startScrubbing(e, progressContainer);
+});
+
+// Touch events on standard progress bar
+progressContainer.addEventListener('touchstart', e => {
+    startScrubbing(e, progressContainer);
 }, { passive: false });
 
-/* Dedicated Progress Bar Listeners */
+// Dedicated progress bar
 if (dedicatedProgressContainer) {
-    dedicatedProgressContainer.addEventListener('mousedown', e => { isDraggingDedicatedProgress = true; updateProgressFromEvent(e, dedicatedProgressContainer); });
-    dedicatedProgressContainer.addEventListener('touchstart', e => {
-        if (e.touches.length === 1) { isDraggingDedicatedProgress = true; updateProgressFromEvent(e, dedicatedProgressContainer); }
-    }, { passive: true });
-
-    dedicatedProgressContainer.addEventListener('wheel', e => {
+    dedicatedProgressContainer.addEventListener('mousedown', e => {
         e.preventDefault();
-        if (!canSeek || !audio.duration) return;
-        audio.currentTime = e.deltaY < 0
-            ? Math.min(audio.currentTime + 5, audio.duration)
-            : Math.max(audio.currentTime - 5, 0);
+        startScrubbing(e, dedicatedProgressContainer);
+    });
+    dedicatedProgressContainer.addEventListener('touchstart', e => {
+        startScrubbing(e, dedicatedProgressContainer);
     }, { passive: false });
+}
+
+// Window events for smooth tracking outside container bounds
+window.addEventListener('mousemove', e => {
+    if (isScrubbing) updateScrubbing(e);
+}, { passive: true });
+
+window.addEventListener('mouseup', commitScrubbing);
+
+window.addEventListener('touchmove', e => {
+    if (isScrubbing) {
+        if (e.cancelable) e.preventDefault();
+        updateScrubbing(e);
+    }
+}, { passive: false });
+
+window.addEventListener('touchend', commitScrubbing);
+window.addEventListener('touchcancel', commitScrubbing);
+
+// Wheel scrubbing with immediate visual and throttled seek
+function handleWheelSeek(e) {
+    e.preventDefault();
+    if (!canSeek || !audio.duration || !Number.isFinite(audio.duration)) return;
+    const delta = e.deltaY < 0 ? 5 : -5;
+    const targetTime = Math.max(0, Math.min(audio.duration, audio.currentTime + delta));
+    isSeekingPending = true;
+    applyScrubVisual(targetTime / audio.duration);
+    audio.currentTime = targetTime;
+}
+
+progressContainer.addEventListener('wheel', handleWheelSeek, { passive: false });
+if (dedicatedProgressContainer) {
+    dedicatedProgressContainer.addEventListener('wheel', handleWheelSeek, { passive: false });
 }
 
 /* ========== BROWSER CHROME TINTING ==========

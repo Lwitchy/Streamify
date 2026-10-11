@@ -195,6 +195,21 @@
     cursor: pointer;
     position: relative;
     transition: all 0.2s ease;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Expanded invisible touch and click target for effortless tapping/scrubbing */
+.progress-bar-wrapper::before {
+    content: '';
+    position: absolute;
+    top: -14px;
+    bottom: -14px;
+    left: 0;
+    right: 0;
+    cursor: pointer;
+    z-index: 5;
 }
 
 .progress-bar-wrapper:hover {
@@ -209,6 +224,13 @@
     position: relative;
     transition: width 0.1s linear;
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    will-change: width;
+}
+
+/* Instant 1:1 response during dragging/scrubbing with no artificial delay */
+.progress-bar-wrapper.scrubbing .progress-bar,
+.progress-bar-wrapper:active .progress-bar {
+    transition: none !important;
 }
 
 /* Draggable handle for progress bar */
@@ -835,6 +857,21 @@
     cursor: pointer;
     position: relative;
     margin-bottom: 12px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Expanded invisible touch and click target */
+.dedicated-progress-bar-wrapper::before {
+    content: '';
+    position: absolute;
+    top: -14px;
+    bottom: -14px;
+    left: 0;
+    right: 0;
+    cursor: pointer;
+    z-index: 5;
 }
 
 .dedicated-progress-bar {
@@ -843,6 +880,14 @@
     border-radius: 3px;
     width: 0%;
     position: relative;
+    transition: width 0.1s linear;
+    will-change: width;
+}
+
+/* Zero transition during scrubbing */
+.dedicated-progress-bar-wrapper.scrubbing .dedicated-progress-bar,
+.dedicated-progress-bar-wrapper:active .dedicated-progress-bar {
+    transition: none !important;
 }
 
 .dedicated-progress-bar::after {
