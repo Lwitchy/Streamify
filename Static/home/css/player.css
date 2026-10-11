@@ -1,4 +1,4 @@
-﻿/* === MUSIC PLAYER - Fixed bottom player bar === */
+/* === MUSIC PLAYER - Fixed bottom player bar === */
 
 /* Main player container - always visible at bottom */
 .music-player {
@@ -227,7 +227,19 @@
 }
 
 .progress-bar-wrapper:hover .progress-bar::after {
-    transform: translateY(-50%) scale(1);
+    transform: translateY(-50%) scale(1.15);
+}
+
+.progress-bar-wrapper:active .progress-bar::after {
+    width: 16px;
+    height: 14px;
+    border-radius: 8px;
+    transform: translateY(-50%) scale(1.18);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.85);
+}
+
+.progress-bar-wrapper:active {
+    height: 6px;
 }
 
 /* RIGHT SECTION - Volume control */
@@ -850,6 +862,20 @@
 
 .dedicated-progress-bar-wrapper:hover .dedicated-progress-bar::after {
     opacity: 1;
+    transform: translateY(-50%) scale(1.15);
+}
+
+.dedicated-progress-bar-wrapper:active .dedicated-progress-bar::after {
+    opacity: 1;
+    width: 16px;
+    height: 14px;
+    border-radius: 8px;
+    transform: translateY(-50%) scale(1.18);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.85);
+}
+
+.dedicated-progress-bar-wrapper:active {
+    height: 8px;
 }
 
 .dedicated-time-info {
@@ -940,8 +966,8 @@
     flex-direction: column;
     gap: 15px;
     text-align: left;
-    /* Left align lyrics */
-    padding: var(--lyrics-scroll-padding, 100px) 6px;
+    /* Clean 24px top margin so line 1 starts right under header buttons; bottom padding permits auto-scrolling */
+    padding: 24px 8px var(--lyrics-scroll-padding, 60vh) 8px;
 }
 
 .lyric-line {
@@ -1707,8 +1733,8 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
            old `max(inset, 60px)` always resolved to a hard 60px gap under the
            status bar. A 12px floor keeps some breathing room while still
            honouring the real inset when installed as a standalone PWA, where
-           the inset is ~47-59px on notched devices. */
-        margin-top: max(env(safe-area-inset-top, 0px), 12px);
+        /* Clear the status bar and Dynamic Island safely */
+        margin-top: calc(max(14px, env(safe-area-inset-top, 0px)) + 10px);
         flex-shrink: 0;
     }
 

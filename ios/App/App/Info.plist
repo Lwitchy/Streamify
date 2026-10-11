@@ -77,5 +77,7 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Streamify uses your camera to scan server connection QR codes.</string>
 </dict>
 </plist>

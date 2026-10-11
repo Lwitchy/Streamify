@@ -108,6 +108,19 @@ window.StreamifyEnv = (function () {
         document.documentElement.classList.add('no-volume-control');
     }
 
+    // Detect standalone / Capacitor client mode
+    const isStandalone = !!(
+        window.Capacitor ||
+        window.navigator.standalone === true ||
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    );
+    if (isStandalone && document.documentElement) {
+        document.documentElement.classList.add('is-standalone');
+        if (window.Capacitor) {
+            document.documentElement.classList.add('is-capacitor');
+        }
+    }
+
     /** Human-readable list of what is unavailable, for UI messaging. */
     env.missingFeatures = function () {
         const missing = [];

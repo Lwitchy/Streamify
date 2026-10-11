@@ -1302,6 +1302,78 @@ themeInputs.forEach(input => {
         });
     }
 
+    /* ===================================================
+     * CONNECT PHONE (QR CODE MODAL)
+     * =================================================== */
+    const connectPhoneLink = document.getElementById('connect-phone-link');
+    const connectPhoneModal = document.getElementById('connect-phone-modal');
+    const closeConnectPhoneBtn = document.getElementById('close-connect-phone-btn');
+    const connectPhoneQrImg = document.getElementById('connect-phone-qr-img');
+    const connectPhoneUrlText = document.getElementById('connect-phone-url-text');
+    const copyConnectUrlBtn = document.getElementById('copy-connect-url-btn');
+
+    let activeConnectUrl = '';
+
+    const openConnectPhone = async () => {
+        if (!connectPhoneModal) return;
+        connectPhoneModal.classList.remove('hidden');
+        if (connectPhoneUrlText) connectPhoneUrlText.textContent = 'Generating connection info...';
+
+        try {
+            const res = await fetch((window.API_BASE_URL || '') + '/api/system/connect-info', {
+                cache: 'no-store'
+            });
+            if (!res.ok) throw new Error('Failed to load connection info');
+            const data = await res.json();
+            activeConnectUrl = data.primary_url || (data.urls && data.urls[0]) || '';
+
+            if (connectPhoneQrImg && data.qr_data_url) {
+                connectPhoneQrImg.src = data.qr_data_url;
+            }
+            if (connectPhoneUrlText) {
+                connectPhoneUrlText.textContent = activeConnectUrl;
+            }
+        } catch (err) {
+            console.error('[CONNECT-PHONE]', err);
+            if (connectPhoneUrlText) {
+                connectPhoneUrlText.textContent = window.location.origin;
+            }
+        }
+    };
+
+    const closeConnectPhone = () => {
+        if (connectPhoneModal) connectPhoneModal.classList.add('hidden');
+    };
+
+    if (connectPhoneLink) {
+        connectPhoneLink.addEventListener('click', e => {
+            e.preventDefault();
+            openConnectPhone();
+        });
+    }
+    if (closeConnectPhoneBtn) {
+        closeConnectPhoneBtn.addEventListener('click', closeConnectPhone);
+    }
+    if (connectPhoneModal) {
+        connectPhoneModal.addEventListener('click', e => {
+            if (e.target === connectPhoneModal) closeConnectPhone();
+        });
+        connectPhoneModal.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeConnectPhone();
+        });
+    }
+    if (copyConnectUrlBtn) {
+        copyConnectUrlBtn.addEventListener('click', async () => {
+            const urlToCopy = activeConnectUrl || connectPhoneUrlText?.textContent || '';
+            if (!urlToCopy) return;
+            const ok = await window.copyToClipboard(urlToCopy);
+            if (ok) {
+                copyConnectUrlBtn.textContent = 'Copied!';
+                setTimeout(() => { copyConnectUrlBtn.textContent = 'Copy'; }, 2000);
+            }
+        });
+    }
+
     async function loadMusicDirectories() {
         const listEl = document.getElementById('music-dirs-list');
         if (!listEl) return;

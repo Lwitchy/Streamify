@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  * STREAMIFY - player.js
  * ============================================================================
@@ -2522,7 +2522,7 @@ function scrollToActiveLyric(activeEl = null, immediate = false) {
 
         const activeHeight = activeEl.getBoundingClientRect().height;
         const edgePadding = Math.max(40, Math.round((containerHeight - activeHeight) / 2));
-        // Preserve the existing symmetric mobile scroll spacing.
+        // Bottom padding allows the final lyric lines to scroll into the center
         lyricsContent.style.setProperty('--lyrics-scroll-padding', `${edgePadding}px`);
 
         const scrollAreaRect = lyricsScrollArea.getBoundingClientRect();
@@ -2530,8 +2530,10 @@ function scrollToActiveLyric(activeEl = null, immediate = false) {
 
         const relativeTop = (activeRect.top - scrollAreaRect.top) + lyricsScrollArea.scrollTop;
 
-        const target = relativeTop - (containerHeight / 2) + (activeRect.height / 2);
-        lyricsScrollArea.scrollTo({ top: target, behavior: 'smooth' });
+        // When the song is near the beginning, start cleanly at top (scrollTop: 0)
+        const rawTarget = relativeTop - (containerHeight / 2) + (activeRect.height / 2);
+        const target = Math.max(0, Math.round(rawTarget));
+        lyricsScrollArea.scrollTo({ top: target, behavior: immediate ? 'auto' : 'smooth' });
     }
 }
 

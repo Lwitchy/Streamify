@@ -75,6 +75,12 @@
                             <span>Get Music</span>
                         </a>
                     </li>
+                    <li id="connect-phone-nav-item">
+                        <a href="#" id="connect-phone-link">
+                            <i class='bx bx-mobile-alt'></i>
+                            <span>Connect Phone</span>
+                        </a>
+                    </li>
                 </ul>
                 <div class="sidebar-divider"></div>
                 <ul>
@@ -768,6 +774,36 @@
         </div>
     </div>
 
+
+    <!-- CONNECT PHONE MODAL -->
+    <div id="connect-phone-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="connect-phone-title">
+        <div class="modal-box" style="max-width: 440px; text-align: center; padding: 28px;" tabindex="-1">
+            <div class="modal-header" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class='bx bx-mobile-alt' style="font-size: 24px; color: var(--accent);"></i>
+                    <h3 id="connect-phone-title" style="margin: 0; font-size: 1.25rem; font-weight: 700;">Connect Your Phone</h3>
+                </div>
+                <button type="button" class="modal-close-button" id="close-connect-phone-btn" aria-label="Close dialog">
+                    <i class='bx bx-x' aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; align-items: center;">
+                <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.5; margin-bottom: 20px;">
+                    Scan this QR code with the Streamify iOS app to instantly connect over your local Wi-Fi network.
+                </p>
+                <div id="connect-phone-qr-wrap" style="background: #ffffff; padding: 14px; border-radius: 18px; display: inline-flex; justify-content: center; align-items: center; box-shadow: 0 12px 36px rgba(0,0,0,0.5); margin-bottom: 20px;">
+                    <img id="connect-phone-qr-img" src="" alt="Server QR Code" style="width: 220px; height: 220px; display: block; border-radius: 6px;">
+                </div>
+                <div style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px;">
+                    <code id="connect-phone-url-text" style="color: #fff; font-size: 13px; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: left;">Loading...</code>
+                    <button type="button" class="btn btn-outline btn-sm" id="copy-connect-url-btn" style="flex-shrink: 0; padding: 6px 12px; font-size: 12px;">Copy</button>
+                </div>
+                <p style="color: var(--text-muted, #8e8e99); font-size: 12px; line-height: 1.4; margin: 0;">
+                    Make sure your phone is connected to the same Wi-Fi as this computer.
+                </p>
+            </div>
+        </div>
+    </div>
 
     <!-- SETTINGS MODAL -->
     <div id="settings-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">

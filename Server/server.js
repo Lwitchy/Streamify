@@ -27,6 +27,7 @@ const DiscordArtwork = require('./discordArtwork');
 const ytDlpFactory = require('yt-dlp-exec');
 const ytDlp = ytDlpFactory.create(RT.unpackPath(require('yt-dlp-exec/src/constants').YOUTUBE_DL_PATH));
 DiscordArtwork.configure({ ytDlp });
+const QRCode = require('qrcode');
 
 // Config is loaded through the runtime module rather than require()'d directly.
 // This lets the packaged desktop app keep a writable config outside the asar,
@@ -1060,7 +1061,8 @@ const maintenanceMiddleware = async (req, res, next) => {
         const excludedPaths = [
             '/maintenance', '/api/config/public', '/api/me', '/login', '/loginrequest',
             '/sw.js', '/manifest.json', '/favicon.ico', '/Static/icon-',
-            '/Static/maintenance', '/Static/loginpage', '/Static/vendor'
+            '/Static/maintenance', '/Static/loginpage', '/Static/vendor',
+            '/api/system/connect-info'
         ];
         const isExcluded = excludedPaths.some(path => req.originalUrl.startsWith(path));
 
@@ -1503,6 +1505,48 @@ app.get('/api/config/public', async (req, res) => {
         maintenance_message: app.locals.config.maintenance_message,
         oobe_completed: app.locals.config.oobe_completed === true
     });
+});
+
+// API: LAN / Phone Connection Info & QR Code
+app.get('/api/system/connect-info', async (req, res) => {
+    try {
+        const lan = RT.getLanAddresses();
+        const scheme = (req.secure || isSecureTransport) ? 'https' : 'http';
+        const activePort = req.socket.localPort || port;
+        const hostHeader = (req.headers.host || '').split(':')[0];
+
+        let primaryHost = lan.length > 0 ? lan[0].address : hostHeader || '127.0.0.1';
+        if (primaryHost === '0.0.0.0' || primaryHost === '::') {
+            primaryHost = lan.length > 0 ? lan[0].address : '127.0.0.1';
+        }
+
+        const isDefaultPort = (scheme === 'https' && activePort === 443) || (scheme === 'http' && activePort === 80);
+        const primaryUrl = `${scheme}://${primaryHost}${isDefaultPort ? '' : `:${activePort}`}`;
+
+        const urls = lan.map(e => `${scheme}://${e.address}${isDefaultPort ? '' : `:${activePort}`}`);
+        if (urls.length === 0) urls.push(primaryUrl);
+
+        const qrDataUrl = await QRCode.toDataURL(primaryUrl, {
+            margin: 2,
+            width: 320,
+            color: {
+                dark: '#0e0e12',
+                light: '#ffffff'
+            }
+        });
+
+        res.json({
+            scheme,
+            port: activePort,
+            primary_url: primaryUrl,
+            urls,
+            addresses: lan,
+            qr_data_url: qrDataUrl
+        });
+    } catch (err) {
+        console.error('[CONNECT-INFO] Failed to generate QR code:', err);
+        res.status(500).json({ error: 'Failed to generate connection info' });
+    }
 });
 
 app.post('/api/settings/registration', requireRole(['Owner']), async (req, res) => {

@@ -4,15 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Streamify</title>
+    <script src="jsQR.js"></script>
     <style>
         :root {
             --bg: #0e0e10;
-            --card: rgba(25, 25, 30, 0.75);
+            --card: rgba(25, 25, 30, 0.85);
             --border: rgba(255, 255, 255, 0.1);
             --text: #f3f3f5;
             --muted: #8e8e99;
             --accent: #1db954;
-            --accent-glow: rgba(29, 185, 84, 0.25);
+            --accent-glow: rgba(29, 185, 84, 0.3);
             --danger: #ff4d4d;
         }
 
@@ -33,14 +34,14 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: calc(env(safe-area-inset-top, 20px) + 20px) 24px calc(env(safe-area-inset-bottom, 20px) + 20px);
+            padding: calc(env(safe-area-inset-top, 24px) + 16px) 20px calc(env(safe-area-inset-bottom, 20px) + 16px);
             user-select: none;
-            overflow: hidden;
+            overflow-y: auto;
         }
 
         .ambient-glow {
             position: fixed;
-            top: 20%;
+            top: 25%;
             left: 50%;
             transform: translate(-50%, -50%);
             width: 320px;
@@ -55,24 +56,25 @@
             position: relative;
             z-index: 1;
             width: 100%;
-            max-width: 380px;
+            max-width: 400px;
             display: flex;
             flex-direction: column;
             align-items: center;
             text-align: center;
+            margin: auto;
         }
 
         .logo-wrap {
-            margin-bottom: 28px;
+            margin-bottom: 24px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .logo-icon {
-            width: 72px;
-            height: 72px;
+            width: 68px;
+            height: 68px;
             background: linear-gradient(135deg, #1db954 0%, #15883e 100%);
             border-radius: 20px;
             display: flex;
@@ -82,8 +84,8 @@
         }
 
         .logo-icon svg {
-            width: 40px;
-            height: 40px;
+            width: 38px;
+            height: 38px;
             fill: #fff;
         }
 
@@ -97,23 +99,23 @@
             color: var(--muted);
             font-size: 14px;
             line-height: 1.5;
-            margin-top: 4px;
+            margin-top: 2px;
         }
 
         .card {
             width: 100%;
             background: var(--card);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
+            backdrop-filter: blur(28px);
+            -webkit-backdrop-filter: blur(28px);
             border: 1px solid var(--border);
             border-radius: 24px;
-            padding: 24px;
+            padding: 22px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
         }
 
         .input-group {
             text-align: left;
-            margin-bottom: 18px;
+            margin-bottom: 16px;
         }
 
         label {
@@ -148,13 +150,13 @@
             width: 100%;
             background: var(--accent);
             color: #04180c;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
             border: none;
             border-radius: 14px;
-            padding: 15px;
+            padding: 14px;
             cursor: pointer;
-            transition: transform 0.15s ease, background-color 0.2s ease;
+            transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -162,7 +164,7 @@
         }
 
         .btn:active {
-            transform: scale(0.97);
+            transform: scale(0.95);
         }
 
         .btn.secondary {
@@ -175,6 +177,35 @@
             background: rgba(255, 255, 255, 0.12);
         }
 
+        .btn.outline {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--muted);
+            margin-top: 10px;
+            font-size: 13px;
+            padding: 10px;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 16px 0;
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .divider::before { margin-right: 12px; }
+        .divider::after { margin-left: 12px; }
+
         .hint {
             font-size: 12px;
             color: var(--muted);
@@ -184,6 +215,38 @@
 
         .hint b {
             color: #fff;
+        }
+
+        /* Camera Scanner View */
+        .scanner-wrap {
+            position: relative;
+            width: 100%;
+            border-radius: 18px;
+            overflow: hidden;
+            background: #000;
+            aspect-ratio: 1;
+            margin-bottom: 16px;
+        }
+
+        #qr-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .reticle {
+            position: absolute;
+            inset: 25px;
+            border: 2px dashed rgba(29, 185, 84, 0.8);
+            border-radius: 16px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+            pointer-events: none;
+            animation: pulse-border 2s ease infinite;
+        }
+
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(29, 185, 84, 0.6); }
+            50% { border-color: rgba(29, 185, 84, 1); }
         }
 
         /* Loading View */
@@ -228,26 +291,59 @@
                 <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
             </div>
             <h1>Streamify</h1>
-            <p class="subtitle" id="subtitle-text">Connect to your personal music server</p>
+            <p class="subtitle" id="subtitle-text">Connect to your music server</p>
         </div>
 
-        <!-- Initial Connect Form -->
+        <!-- Initial Connect Options -->
         <div class="card" id="form-card">
             <div id="error-box" class="error-banner"></div>
+
+            <button class="btn" id="open-scan-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+                Scan Desktop QR Code
+            </button>
+
+            <button class="btn secondary" id="auto-discover-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+                Auto-Discover Server on Wi-Fi
+            </button>
+
+            <div class="divider">or type address</div>
 
             <div class="input-group">
                 <label for="server-url">Server Address</label>
                 <input type="url" id="server-url" placeholder="https://192.168.1.50:4443" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             </div>
 
-            <button class="btn" id="connect-btn">Connect to Server</button>
+            <button class="btn secondary" id="connect-btn">Connect</button>
 
             <p class="hint">
-                Open Streamify on your PC and click <b>Connect your phone</b> to find your Wi-Fi address.
+                On your PC, open Streamify and click <b>Connect your phone</b> to display your QR code and network address.
             </p>
         </div>
 
-        <!-- Connecting / Reconnecting State -->
+        <!-- Camera Scanner View -->
+        <div class="card hidden" id="scanner-card">
+            <h3 style="font-size: 16px; margin-bottom: 12px; color: #fff;">Scan Streamify QR Code</h3>
+            <div class="scanner-wrap">
+                <video id="qr-video" muted playsinline></video>
+                <div class="reticle"></div>
+            </div>
+            <p id="scanner-hint" style="font-size: 12px; color: var(--muted); margin-bottom: 14px;">Point camera at the QR code on your PC screen</p>
+            <button class="btn secondary" id="cancel-scan-btn">Cancel</button>
+        </div>
+
+        <!-- Connecting / Status State -->
         <div class="card hidden" id="status-card">
             <div class="spinner"></div>
             <p id="status-text" style="font-size: 14px; color: var(--muted);">Connecting to server...</p>
@@ -261,14 +357,22 @@
     <script>
         const STORAGE_KEY = 'streamify_server_url';
         const formCard = document.getElementById('form-card');
+        const scannerCard = document.getElementById('scanner-card');
         const statusCard = document.getElementById('status-card');
         const statusText = document.getElementById('status-text');
         const statusActions = document.getElementById('status-actions');
         const errorBox = document.getElementById('error-box');
         const urlInput = document.getElementById('server-url');
         const connectBtn = document.getElementById('connect-btn');
+        const openScanBtn = document.getElementById('open-scan-btn');
+        const cancelScanBtn = document.getElementById('cancel-scan-btn');
+        const autoDiscoverBtn = document.getElementById('auto-discover-btn');
         const retryBtn = document.getElementById('retry-btn');
         const changeBtn = document.getElementById('change-btn');
+        const qrVideo = document.getElementById('qr-video');
+
+        let videoStream = null;
+        let scanAnimationId = null;
 
         function cleanUrl(raw) {
             let u = String(raw || '').trim();
@@ -280,7 +384,9 @@
         }
 
         async function verifyAndNavigate(baseUrl) {
+            stopQrScanner();
             formCard.classList.add('hidden');
+            scannerCard.classList.add('hidden');
             statusCard.classList.remove('hidden');
             statusActions.classList.add('hidden');
             statusText.textContent = `Connecting to ${baseUrl}...`;
@@ -302,13 +408,146 @@
                 statusText.textContent = 'Connected! Opening Streamify...';
                 setTimeout(() => {
                     window.location.replace(`${baseUrl}/home`);
-                }, 300);
+                }, 250);
             } catch (err) {
                 clearTimeout(timeout);
                 statusText.innerHTML = `Could not reach server at <code style="color:#fff;">${baseUrl}</code>.<br><br>Make sure your PC is on and connected to the same Wi-Fi.`;
                 statusActions.classList.remove('hidden');
             }
         }
+
+        /* --- QR SCANNER LOGIC --- */
+        async function startQrScanner() {
+            errorBox.style.display = 'none';
+            formCard.classList.add('hidden');
+            scannerCard.classList.remove('hidden');
+
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: 'environment' } },
+                    audio: false
+                });
+                qrVideo.srcObject = videoStream;
+                qrVideo.setAttribute('playsinline', 'true');
+                await qrVideo.play();
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+                function scanFrame() {
+                    if (!videoStream) return;
+                    if (qrVideo.readyState === qrVideo.HAVE_ENOUGH_DATA) {
+                        canvas.width = qrVideo.videoWidth;
+                        canvas.height = qrVideo.videoHeight;
+                        ctx.drawImage(qrVideo, 0, 0, canvas.width, canvas.height);
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                        if (window.jsQR) {
+                            const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+                                inversionAttempts: 'dontInvert',
+                            });
+                            if (code && code.data) {
+                                if (navigator.vibrate) {
+                                    try { navigator.vibrate([40, 30, 40]); } catch (e) {}
+                                }
+                                const url = cleanUrl(code.data);
+                                if (url) {
+                                    stopQrScanner();
+                                    urlInput.value = url;
+                                    verifyAndNavigate(url);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    scanAnimationId = requestAnimationFrame(scanFrame);
+                }
+                scanAnimationId = requestAnimationFrame(scanFrame);
+            } catch (err) {
+                stopQrScanner();
+                errorBox.textContent = 'Camera access was not permitted. Please enter your server address manually.';
+                errorBox.style.display = 'block';
+            }
+        }
+
+        function stopQrScanner() {
+            if (scanAnimationId) {
+                cancelAnimationFrame(scanAnimationId);
+                scanAnimationId = null;
+            }
+            if (videoStream) {
+                videoStream.getTracks().forEach(t => t.stop());
+                videoStream = null;
+            }
+            scannerCard.classList.add('hidden');
+            formCard.classList.remove('hidden');
+        }
+
+        /* --- AUTO DISCOVER PROBE --- */
+        async function autoDiscoverServer() {
+            formCard.classList.add('hidden');
+            statusCard.classList.remove('hidden');
+            statusActions.classList.add('hidden');
+            statusText.textContent = 'Scanning local network for Streamify servers...';
+
+            const candidates = [
+                'https://streamify.local:4443',
+                'http://streamify.local:3000',
+                'https://localhost:4443',
+                'http://localhost:3000'
+            ];
+
+            // If a previous IP was saved (e.g. 192.168.1.50), probe its neighborhood
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                candidates.unshift(saved);
+                try {
+                    const match = saved.match(/^(https?:\/\/(\d+\.\d+\.\d+)\.)(\d+)(:\d+)?/i);
+                    if (match) {
+                        const prefix = match[1];
+                        const lastOctet = parseInt(match[3], 10);
+                        const port = match[4] || '';
+                        const proto = saved.startsWith('https') ? 'https://' : 'http://';
+                        // Probe immediate adjacent IPs
+                        for (let d = -3; d <= 3; d++) {
+                            const o = lastOctet + d;
+                            if (o > 1 && o < 255 && o !== lastOctet) {
+                                candidates.push(`${proto}${match[2]}.${o}${port}`);
+                            }
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            let found = null;
+            for (const url of candidates) {
+                try {
+                    const c = new AbortController();
+                    const t = setTimeout(() => c.abort(), 700);
+                    const res = await fetch(`${url}/api/config/public`, {
+                        signal: c.signal,
+                        cache: 'no-store'
+                    }).catch(() => null);
+                    clearTimeout(t);
+                    if (res && (res.ok || res.status === 200 || res.status === 401)) {
+                        found = url;
+                        break;
+                    }
+                } catch (e) {}
+            }
+
+            if (found) {
+                urlInput.value = found;
+                verifyAndNavigate(found);
+            } else {
+                statusText.innerHTML = 'No server responded automatically.<br><br>Scan the QR code on your PC or enter your address manually.';
+                statusActions.classList.remove('hidden');
+            }
+        }
+
+        openScanBtn.addEventListener('click', startQrScanner);
+        cancelScanBtn.addEventListener('click', stopQrScanner);
+        autoDiscoverBtn.addEventListener('click', autoDiscoverServer);
 
         connectBtn.addEventListener('click', () => {
             errorBox.style.display = 'none';
@@ -322,8 +561,12 @@
         });
 
         retryBtn.addEventListener('click', () => {
-            const saved = localStorage.getItem(STORAGE_KEY);
+            const saved = localStorage.getItem(STORAGE_KEY) || urlInput.value;
             if (saved) verifyAndNavigate(saved);
+            else {
+                statusCard.classList.add('hidden');
+                formCard.classList.remove('hidden');
+            }
         });
 
         changeBtn.addEventListener('click', () => {
