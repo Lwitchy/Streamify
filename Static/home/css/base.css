@@ -1,4 +1,4 @@
-﻿
+
 /* --- CSS VARIABLES & RESET --- */
 /* Define all color schemes, sizes, and animation values as variables */
 /* This allows for easy theme switching and consistent styling throughout */
@@ -52,8 +52,9 @@
     --player-height: 90px;
 
     /* Animation timings for smooth transitions */
-    --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    --click-anim: transform 0.1s ease;
+    --transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    --click-anim: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    --spring-squish: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Global reset - removes default margins/padding and sets border-box model */
@@ -126,15 +127,30 @@ body {
 /* === ANIMATION UTILITIES === */
 
 /* 
- * SCALE DOWN ANIMATION ON CLICK
- * Applied to all interactive elements for tactile feedback
- * Creates the "pressed" effect when user clicks
+ * TACTILE SQUISH ANIMATION ON CLICK
+ * Applied to interactive elements for smooth, springy feedback
  */
+.btn,
+.card,
+.notif-pill,
+.user-pill,
+.sidebar-nav a,
+.nav-arrows i {
+    transition:
+        transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        background 0.2s ease,
+        color 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+    will-change: transform;
+}
+
 .btn:active,
 .card:active,
 .notif-pill:active,
 .user-pill:active {
-    transform: scale(0.95);
+    transform: scale(0.94);
+    transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .nav-arrows i:active,
@@ -142,8 +158,8 @@ body {
 .play-pause-btn:active,
 .control-btn:active,
 .sidebar-nav a:active {
-    transform: scale(0.96) !important;
-    transition: var(--click-anim);
+    transform: scale(0.90) !important;
+    transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1) !important;
     user-select: none;
 }
 
