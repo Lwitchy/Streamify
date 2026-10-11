@@ -279,6 +279,36 @@
     text-overflow: ellipsis;
 }
 
+.download-result-title-wrap {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.download-result-artist {
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.download-result-group {
+    margin-bottom: 20px;
+}
+
+.download-result-group:last-child {
+    margin-bottom: 0;
+}
+
+.download-result-group-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+    padding-left: 4px;
+}
+
 .download-result-sub {
     font-size: 12px;
     color: var(--text-secondary);

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  * STREAMIFY - ui.js
  * ============================================================================
@@ -91,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     */
     if (window.StreamifyEnv && window.StreamifyEnv.canUseServiceWorker) {
         const registerServiceWorker = () => {
-            navigator.serviceWorker.register('/sw.js?v=4.45')
+            navigator.serviceWorker.register('/sw.js?v=4.46')
                 .then(reg => console.log('[SW] Registered successfully:', reg.scope))
                 .catch(err => console.error('[SW] Registration failed:', err));
         };
@@ -923,16 +923,14 @@ themeInputs.forEach(input => {
 
         if (usernameInput) {
             usernameInput.value = soulseek.username || '';
-            // Credentials pinned via SLSK_USER/SLSK_PASS win over the database,
-            // so editing them here would have no effect.
             usernameInput.disabled = Boolean(soulseek.fromEnvironment);
         }
         if (passwordInput) {
-            // The stored password is never sent back to the browser.
             passwordInput.value = '';
             passwordInput.placeholder = soulseek.configured ? 'Saved - type to replace' : 'Your Soulseek password';
             passwordInput.disabled = Boolean(soulseek.fromEnvironment);
         }
+        
         if (folder) {
             folder.textContent = data && data.downloadFolder
                 ? data.downloadFolder

@@ -1,0 +1,16 @@
+{
+  "appId": "com.streamify.music",
+  "appName": "Streamify",
+  "webDir": "mobile",
+  "bundledWebRuntime": false,
+  "server": {
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  },
+  "ios": {
+    "allowsLinkPreview": false,
+    "scrollEnabled": true,
+    "preferredContentMode": "mobile",
+    "handleApplicationURL": true
+  }
+}

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Streamify</title>
+    <style>
+        :root {
+            --bg: #0e0e10;
+            --card: rgba(25, 25, 30, 0.75);
+            --border: rgba(255, 255, 255, 0.1);
+            --text: #f3f3f5;
+            --muted: #8e8e99;
+            --accent: #1db954;
+            --accent-glow: rgba(29, 185, 84, 0.25);
+            --danger: #ff4d4d;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: calc(env(safe-area-inset-top, 20px) + 20px) 24px calc(env(safe-area-inset-bottom, 20px) + 20px);
+            user-select: none;
+            overflow: hidden;
+        }
+
+        .ambient-glow {
+            position: fixed;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 320px;
+            height: 320px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, rgba(0,0,0,0) 70%);
+            filter: blur(50px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 380px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .logo-wrap {
+            margin-bottom: 28px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 72px;
+            height: 72px;
+            background: linear-gradient(135deg, #1db954 0%, #15883e 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 12px 30px rgba(29, 185, 84, 0.35);
+        }
+
+        .logo-icon svg {
+            width: 40px;
+            height: 40px;
+            fill: #fff;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        p.subtitle {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.5;
+            margin-top: 4px;
+        }
+
+        .card {
+            width: 100%;
+            background: var(--card);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+        }
+
+        .input-group {
+            text-align: left;
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        input[type="text"], input[type="url"] {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            padding: 14px 16px;
+            font-size: 15px;
+            color: #fff;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        input[type="text"]:focus, input[type="url"]:focus {
+            border-color: var(--accent);
+            background: rgba(255, 255, 255, 0.09);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .btn {
+            width: 100%;
+            background: var(--accent);
+            color: #04180c;
+            font-size: 16px;
+            font-weight: 700;
+            border: none;
+            border-radius: 14px;
+            padding: 15px;
+            cursor: pointer;
+            transition: transform 0.15s ease, background-color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn.secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            margin-top: 10px;
+        }
+
+        .btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .hint {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.5;
+            margin-top: 16px;
+        }
+
+        .hint b {
+            color: #fff;
+        }
+
+        /* Loading View */
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-banner {
+            background: rgba(255, 77, 77, 0.12);
+            border: 1px solid rgba(255, 77, 77, 0.3);
+            color: #ff8080;
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.4;
+            margin-bottom: 16px;
+            display: none;
+            text-align: left;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-glow"></div>
+
+    <div class="container">
+        <div class="logo-wrap">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            </div>
+            <h1>Streamify</h1>
+            <p class="subtitle" id="subtitle-text">Connect to your personal music server</p>
+        </div>
+
+        <!-- Initial Connect Form -->
+        <div class="card" id="form-card">
+            <div id="error-box" class="error-banner"></div>
+
+            <div class="input-group">
+                <label for="server-url">Server Address</label>
+                <input type="url" id="server-url" placeholder="https://192.168.1.50:4443" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            </div>
+
+            <button class="btn" id="connect-btn">Connect to Server</button>
+
+            <p class="hint">
+                Open Streamify on your PC and click <b>Connect your phone</b> to find your Wi-Fi address.
+            </p>
+        </div>
+
+        <!-- Connecting / Reconnecting State -->
+        <div class="card hidden" id="status-card">
+            <div class="spinner"></div>
+            <p id="status-text" style="font-size: 14px; color: var(--muted);">Connecting to server...</p>
+            <div id="status-actions" class="hidden" style="margin-top: 18px;">
+                <button class="btn" id="retry-btn">Try Again</button>
+                <button class="btn secondary" id="change-btn">Change Server</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'streamify_server_url';
+        const formCard = document.getElementById('form-card');
+        const statusCard = document.getElementById('status-card');
+        const statusText = document.getElementById('status-text');
+        const statusActions = document.getElementById('status-actions');
+        const errorBox = document.getElementById('error-box');
+        const urlInput = document.getElementById('server-url');
+        const connectBtn = document.getElementById('connect-btn');
+        const retryBtn = document.getElementById('retry-btn');
+        const changeBtn = document.getElementById('change-btn');
+
+        function cleanUrl(raw) {
+            let u = String(raw || '').trim();
+            if (!u) return '';
+            if (!/^https?:\/\//i.test(u)) {
+                u = 'https://' + u;
+            }
+            return u.replace(/\/+$/, '');
+        }
+
+        async function verifyAndNavigate(baseUrl) {
+            formCard.classList.add('hidden');
+            statusCard.classList.remove('hidden');
+            statusActions.classList.add('hidden');
+            statusText.textContent = `Connecting to ${baseUrl}...`;
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 4000);
+
+            try {
+                // Check public config route or ping
+                const res = await fetch(`${baseUrl}/api/config/public`, {
+                    signal: controller.signal,
+                    cache: 'no-store'
+                }).catch(() => null);
+
+                clearTimeout(timeout);
+
+                // Even if not 200, if server responds, we know the origin is alive!
+                localStorage.setItem(STORAGE_KEY, baseUrl);
+                statusText.textContent = 'Connected! Opening Streamify...';
+                setTimeout(() => {
+                    window.location.replace(`${baseUrl}/home`);
+                }, 300);
+            } catch (err) {
+                clearTimeout(timeout);
+                statusText.innerHTML = `Could not reach server at <code style="color:#fff;">${baseUrl}</code>.<br><br>Make sure your PC is on and connected to the same Wi-Fi.`;
+                statusActions.classList.remove('hidden');
+            }
+        }
+
+        connectBtn.addEventListener('click', () => {
+            errorBox.style.display = 'none';
+            const url = cleanUrl(urlInput.value);
+            if (!url) {
+                errorBox.textContent = 'Please enter your Streamify server address.';
+                errorBox.style.display = 'block';
+                return;
+            }
+            verifyAndNavigate(url);
+        });
+
+        retryBtn.addEventListener('click', () => {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) verifyAndNavigate(saved);
+        });
+
+        changeBtn.addEventListener('click', () => {
+            statusCard.classList.add('hidden');
+            formCard.classList.remove('hidden');
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) urlInput.value = saved;
+        });
+
+        // Auto-connect if URL was previously saved
+        window.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                urlInput.value = saved;
+                verifyAndNavigate(saved);
+            }
+        });
+    </script>
+</body>
+</html>

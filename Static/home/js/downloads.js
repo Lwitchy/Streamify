@@ -188,12 +188,36 @@
     function buildResultRow(result) {
         const row = node('div', 'download-result');
 
-        const placeholder = node('div', 'download-result-art');
-        placeholder.appendChild(icon('bx-user-voice'));
-        row.appendChild(placeholder);
+        if (result.thumbnail) {
+            const image = document.createElement('img');
+            image.className = 'download-result-art';
+            image.loading = 'lazy';
+            image.decoding = 'async';
+            image.alt = '';
+            image.src = result.thumbnail;
+            image.addEventListener('error', () => {
+                const fallback = node('div', 'download-result-art');
+                fallback.appendChild(icon('bx-user-voice'));
+                image.replaceWith(fallback);
+            });
+            row.appendChild(image);
+        } else {
+            const placeholder = node('div', 'download-result-art');
+            placeholder.appendChild(icon('bx-user-voice'));
+            row.appendChild(placeholder);
+        }
 
         const main = node('div', 'download-result-main');
-        main.appendChild(node('div', 'download-result-title', result.title || 'Unknown'));
+        const titleLine = node('div', 'download-result-title', result.title || 'Unknown');
+        if (result.artist) {
+            const titleWrap = node('div', 'download-result-title-wrap');
+            titleWrap.appendChild(node('span', 'download-result-artist', result.artist + ' - '));
+            titleWrap.appendChild(node('span', null, result.title || 'Unknown'));
+            main.appendChild(titleWrap);
+        } else {
+            main.appendChild(titleLine);
+        }
+
         main.appendChild(node(
             'div',
             'download-result-sub',
@@ -233,9 +257,34 @@
             panel.appendChild(emptyState('bx-search-alt', message));
             return;
         }
-        const list = node('div', 'download-result-list');
-        results.forEach(result => list.appendChild(buildResultRow(result)));
-        panel.appendChild(list);
+        
+        const best = [];
+        const good = [];
+        const other = [];
+        
+        results.forEach(result => {
+            const isLossless = result.extension === 'FLAC' || result.extension === 'WAV';
+            const is320 = result.bitrate >= 320;
+            const isGood = result.bitrate >= 192;
+            
+            if ((isLossless || is320) && result.slots) best.push(result);
+            else if (isGood) good.push(result);
+            else other.push(result);
+        });
+
+        const renderGroup = (title, items) => {
+            if (items.length === 0) return;
+            const groupWrap = node('div', 'download-result-group');
+            groupWrap.appendChild(node('h4', 'download-result-group-title', title));
+            const list = node('div', 'download-result-list');
+            items.forEach(result => list.appendChild(buildResultRow(result)));
+            groupWrap.appendChild(list);
+            panel.appendChild(groupWrap);
+        };
+        
+        renderGroup('Best Quality', best);
+        renderGroup('Good Quality', good);
+        renderGroup('Other', other);
     }
 
     function emptyState(iconName, message) {
@@ -270,8 +319,9 @@
 
     function queueItemMeta(item) {
         if (item.status === 'completed') {
-            const source = item.resolvedSource === 'youtube' ? 'YouTube (legacy)' : 'Soulseek';
-            return `Saved from ${source}`;
+            let sourceLabel = 'Soulseek';
+            if (item.resolvedSource === 'youtube') sourceLabel = 'YouTube';
+            return `Saved from ${sourceLabel}`;
         }
         if (item.status === 'failed') return item.error || 'Download failed.';
         if (item.status === 'cancelled') return 'Cancelled.';
@@ -279,12 +329,22 @@
 
         const parts = [STAGE_LABELS[item.stage] || 'Working'];
         if (item.stage === 'downloading') {
-            if (item.resolvedSource) parts[0] += ` from ${item.resolvedSource === 'youtube' ? 'YouTube (legacy)' : 'Soulseek'}`;
-            if (item.resolvedSource === 'soulseek') {
-                // Peers send the whole file in one go, so only the expected
-                // total is known - never a running byte count.
-                if (item.totalBytes > 0) parts.push(formatBytes(item.totalBytes));
+            if (item.resolvedSource) {
+                let currentSource = 'Soulseek';
+                if (item.resolvedSource === 'youtube') currentSource = 'YouTube';
+                parts[0] += ` from ${currentSource}`;
             }
+
+            if (item.totalBytes > 0) {
+                if (item.transferredBytes > 0 && item.transferredBytes < item.totalBytes) {
+                    parts.push(`${formatBytes(item.transferredBytes)} / ${formatBytes(item.totalBytes)}`);
+                } else {
+                    parts.push(formatBytes(item.totalBytes));
+                }
+            } else if (item.transferredBytes > 0) {
+                parts.push(formatBytes(item.transferredBytes));
+            }
+
             const eta = formatEta(item.etaSeconds);
             if (eta) parts.push(eta);
         }
@@ -333,8 +393,13 @@
         if (item.status === 'running') {
             const track = node('div', 'queue-progress');
             const bar = node('div', 'queue-progress-bar');
-            // Soulseek exposes no byte-level progress, so use an indeterminate sweep.
-            bar.classList.add('is-indeterminate');
+            
+            if (item.progress > 0 && item.progress < 1) {
+                bar.style.width = `${Math.round(item.progress * 100)}%`;
+            } else {
+                bar.classList.add('is-indeterminate');
+            }
+            
             track.appendChild(bar);
             row.appendChild(track);
         }
@@ -408,15 +473,16 @@
             toast('Type at least two characters.', 'error');
             return;
         }
+
+        // A pasted link is a direct operation; route it immediately without requiring Soulseek.
+        if (/^https?:\/\//i.test(query)) {
+            return resolveLink(query);
+        }
+
         if (!soulseekUsable()) {
             toast('Set up Soulseek in Settings before searching.', 'error');
             if (typeof window.openDownloadSettings === 'function') window.openDownloadSettings();
             return;
-        }
-
-        // A pasted link is a different operation; route it before searching.
-        if (/^https?:\/\//i.test(query)) {
-            return resolveLink(query);
         }
 
         const token = ++state.searchToken;
@@ -457,10 +523,15 @@
         try {
             const data = await apiCall('/api/downloads/resolve', { method: 'POST', body: { url } });
 
+            const isDirect = data.kind === 'youtube' || data.kind === 'url';
+            
             openConfirm({
                 title: data.label || 'Import',
-                note: `${data.tracks.length} track${data.tracks.length === 1 ? '' : 's'} found. Each one will be searched on Soulseek.`,
+                note: isDirect 
+                    ? `This will be downloaded directly via YouTube.`
+                    : `${data.tracks.length} track${data.tracks.length === 1 ? '' : 's'} found. Each one will be searched on Soulseek.`,
                 tracks: data.tracks,
+                preview: isDirect && data.tracks.length === 1 ? data.tracks[0] : null,
                 batchLabel: data.label
             });
         } catch (error) {
@@ -604,8 +675,9 @@
         const item = {
             requestedSource: 'soulseek',
             title: result.title,
-            artist: null,
-            searchQuery: result.title,
+            artist: result.artist || null,
+            artworkUrl: result.thumbnail || null,
+            searchQuery: result.query || result.title,
             sourcePayload: result.payload
         };
 

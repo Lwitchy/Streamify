@@ -4193,7 +4193,7 @@ const HandleDatabase = {
             SET status = 'queued', stage = 'pending', error = NULL, progress = 0,
                 eta_seconds = NULL, transferred_bytes = 0, started_at = NULL, completed_at = NULL
             WHERE id = ? AND status IN ('failed', 'cancelled')
-              AND requested_source != 'youtube'
+              AND ((requested_source != 'youtube' AND resolved_source != 'youtube') OR (source_url IS NOT NULL AND TRIM(source_url) != ''))
         `, [id]);
         if (!result.changes) return null;
         return await getQuery(musicDb, 'SELECT * FROM download_queue WHERE id = ?', [id]);
@@ -4225,9 +4225,10 @@ const HandleDatabase = {
         const result = await runQuery(musicDb, `
             UPDATE download_queue
             SET status = 'failed', stage = NULL, eta_seconds = NULL,
-                error = 'YouTube downloads are no longer supported.', completed_at = ?
+                error = 'Legacy YouTube downloads without a URL are no longer supported.', completed_at = ?
             WHERE status IN ('queued', 'running')
               AND (requested_source = 'youtube' OR resolved_source = 'youtube')
+              AND (source_url IS NULL OR TRIM(source_url) = '')
         `, [new Date().toISOString()]);
         return result.changes;
     },

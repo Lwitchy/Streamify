@@ -250,7 +250,9 @@ const check = (label, fn) => {
 
     /* --- Confirmation before download ------------------------------- */
     const enqueuesBefore = fetchCalls.filter(c => c.url.endsWith('/api/downloads/enqueue')).length;
-    const row = el('downloads-panel-soulseek').children[0].children[0];
+    const firstGroup = el('downloads-panel-soulseek').children[0];
+    const rowList = firstGroup && firstGroup.children[1] ? firstGroup.children[1] : firstGroup;
+    const row = rowList.children[0];
     const button = row.children[row.children.length - 1];
     button.click();
     await new Promise(r => setTimeout(r, 20));
