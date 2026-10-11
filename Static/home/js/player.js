@@ -1928,6 +1928,65 @@ if (btnCloseLyrics) {
     });
 }
 
+/* ========== DEDICATED PLAYER & LYRICS SWIPE GESTURES ========== */
+(function setupDedicatedPlayerGestures() {
+    const dedicatedView = document.getElementById('dedicated-player-view');
+    if (!dedicatedView) return;
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let isGestureIgnored = false;
+
+    dedicatedView.addEventListener('touchstart', e => {
+        if (!document.body.classList.contains('player-section-active')) return;
+        if (e.touches.length !== 1) {
+            isGestureIgnored = true;
+            return;
+        }
+
+        const target = e.target;
+        // Never hijack progress sliders, volume sliders, or buttons
+        if (target.closest('.dedicated-progress-bar-wrapper, .progress-bar-wrapper, .volume-slider, button, input, .lyric-sync-btn, .lyric-edit-input')) {
+            isGestureIgnored = true;
+            return;
+        }
+
+        isGestureIgnored = false;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+    }, { passive: true });
+
+    dedicatedView.addEventListener('touchend', e => {
+        if (isGestureIgnored) return;
+        if (!document.body.classList.contains('player-section-active')) return;
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = touchEndY - touchStartY;
+        const absX = Math.abs(deltaX);
+        const absY = Math.abs(deltaY);
+
+        // 1. Swipe Left-to-Right in Lyrics view to go back to album art view
+        if (isLyricsActive && deltaX > 60 && absX > absY * 1.3) {
+            deactivateLyricsView();
+            return;
+        }
+
+        // 2. Swipe Down to Close Big Player
+        if (deltaY > 70 && deltaY > absX * 1.3) {
+            // If lyrics are active, only allow closing if scrolled to the top
+            if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 10) {
+                return;
+            }
+            btnCloseDedicated?.click();
+        }
+    }, { passive: true });
+})();
+
 function resetLyrics() {
     if (_lyricsFetchAbort) _lyricsFetchAbort.abort();
     if (_lyricsSearchAbort) _lyricsSearchAbort.abort();

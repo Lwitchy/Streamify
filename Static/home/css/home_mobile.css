@@ -1209,3 +1209,34 @@
     top: 60px !important;
     z-index: 9999 !important;
 }
+
+/* =========================================================================
+   iOS Specific Optimizations (WKWebView / Safari Auto-Zoom & Scroll Lock)
+   ========================================================================= */
+
+/* Prevent iOS from automatically zooming into inputs (requires 16px font-size) */
+.is-ios input,
+.is-ios textarea,
+.is-ios select,
+.is-ios .search-wrapper input,
+.is-ios .downloads-search-input,
+.is-ios input[type="text"],
+.is-ios input[type="search"] {
+    font-size: 16px !important;
+}
+
+/* Ensure smooth touch scrolling and eliminate rubber-banding leaks on iOS */
+.is-ios-app,
+.is-capacitor-ios {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.is-ios-app input,
+.is-ios-app textarea,
+.is-capacitor-ios input,
+.is-capacitor-ios textarea {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+}

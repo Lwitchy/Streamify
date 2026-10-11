@@ -1040,6 +1040,9 @@
 .lyrics-scroll-area {
     flex: 1 1 auto;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     /* Hide scrollbar for clean look */
     scrollbar-width: none;
     /* Firefox */
@@ -1837,6 +1840,9 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
 @media (max-width: 768px) {
     .dedicated-player-view {
         padding: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: pan-y;
     }
 
     .dedicated-player-content {
@@ -1844,6 +1850,9 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
         padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
         gap: 20px;
         justify-content: center;
+        height: 100%;
+        max-height: 100%;
+        overflow: hidden;
     }
 
     .dedicated-header {
@@ -1851,22 +1860,29 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
         width: calc(100% - 32px);
         margin-left: auto;
         margin-right: auto;
-        /* In Safari's normal browsing mode safe-area-inset-top is 0, so the
-           old `max(inset, 60px)` always resolved to a hard 60px gap under the
-           status bar. A 12px floor keeps some breathing room while still
-           honouring the real inset when installed as a standalone PWA, where
         /* Clear the status bar and Dynamic Island safely */
         margin-top: calc(max(14px, env(safe-area-inset-top, 0px)) + 10px);
         flex-shrink: 0;
     }
 
-
-    /* Same as 900px, ensure full height for lyrics on mobile */
+    /* Fixed 100% height for lyrics view on mobile so ONLY lyrics scroll, never the page */
     .dedicated-player-content.lyrics-active-view {
         justify-content: flex-start;
-        height: auto;
+        height: 100%;
+        max-height: 100%;
         min-height: 0;
-        gap: 15px;
+        overflow: hidden;
+        gap: 10px;
+    }
+
+    .dedicated-player-content.lyrics-active-view .lyrics-scroll-area {
+        flex: 1 1 auto;
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
     }
 
     .dedicated-art-wrapper {

@@ -102,22 +102,33 @@ window.StreamifyEnv = (function () {
         })(),
     };
 
-    // Expose as a class so CSS can hide the volume controls without every
-    // component needing to know about the quirk.
-    if (!env.canControlVolume && document.documentElement) {
-        document.documentElement.classList.add('no-volume-control');
-    }
+    // Platform detection for targeted iOS & standalone optimizations
+    const ua = navigator.userAgent || '';
+    const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 
-    // Detect standalone / Capacitor client mode
     const isStandalone = !!(
         window.Capacitor ||
         window.navigator.standalone === true ||
         (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
     );
-    if (isStandalone && document.documentElement) {
-        document.documentElement.classList.add('is-standalone');
+
+    if (document.documentElement) {
+        if (!env.canControlVolume) {
+            document.documentElement.classList.add('no-volume-control');
+        }
+        if (isIOS) {
+            document.documentElement.classList.add('is-ios');
+        }
+        if (isStandalone) {
+            document.documentElement.classList.add('is-standalone');
+            if (isIOS) document.documentElement.classList.add('is-standalone-ios');
+        }
         if (window.Capacitor) {
             document.documentElement.classList.add('is-capacitor');
+            if (isIOS) document.documentElement.classList.add('is-capacitor-ios');
         }
     }
 
