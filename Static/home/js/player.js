@@ -184,9 +184,24 @@ function loadSong(song) {
 
     playerTitle.textContent = song.title;
     playerArtist.textContent = song.artist; // No badge in mini player
-    const coverUrl = safeImageURL(song.cover, COVER_PLACEHOLDER);
+
+    let audioUrl = song.url;
+    let coverUrl = safeImageURL(song.cover, COVER_PLACEHOLDER);
+
+    if (song.localAudioPath && window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
+        audioUrl = window.Capacitor.convertFileSrc(song.localAudioPath);
+    } else if (audioUrl && audioUrl.startsWith('/') && window.API_BASE_URL) {
+        audioUrl = window.API_BASE_URL.replace(/\/+$/, '') + audioUrl;
+    }
+
+    if (song.localCoverPath && window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
+        coverUrl = window.Capacitor.convertFileSrc(song.localCoverPath);
+    } else if (coverUrl && coverUrl.startsWith('/') && window.API_BASE_URL) {
+        coverUrl = window.API_BASE_URL.replace(/\/+$/, '') + coverUrl;
+    }
+
     playerImg.src = coverUrl;
-    audio.src = song.url;
+    audio.src = audioUrl;
 
     // Sync Dedicated Player
     if (dedicatedTitle) {
@@ -389,7 +404,7 @@ function _playSongFromPlaylist(index, pl, sh) {
 
     };
 
-    if (!navigator.onLine && window.OfflineStore) {
+    if ((!navigator.onLine || window.StreamifyOfflineMode) && window.OfflineStore) {
         window.OfflineStore.getOfflineSong(song.id).then(cachedSong => {
             if (selectionSeq !== _songSelectionSeq || controller.signal.aborted) return;
             if (cachedSong) {
@@ -409,8 +424,9 @@ function _playSongFromPlaylist(index, pl, sh) {
     // player, and /api/stream performs the same authentication/access checks.
     // Starting it directly removes an otherwise redundant metadata round trip.
     if (song.id !== undefined && song.id !== null && song.id !== '') {
+        const base = (window.API_BASE_URL || '').replace(/\/+$/, '');
         loadAndPlay({
-            url: `/api/stream/${encodeURIComponent(song.id)}`,
+            url: `${base}/api/stream/${encodeURIComponent(song.id)}`,
             cover: song.cover,
             bitrate: song.bitrate,
             extension: song.extension
@@ -592,7 +608,21 @@ audio.addEventListener('pause', () => {
 });
 audio.addEventListener('error', () => {
     syncPlaybackUI(false);
-    if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
+    if (window.OfflineStore && telemetrySongId) {
+        window.OfflineStore.getOfflineSong(telemetrySongId).then(cachedSong => {
+            if (cachedSong) {
+                console.log('[PLAYBACK] Streaming audio error, falling back to offline copy');
+                loadSong(cachedSong);
+                playSong();
+                return;
+            }
+            if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
+        }).catch(() => {
+            if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
+        });
+    } else {
+        if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
+    }
 });
 
 const fmt = t => { const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${m}:${s < 10 ? '0' + s : s}`; };
@@ -1671,51 +1701,93 @@ if (playerImg) {
     });
 }
 
+let isClosingMobilePlayer = false;
+
+function finalizeCloseDedicatedPlayer() {
+    setDedicatedPlayerActive(false);
+    setThemeColor(DEFAULT_THEME_COLOR);
+
+    if (typeof window.hideAllSections === 'function' && previousSectionId) {
+        const prevSec = document.getElementById(previousSectionId);
+        if (prevSec) {
+            window.hideAllSections();
+            window.showSection(prevSec);
+
+            // Re-highlight the correct sidebar nav link
+            const navMap = {
+                'trending-section':   'library-link',
+                'upload-section':     'upload-link',
+                'playlist-detail-section': null,
+            };
+            const linkId = navMap[previousSectionId];
+            if (linkId) document.getElementById(linkId)?.classList.add('active');
+
+            // Restore sidebar playlist / nav highlight
+            if (previousSidebarActiveEl) {
+                previousSidebarActiveEl.classList.add('active');
+            }
+
+            // Re-apply the "now playing" blue highlight on the song row
+            const listContainer = prevSec.querySelector('.song-list, #trending-list, #playlist-songs-list');
+            if (listContainer && typeof highlightCurrentSong === 'function') {
+                highlightCurrentSong(listContainer);
+            }
+
+            playerImg?.focus({ preventScroll: true });
+            return;
+        }
+    }
+
+    // True fallback: history was lost, go to library
+    document.getElementById('library-link')?.click();
+    playerImg?.focus({ preventScroll: true });
+}
+
+function dismissDedicatedPlayerMobile(initialY = 0) {
+    if (!playerSection || !document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
+    isClosingMobilePlayer = true;
+
+    const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
+    if (prevSec) prevSec.classList.remove('hidden');
+
+    document.body.classList.add('player-is-dismissing');
+    playerSection.classList.add('player-dismissing');
+
+    if (initialY > 0) {
+        playerSection.style.transform = `translate3d(0, ${initialY}px, 0)`;
+    }
+
+    // Force layout reflow before triggering transition
+    void playerSection.offsetHeight;
+
+    playerSection.style.transition = 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.28s ease';
+    playerSection.style.transform = 'translate3d(0, 100%, 0)';
+    playerSection.style.opacity = '0.3';
+
+    setTimeout(() => {
+        playerSection.classList.remove('player-dismissing');
+        document.body.classList.remove('player-is-dismissing');
+        playerSection.style.transition = '';
+        playerSection.style.transform = '';
+        playerSection.style.opacity = '';
+        playerSection.style.borderRadius = '';
+        isClosingMobilePlayer = false;
+        finalizeCloseDedicatedPlayer();
+    }, 280);
+}
+
 // Back Button from Dedicated Player
 const btnCloseDedicated = document.getElementById('close-dedicated-player');
 if (btnCloseDedicated) {
     btnCloseDedicated.addEventListener('click', () => {
         if (isDesktopPlayerOverlayEnabled()) {
             if (closeDesktopPlayerOverlay()) return;
+        } else {
+            dismissDedicatedPlayerMobile();
+            return;
         }
 
-        setDedicatedPlayerActive(false);
-        setThemeColor(DEFAULT_THEME_COLOR);
-
-        if (typeof window.hideAllSections === 'function' && previousSectionId) {
-            const prevSec = document.getElementById(previousSectionId);
-            if (prevSec) {
-                window.hideAllSections();
-                window.showSection(prevSec);
-
-                // Re-highlight the correct sidebar nav link
-                const navMap = {
-                    'trending-section':   'library-link',
-                    'upload-section':     'upload-link',
-                    'playlist-detail-section': null,
-                };
-                const linkId = navMap[previousSectionId];
-                if (linkId) document.getElementById(linkId)?.classList.add('active');
-
-                // Restore sidebar playlist / nav highlight
-                if (previousSidebarActiveEl) {
-                    previousSidebarActiveEl.classList.add('active');
-                }
-
-                // Re-apply the "now playing" blue highlight on the song row
-                const listContainer = prevSec.querySelector('.song-list, #trending-list, #playlist-songs-list');
-                if (listContainer && typeof highlightCurrentSong === 'function') {
-                    highlightCurrentSong(listContainer);
-                }
-
-                playerImg?.focus({ preventScroll: true });
-                return;
-            }
-        }
-
-        // True fallback: history was lost, go to library
-        document.getElementById('library-link')?.click();
-        playerImg?.focus({ preventScroll: true });
+        finalizeCloseDedicatedPlayer();
     });
 }
 
@@ -1929,17 +2001,20 @@ if (btnCloseLyrics) {
 }
 
 /* ========== DEDICATED PLAYER & LYRICS SWIPE GESTURES ========== */
+/* ========== DEDICATED PLAYER & LYRICS SWIPE GESTURES ========== */
 (function setupDedicatedPlayerGestures() {
     const dedicatedView = document.getElementById('dedicated-player-view');
-    if (!dedicatedView) return;
+    if (!dedicatedView || !playerSection) return;
 
     let touchStartX = 0;
     let touchStartY = 0;
     let touchStartTime = 0;
     let isGestureIgnored = false;
+    let isPullingDown = false;
+    let currentPullY = 0;
 
     dedicatedView.addEventListener('touchstart', e => {
-        if (!document.body.classList.contains('player-section-active')) return;
+        if (!document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
         if (e.touches.length !== 1) {
             isGestureIgnored = true;
             return;
@@ -1953,14 +2028,54 @@ if (btnCloseLyrics) {
         }
 
         isGestureIgnored = false;
+        isPullingDown = false;
+        currentPullY = 0;
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         touchStartTime = Date.now();
     }, { passive: true });
 
+    dedicatedView.addEventListener('touchmove', e => {
+        if (isGestureIgnored || !document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
+        if (!e.touches || e.touches.length === 0) return;
+
+        const currentX = e.touches[0].clientX;
+        const currentY = e.touches[0].clientY;
+        const deltaX = currentX - touchStartX;
+        const deltaY = currentY - touchStartY;
+        const absX = Math.abs(deltaX);
+
+        if (!isPullingDown) {
+            // Check if pulling downwards predominantly
+            if (deltaY > 12 && deltaY > absX * 1.3) {
+                // If lyrics view is active and scrolled down, let user scroll lyrics
+                if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 10) {
+                    isGestureIgnored = true;
+                    return;
+                }
+                isPullingDown = true;
+                const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
+                if (prevSec) prevSec.classList.remove('hidden');
+
+                document.body.classList.add('player-is-dismissing');
+                playerSection.classList.add('player-dismissing');
+            }
+        }
+
+        if (isPullingDown) {
+            if (e.cancelable) e.preventDefault();
+            // Apply pull translation with slight resistance
+            currentPullY = Math.max(0, deltaY);
+            playerSection.style.transition = 'none';
+            playerSection.style.transform = `translate3d(0, ${currentPullY}px, 0)`;
+            const progress = Math.min(1, currentPullY / (window.innerHeight || 800));
+            playerSection.style.opacity = `${Math.max(0.4, 1 - progress * 0.6)}`;
+            playerSection.style.borderRadius = `${Math.min(24, currentPullY * 0.18)}px`;
+        }
+    }, { passive: false });
+
     dedicatedView.addEventListener('touchend', e => {
-        if (isGestureIgnored) return;
-        if (!document.body.classList.contains('player-section-active')) return;
+        if (isGestureIgnored || !document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
         if (!e.changedTouches || e.changedTouches.length === 0) return;
 
         const touchEndX = e.changedTouches[0].clientX;
@@ -1968,21 +2083,39 @@ if (btnCloseLyrics) {
         const deltaX = touchEndX - touchStartX;
         const deltaY = touchEndY - touchStartY;
         const absX = Math.abs(deltaX);
-        const absY = Math.abs(deltaY);
 
-        // 1. Swipe Left-to-Right in Lyrics view to go back to album art view
-        if (isLyricsActive && deltaX > 60 && absX > absY * 1.3) {
-            deactivateLyricsView();
+        if (!isPullingDown) {
+            // 1. Swipe Left-to-Right in Lyrics view to go back to album art view
+            if (isLyricsActive && deltaX > 60 && absX > Math.abs(deltaY) * 1.3) {
+                deactivateLyricsView();
+            }
             return;
         }
 
-        // 2. Swipe Down to Close Big Player
-        if (deltaY > 70 && deltaY > absX * 1.3) {
-            // If lyrics are active, only allow closing if scrolled to the top
-            if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 10) {
-                return;
-            }
-            btnCloseDedicated?.click();
+        isPullingDown = false;
+        const duration = Math.max(1, Date.now() - touchStartTime);
+        const velocity = deltaY / duration;
+
+        // Dismiss if dragged down far enough or flicked downwards
+        if (deltaY > 100 || velocity > 0.4) {
+            dismissDedicatedPlayerMobile(currentPullY);
+        } else {
+            // Cancel and spring back up
+            playerSection.style.transition = 'transform 0.24s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.24s ease, border-radius 0.24s ease';
+            playerSection.style.transform = 'translate3d(0, 0, 0)';
+            playerSection.style.opacity = '1';
+            playerSection.style.borderRadius = '';
+
+            setTimeout(() => {
+                playerSection.classList.remove('player-dismissing');
+                document.body.classList.remove('player-is-dismissing');
+                playerSection.style.transition = '';
+                playerSection.style.transform = '';
+                playerSection.style.opacity = '';
+                playerSection.style.borderRadius = '';
+                const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
+                if (prevSec) prevSec.classList.add('hidden');
+            }, 240);
         }
     }, { passive: true });
 })();

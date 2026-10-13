@@ -1543,6 +1543,28 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
         justify-content: flex-start;
     }
 
+    /* Mobile / Tablet interactive dismiss animation state */
+    body.player-is-dismissing .music-player {
+        display: flex !important;
+        opacity: 1 !important;
+    }
+
+    #player-section.player-dismissing {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        z-index: 2000 !important;
+        overflow: hidden !important;
+        will-change: transform, opacity !important;
+        box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.75) !important;
+    }
+
+    #player-section.player-dismissing .dedicated-player-backdrop {
+        border-radius: inherit !important;
+    }
+
     .dedicated-player-view {
         padding: 0;
         overflow: hidden;

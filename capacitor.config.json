@@ -7,6 +7,11 @@
     "cleartext": true,
     "allowNavigation": ["*"]
   },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  },
   "ios": {
     "allowsLinkPreview": false,
     "scrollEnabled": true,

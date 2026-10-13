@@ -1,0 +1,244 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamify Diagnostics</title>
+<link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
+<style>
+    body {
+        margin: 0; padding: 18px 16px 60px;
+        background: #121212; color: #e9e9e9;
+        font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    h1 { font-size: 19px; margin: 0 0 4px; }
+    .sub { color: #999; font-size: 12.5px; margin: 0 0 18px; }
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+         color: #8a8a8a; margin: 22px 0 8px; }
+    .row { display: flex; justify-content: space-between; gap: 12px;
+           padding: 9px 12px; background: #1b1b1b; border: 1px solid #2a2a2a;
+           border-radius: 8px; margin-bottom: 6px; align-items: flex-start; }
+    .k { color: #b8b8b8; flex-shrink: 0; }
+    .v { text-align: right; word-break: break-word; font-family: Consolas, monospace;
+         font-size: 12.5px; }
+    .pass { color: #4ade80; } .fail { color: #f87171; } .warn { color: #fbbf24; }
+    .big { padding: 14px; border-radius: 10px; margin-bottom: 10px;
+           font-weight: 600; text-align: center; font-size: 15px; }
+    .big.pass { background: rgba(74,222,128,.12); border: 1px solid rgba(74,222,128,.4); }
+    .big.fail { background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.4); }
+    button { width: 100%; padding: 13px; margin-top: 10px; border-radius: 9px;
+             border: 1px solid #3a3a3a; background: #262626; color: #fff;
+             font-size: 14.5px; font-weight: 600; cursor: pointer; }
+    button.danger { background: #7f1d1d; border-color: #b91c1c; }
+    #probe { position: absolute; left: -9999px; top: -9999px; width: 390px; }
+</style>
+<!-- Loaded with a live timestamp so this page ALWAYS sees the newest CSS,
+     independent of any cache. That is the whole point of the test. -->
+<script>
+    document.write('<link rel="stylesheet" href="/Static/home/css/base.css?diag=' + Date.now() + '">');
+    document.write('<link rel="stylesheet" href="/Static/home/css/player.css?diag=' + Date.now() + '">');
+</script>
+</head>
+<body>
+
+<h1><span class="streamify-logo">Streamify</span> Diagnostics</h1>
+<p class="sub">Open this on the device that is misbehaving.</p>
+
+<div id="verdict"></div>
+<div id="out"></div>
+
+<button id="recheck">Re-run checks</button>
+<button id="nuke" class="danger">Clear all caches &amp; service workers</button>
+
+<!-- Hidden replica of the player DOM so computed styles can be measured -->
+<div id="probe" aria-hidden="true">
+  <div class="player-section">
+    <div class="dedicated-player-view">
+      <div class="dedicated-player-content">
+        <div class="dedicated-right-panel">
+          <div class="dedicated-bottom-actions">
+            <div class="dedicated-volume-wrapper"><input type="range" class="volume-slider"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="music-player"><div class="volume-wrapper"><input type="range" class="volume-slider"></div></div>
+</div>
+
+<script>
+(function () {
+    const out = document.getElementById('out');
+    const verdict = document.getElementById('verdict');
+
+    const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+    function section(title) {
+        out.insertAdjacentHTML('beforeend', '<h2>' + esc(title) + '</h2>');
+    }
+    function row(k, v, state) {
+        const cls = state ? ' ' + state : '';
+        out.insertAdjacentHTML('beforeend',
+            '<div class="row"><span class="k">' + esc(k) + '</span>' +
+            '<span class="v' + cls + '">' + esc(v) + '</span></div>');
+    }
+
+    async function run() {
+        out.innerHTML = '';
+        verdict.innerHTML = '';
+
+        // ---- 1. Which CSS is actually loaded? --------------------------
+        const assetVersion = getComputedStyle(document.documentElement)
+            .getPropertyValue('--asset-version').trim().replace(/"/g, '');
+        const EXPECTED = '4.22';
+        const cssFresh = assetVersion === EXPECTED;
+
+        section('Stylesheet build');
+        row('Expected version', EXPECTED);
+        row('Loaded version', assetVersion || '(none - old CSS)', cssFresh ? 'pass' : 'fail');
+
+        // ---- 2. Platform / capability ----------------------------------
+        const ua = navigator.userAgent;
+        const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+            (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+
+        section('Device');
+        row('Detected as iOS', isIOS ? 'yes' : 'no', isIOS ? 'pass' : '');
+        row('platform', navigator.platform);
+        row('maxTouchPoints', navigator.maxTouchPoints);
+        row('Secure context', window.isSecureContext ? 'yes (https)' : 'NO (http)',
+            window.isSecureContext ? 'pass' : 'warn');
+        row('hover: none', matchMedia('(hover: none)').matches ? 'yes' : 'no');
+        row('Viewport', window.innerWidth + ' x ' + window.innerHeight);
+        row('100lvh supported', (window.CSS && CSS.supports('height','100lvh')) ? 'yes' : 'no',
+            (window.CSS && CSS.supports('height','100lvh')) ? 'pass' : 'warn');
+
+        // ---- 3. Volume hiding ------------------------------------------
+        // Apply the class exactly as config.js would, then measure.
+        document.documentElement.classList.toggle('no-volume-control', isIOS);
+        const dv = document.querySelector('#probe .dedicated-volume-wrapper');
+        const mv = document.querySelector('#probe .volume-wrapper');
+        const dvHidden = getComputedStyle(dv).display === 'none';
+        const mvHidden = getComputedStyle(mv).display === 'none';
+
+        section('Volume control');
+        row('no-volume-control class',
+            document.documentElement.classList.contains('no-volume-control') ? 'applied' : 'not applied',
+            isIOS ? (document.documentElement.classList.contains('no-volume-control') ? 'pass':'fail') : '');
+        row('Player volume hidden', dvHidden ? 'yes' : 'NO', dvHidden ? 'pass' : 'fail');
+        row('Mini-player volume hidden', mvHidden ? 'yes' : 'NO', mvHidden ? 'pass' : 'fail');
+
+        // ---- 4. Browser chrome / safe areas ----------------------------
+        const tc = document.querySelector('meta[name="theme-color"]');
+        const vp = document.querySelector('meta[name="viewport"]');
+        const hasCover = vp && /viewport-fit\s*=\s*cover/.test(vp.content);
+
+        // Measure the real inset values by letting the browser resolve env().
+        const sniff = document.createElement('div');
+        sniff.style.cssText =
+            'position:fixed;visibility:hidden;pointer-events:none;' +
+            'top:env(safe-area-inset-top,0px);left:env(safe-area-inset-left,0px);' +
+            'padding-top:env(safe-area-inset-top,0px);' +
+            'padding-bottom:env(safe-area-inset-bottom,0px);' +
+            'padding-left:env(safe-area-inset-left,0px);' +
+            'padding-right:env(safe-area-inset-right,0px);';
+        document.body.appendChild(sniff);
+        const si = getComputedStyle(sniff);
+        const insets = {
+            top: si.paddingTop, bottom: si.paddingBottom,
+            left: si.paddingLeft, right: si.paddingRight
+        };
+        sniff.remove();
+
+        section('Browser chrome / safe areas');
+        row('viewport-fit=cover', hasCover ? 'yes' : 'NO', hasCover ? 'pass' : 'fail');
+        row('safe-area-inset-top', insets.top);
+        row('safe-area-inset-bottom', insets.bottom,
+            parseFloat(insets.bottom) > 0 ? 'pass' : 'warn');
+        row('safe-area-inset-left/right', insets.left + ' / ' + insets.right);
+        row('theme-color meta', tc ? tc.content : '(missing)', tc ? 'pass' : 'fail');
+        row('html background',
+            getComputedStyle(document.documentElement).backgroundColor);
+        row('body background',
+            getComputedStyle(document.body).backgroundColor);
+
+        // iOS 26 prefers a fixed/sticky element touching a screen edge over
+        // <body> when choosing the toolbar tint. A transparent one makes it
+        // fall back to solid black, which is the classic "black bar" bug.
+        const transparentFixed = [];
+        document.querySelectorAll('*').forEach(el => {
+            const s = getComputedStyle(el);
+            if (s.position !== 'fixed' && s.position !== 'sticky') return;
+            if (s.display === 'none' || s.visibility === 'hidden') return;
+            const r = el.getBoundingClientRect();
+            if (r.width < window.innerWidth * 0.8 || r.height < 3) return;
+            const touchesEdge = r.bottom >= window.innerHeight - 3 || r.top <= 4;
+            if (!touchesEdge) return;
+            const bg = s.backgroundColor;
+            const isTransparent = bg === 'transparent' || /rgba\(.*,\s*0\)$/.test(bg);
+            if (isTransparent) {
+                transparentFixed.push((el.id || el.className || el.tagName) + ' → ' + bg);
+            }
+        });
+        row('Edge-pinned transparent elements',
+            transparentFixed.length ? transparentFixed.join(' | ') : 'none',
+            transparentFixed.length ? 'fail' : 'pass');
+        row('--player-tint',
+            getComputedStyle(document.documentElement)
+                .getPropertyValue('--player-tint').trim() || '(unset — not in player view)');
+
+        // ---- 5. Service worker & caches --------------------------------
+        section('Service worker & caches');
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            row('Registrations', regs.length);
+            row('Controlling this page',
+                navigator.serviceWorker.controller ? 'YES' : 'no',
+                navigator.serviceWorker.controller ? 'warn' : 'pass');
+        } else {
+            row('Service worker API', 'unavailable (http)', 'warn');
+        }
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            row('Cache buckets', keys.length ? keys.join(', ') : '(none)');
+        } else {
+            row('Cache Storage API', 'unavailable (http)');
+        }
+
+        // ---- Verdict ----------------------------------------------------
+        if (cssFresh && (!isIOS || (dvHidden && mvHidden))) {
+            verdict.innerHTML = '<div class="big pass">All checks passed &mdash; ' +
+                'this device has the latest build.</div>';
+        } else if (!cssFresh) {
+            verdict.innerHTML = '<div class="big fail">Old CSS is being served to this ' +
+                'device. Tap "Clear all caches" below, then reload.</div>';
+        } else {
+            verdict.innerHTML = '<div class="big fail">New CSS loaded, but a check failed. ' +
+                'Send this screen to the developer.</div>';
+        }
+    }
+
+    document.getElementById('recheck').addEventListener('click', run);
+
+    document.getElementById('nuke').addEventListener('click', async () => {
+        try {
+            if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                for (const r of regs) await r.unregister();
+            }
+            if ('caches' in window) {
+                for (const k of await caches.keys()) await caches.delete(k);
+            }
+            alert('Cleared. The page will now reload.');
+            location.reload(true);
+        } catch (e) {
+            alert('Failed: ' + e.message);
+        }
+    });
+
+    run();
+})();
+</script>
+</body>
+</html>

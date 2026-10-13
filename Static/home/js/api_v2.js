@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  * STREAMIFY - api.js
  * ============================================================================
@@ -3086,8 +3086,19 @@ function fetchCurrentUser(forceRefresh = false) {
         })
         .catch(err => {
             console.error('Error fetching user:', err);
+            if (window.OfflineStore) {
+                return window.OfflineStore.getCachedUserProfile().then(profile => {
+                    if (profile) {
+                        renderUserUI({ username: profile.username, avatar: profile.avatarUrl });
+                        return { username: profile.username, avatar: profile.avatarUrl, role: 'User' };
+                    }
+                    const userPillName = document.querySelector('.user-pill span');
+                    if (userPillName) userPillName.textContent = 'Offline';
+                    return null;
+                });
+            }
             const userPillName = document.querySelector('.user-pill span');
-            if (userPillName) userPillName.textContent = 'Unavailable';
+            if (userPillName) userPillName.textContent = 'Offline';
             return null;
         })
         .finally(() => {
@@ -3173,6 +3184,12 @@ function fetchLibrary(forceRefresh = false, options = {}) {
         })
         .catch(err => {
             console.error('Error fetching library:', err);
+            if (window.OfflineStore) {
+                return window.OfflineStore.getOfflineSongs().then(songs => {
+                    if (shouldRender) renderSongList(songs, list, renderOptions);
+                    return songs;
+                });
+            }
             return [];
         });
 }

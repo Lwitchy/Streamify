@@ -350,6 +350,7 @@
             <div id="status-actions" class="hidden" style="margin-top: 18px;">
                 <button class="btn" id="retry-btn">Try Again</button>
                 <button class="btn secondary" id="change-btn">Change Server</button>
+                <button class="btn secondary" id="offline-anyway-btn" style="display:none; margin-top:10px; background: rgba(29, 185, 84, 0.2); color: #1db954;">Open Downloaded Music</button>
             </div>
         </div>
     </div>
@@ -407,12 +408,20 @@
                 localStorage.setItem(STORAGE_KEY, baseUrl);
                 statusText.textContent = 'Connected! Opening Streamify...';
                 setTimeout(() => {
-                    window.location.replace(`${baseUrl}/home`);
+                    window.location.replace('Static/home/home.html');
                 }, 250);
             } catch (err) {
                 clearTimeout(timeout);
                 statusText.innerHTML = `Could not reach server at <code style="color:#fff;">${baseUrl}</code>.<br><br>Make sure your PC is on and connected to the same Wi-Fi.`;
                 statusActions.classList.remove('hidden');
+                const offlineBtn = document.getElementById('offline-anyway-btn');
+                if (offlineBtn) {
+                    offlineBtn.style.display = 'block';
+                    offlineBtn.onclick = () => {
+                        localStorage.setItem(STORAGE_KEY, baseUrl);
+                        window.location.replace('Static/home/home.html');
+                    };
+                }
             }
         }
 
@@ -580,8 +589,8 @@
         window.addEventListener('DOMContentLoaded', () => {
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
-                urlInput.value = saved;
-                verifyAndNavigate(saved);
+                // Instantly boot into local app shell without blocking network call
+                window.location.replace('Static/home/home.html');
             }
         });
     </script>

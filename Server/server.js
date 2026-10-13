@@ -326,6 +326,9 @@ function isAllowedHttpOrigin(origin, req) {
     if (!origin) return true;
     const normalizedOrigin = origin.replace(/\/$/, '');
     if (EXTRA_ORIGINS.includes(normalizedOrigin)) return true;
+    if (normalizedOrigin.startsWith('capacitor://') || normalizedOrigin.startsWith('ionic://') || isTrustedOrigin(normalizedOrigin)) {
+        return true;
+    }
 
     try {
         const requestOrigin = new URL(`${req.protocol}://${req.get('host')}`).origin;

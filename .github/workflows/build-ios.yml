@@ -10,6 +10,10 @@ on:
     paths:
       - 'mobile/**'
       - 'ios/**'
+      - 'Static/**'
+      - 'Scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
       - 'capacitor.config.json'
       - '.github/workflows/build-ios.yml'
     tags:
@@ -35,7 +39,7 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Sync Capacitor iOS Assets
-        run: npx cap sync ios
+        run: npm run mobile:sync
 
       - name: Build Xcode Archive
         run: |

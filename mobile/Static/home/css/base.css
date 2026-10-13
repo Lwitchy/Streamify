@@ -1,0 +1,231 @@
+
+/* --- CSS VARIABLES & RESET --- */
+/* Define all color schemes, sizes, and animation values as variables */
+/* This allows for easy theme switching and consistent styling throughout */
+:root {
+    /* Build marker. Read by /Static/diag.html to prove which copy of the
+       stylesheets a device actually loaded, rather than guessing at caching. */
+    --asset-version: "4.22";
+
+    /* Primary background colors.
+       #121212 rather than pure #000 on purpose: iOS Safari tints the strip
+       behind its toolbars by sampling the page background colour. Pure black
+       produced a hard "blacked out" band under the UI that did not belong to
+       the app. This matches <meta name="theme-color"> and the PWA manifest's
+       background_color so the browser chrome blends with the interface. */
+    --bg-color: #121212;
+    --sidebar-bg: rgba(0, 0, 0, 0.2);
+
+    /* Card styling - uses glass-morphism effect */
+    --card-bg: rgba(255, 255, 255, 0.02);
+    --card-hover: rgba(255, 255, 255, 0.12);
+
+    /* Text colors - white with varying opacity for hierarchy */
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.65);
+
+    /* Theme colors. theme.js replaces these before first paint when needed. */
+    --accent: #1db954;
+    --accent-hover: #1ed760;
+    --accent-rgb: 29, 185, 84;
+    --on-accent: #0b0b0e;
+    --on-gradient: #ffffff;
+
+    /* Gradient colors for buttons and visual effects */
+    --gradient-1: #4169e1;
+    --gradient-2: #8164d7;
+    --gradient-3: #ec4899;
+    --gradient-1-rgb: 65, 105, 225;
+    --gradient-2-rgb: 129, 100, 215;
+    --theme-gradient-alpha-1: 0.11;
+    --theme-gradient-alpha-2: 0.09;
+    --settings-sidebar-bg: rgba(255, 255, 255, 0.02);
+    --settings-content-bg: rgba(0, 0, 0, 0.1);
+
+    /* Glass effect border and shadow */
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+
+    /* Layout dimensions */
+    --border-radius: 12px;
+    --sidebar-width: 240px;
+    --player-height: 90px;
+
+    /* Animation timings for smooth transitions */
+    --transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    --click-anim: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    --spring-squish: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Global reset - removes default margins/padding and sets border-box model */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* iOS Safari fills the area behind its browser UI using the page's
+   background-color, checking <body> first and falling back to <html>.
+   Setting it on BOTH covers either lookup and stops that strip rendering as a
+   flat black band that does not belong to the interface.
+   (Documented for the inset area in WebKit's "Designing Websites for iPhone X";
+   the same colour source drives the toolbar tint in the Safari 26 design.) */
+html {
+    background-color: var(--bg-color);
+}
+
+/* Main body styling - dark theme with radial gradient background */
+body {
+    background-color: var(--bg-color);
+    /* Dynamic radial gradient creates depth and visual interest */
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(var(--gradient-1-rgb), var(--theme-gradient-alpha-1)), transparent 28%),
+        radial-gradient(circle at 85% 30%, rgba(var(--gradient-2-rgb), var(--theme-gradient-alpha-2)), transparent 28%),
+        radial-gradient(circle at 50% 100%, rgba(25, 25, 30, 0.88), transparent 38%);
+    /* Fixed attachment creates a parallax effect when scrolling */
+    background-attachment: fixed;
+    color: var(--text-primary);
+    /* lvh (large viewport), NOT dvh.
+     *
+     * dvh tracks the *currently visible* viewport, so under viewport-fit=cover
+     * the body would deliberately stop short of the browser toolbar, leaving a
+     * solid strip behind it with nothing painted there. lvh spans the full
+     * screen, so the app's own background and artwork continue behind the
+     * translucent toolbar instead of a flat band.
+     *
+     * Interactive content is kept clear of the toolbar with
+     * env(safe-area-inset-bottom) padding rather than by shrinking the body.
+     */
+    height: 100vh;
+    height: 100lvh;
+    display: flex;
+    overflow: hidden;
+    transition: background-color 0.25s ease;
+}
+
+/* === SCROLLBAR CUSTOMIZATION === */
+/* Custom scrollbar styling for webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+/* Brighten scrollbar on hover for better visibility */
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* === ANIMATION UTILITIES === */
+
+/* 
+ * TACTILE SQUISH ANIMATION ON CLICK
+ * Applied to interactive elements for smooth, springy feedback
+ */
+.btn,
+.card,
+.notif-pill,
+.user-pill,
+.sidebar-nav a,
+.nav-arrows i {
+    transition:
+        transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        background 0.2s ease,
+        color 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+    will-change: transform;
+}
+
+.btn:active,
+.card:active,
+.notif-pill:active,
+.user-pill:active {
+    transform: scale(0.94);
+    transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-arrows i:active,
+.user-pill:active,
+.play-pause-btn:active,
+.control-btn:active,
+.sidebar-nav a:active {
+    transform: scale(0.90) !important;
+    transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    user-select: none;
+}
+
+/* * ANIMATED GRADIENT TEXT */
+.gradient-text {
+    background: linear-gradient(90deg,
+            var(--gradient-1), var(--gradient-2), var(--gradient-3), var(--gradient-1));
+
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+
+    /* Speed up from 20s to 5s for more dynamic feel */
+    animation: gradient-anim 5s linear infinite;
+}
+
+@keyframes gradient-anim {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    100% {
+        background-position: 200% 50%;
+    }
+}
+
+/* --- POP-IN ANIMATION --- */
+@keyframes popIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.92) translateY(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.pop-in {
+    animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* --- SHRINK & HIDE ANIMATION --- */
+.shrink-hide {
+    max-height: 0;
+    opacity: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.expand-show {
+    max-height: 500px; /* Increased to allow for larger metadata boxes */
+    opacity: 1;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

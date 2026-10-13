@@ -8,7 +8,35 @@
  */
 
 /* --- API Base --- */
-window.API_BASE_URL = window.API_BASE_URL || '';
+window.API_BASE_URL = window.API_BASE_URL || localStorage.getItem('streamify_server_url') || '';
+
+// If running in a mobile shell where API_BASE_URL is a remote server, automatically
+// route relative API and user-media calls to the remote server origin.
+if (window.API_BASE_URL && typeof window.fetch === 'function') {
+    const _originalFetch = window.fetch;
+    const _serverBase = window.API_BASE_URL.replace(/\/+$/, '');
+    window.fetch = function (resource, options) {
+        if (typeof resource === 'string') {
+            if (resource.startsWith('/api/') || resource === '/logout' || resource.startsWith('/loginrequest')) {
+                resource = _serverBase + resource;
+            } else if (resource.startsWith('/Static/covers/') || resource.startsWith('/Static/avatars/') || resource.startsWith('/Static/banners/')) {
+                resource = _serverBase + resource;
+            }
+        } else if (resource instanceof Request) {
+            try {
+                const reqUrl = new URL(resource.url);
+                if (reqUrl.pathname.startsWith('/api/') || reqUrl.pathname === '/logout' || reqUrl.pathname.startsWith('/loginrequest') ||
+                    reqUrl.pathname.startsWith('/Static/covers/') || reqUrl.pathname.startsWith('/Static/avatars/') || reqUrl.pathname.startsWith('/Static/banners/')) {
+                    if (reqUrl.origin === window.location.origin && reqUrl.origin !== new URL(_serverBase).origin) {
+                        const targetUrl = _serverBase + reqUrl.pathname + reqUrl.search;
+                        resource = new Request(targetUrl, resource);
+                    }
+                }
+            } catch (e) {}
+        }
+        return _originalFetch.call(this, resource, options);
+    };
+}
 
 window.getAppScrollContainer = () => {
     const mainContent = document.querySelector('.main-content');
@@ -45,19 +73,28 @@ window.getAppScrollContainer = () => {
 
 window.StreamifyEnv = (function () {
     const secure = window.isSecureContext === true;
+    const isCapacitor = Boolean(
+        typeof window !== 'undefined' &&
+        window.Capacitor &&
+        typeof window.Capacitor.isNativePlatform === 'function' &&
+        window.Capacitor.isNativePlatform()
+    );
 
     const env = {
         /** True on https:// or on localhost/127.0.0.1. */
-        isSecure: secure,
+        isSecure: secure || isCapacitor,
 
         /** True when running inside the Electron desktop shell. */
         isDesktop: typeof window.streamifyDesktop !== 'undefined',
 
-        /** Service workers require a secure context. */
-        canUseServiceWorker: secure && 'serviceWorker' in navigator,
+        /** True when running inside the Capacitor mobile shell. */
+        isCapacitor: isCapacitor,
 
-        /** Offline downloads need both the Cache Storage API and a worker. */
-        canDownloadOffline: secure && 'caches' in window && 'serviceWorker' in navigator,
+        /** Service workers require a secure context (not needed in Capacitor native). */
+        canUseServiceWorker: !isCapacitor && secure && 'serviceWorker' in navigator,
+
+        /** Offline downloads need both the Cache Storage API and a worker (or Capacitor native filesystem). */
+        canDownloadOffline: isCapacitor || (secure && 'caches' in window && 'serviceWorker' in navigator),
 
         /** Screen Wake Lock, used by the lyrics view. */
         canWakeLock: secure && 'wakeLock' in navigator,

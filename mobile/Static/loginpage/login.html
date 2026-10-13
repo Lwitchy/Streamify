@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Streamify | Beta</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <meta name="theme-color" content="#121212">
+  <link rel="stylesheet" href="/Static/loginpage/css/login.css?v=4.43">
+  <link href='/Static/vendor/boxicons/boxicons.min.css?v=4.8' rel='stylesheet'>
+  <link href="/Static/vendor/fonts/outfit.css?v=4.8" rel="stylesheet">
+<link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
+  <script src="/Static/home/js/experiments.js?v=4.35"></script>
+  <script src="/Static/home/js/theme.js?v=4.36"></script>
+</head>
+
+<body>
+
+  <!-- Intro Animation -->
+  <div id="intro" style="display: none;" class="intro">
+    <div class="intro-wrapper">
+      <h1 class="streamify-logo intro-text gradient-background">Streamify</h1>
+    </div>
+  </div>
+
+  <header class="header">
+    <div class="brand">
+      <h2 class="streamify-logo gradient-background">Streamify</h2>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- LOGIN FORM -->
+    <div class="form-wrapper login-wrapper" id="loginWrapper">
+      <div class="wrapper-header">
+        <h2 class="gradient-text">Welcome Back</h2>
+        <p>Sign in to continue</p>
+      </div>
+
+      <center>
+        <p id="failedText" class="failedText" style="display: none; color: #ff4d4d;">Invalid credentials</p>
+      </center>
+
+      <form id="loginForm">
+        <div class="input-box">
+          <input type="text" name="username" id="loginUsername" placeholder="Username" autocomplete="username" required>
+          <i class='bx bxs-user'></i>
+        </div>
+        <div class="input-box">
+          <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
+          <i class='bx bxs-lock-alt'></i>
+        </div>
+        <br>
+        <button type="submit" class="btn">Sign In</button>
+        <div class="toggle-link">
+          <p>Don't have an account? <a href="#" id="showRegister">Sign Up</a></p>
+        </div>
+      </form>
+    </div>
+
+    <!-- REGISTER FORM -->
+    <div class="form-wrapper register-wrapper hidden" id="registerWrapper">
+      <div class="wrapper-header">
+        <h2 class="gradient-text">Create Account</h2>
+        <p>Join us to <span class="live-count">stream, share, and connect</span> in a safer place!</p>
+      </div>
+
+      <center>
+        <p id="regFailedText" class="failedText" style="display: none; color: #ff4d4d;">Registration failed</p>
+      </center>
+
+      <form id="registerForm">
+        <div class="input-box">
+          <input type="text" name="username" id="regUsername" placeholder="Username" minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="username" required>
+          <i class='bx bxs-user'></i>
+        </div>
+        <div class="input-box">
+          <input type="password" name="password" id="regPassword" placeholder="Password" autocomplete="new-password" required>
+          <i class='bx bxs-lock-alt'></i>
+        </div>
+        <div class="input-box">
+          <input type="password" name="confirm_password" id="regConfirmPassword" placeholder="Confirm Password"
+            autocomplete="new-password" required>
+          <i class='bx bxs-lock-check'></i>
+        </div>
+
+        <div class="security-badges">
+          <div class="badge"><i class='bx bxs-check-shield'></i> <span>Hashed</span></div>
+          <div class="badge"><i class='bx bxs-lock'></i> <span>SSL</span></div>
+          <div class="badge"><i class='bx bxs-user-check'></i> <span>Protected</span></div>
+        </div>
+
+        <button type="submit" class="btn">Sign Up</button>
+        <div class="toggle-link">
+          <p>Already have an account? <a href="#" id="showLogin">Sign In</a></p>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="loading-spinner" id="loadingSpinner"></div>
+
+</body>
+<script src="/Static/loginpage/js/login.js?v=4.20"></script>
+
+</html>

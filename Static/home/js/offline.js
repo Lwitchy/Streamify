@@ -425,12 +425,73 @@ async function isSongDownloaded(songId) {
     });
 }
 
+function isCapacitorNative() {
+    return Boolean(
+        typeof window !== 'undefined' &&
+        window.Capacitor &&
+        typeof window.Capacitor.isNativePlatform === 'function' &&
+        window.Capacitor.isNativePlatform() &&
+        window.Capacitor.Plugins &&
+        window.Capacitor.Plugins.Filesystem
+    );
+}
+
 function createCacheRequest(url) {
-    const resolved = new URL(url, window.location.origin);
+    const base = window.API_BASE_URL || window.location.origin;
+    const resolved = new URL(url, base);
     if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
         throw new TypeError(`Unsupported offline URL protocol: ${resolved.protocol}`);
     }
     return new Request(resolved.href, { method: 'GET', credentials: 'include' });
+}
+
+async function downloadSongNative(songData, audioUrl, coverUrl, user) {
+    const Filesystem = window.Capacitor.Plugins.Filesystem;
+    const songId = normalizeEntityId(songData.id);
+    const audioExt = (songData.extension || 'mp3').replace(/^\./, '');
+    const fileName = `streamify_offline_song_${songId}.${audioExt}`;
+    const baseOrigin = window.API_BASE_URL || window.location.origin;
+    const fullAudioUrl = new URL(audioUrl, baseOrigin).href;
+
+    console.log(`[Offline Native] Downloading audio for song ${songId} to native documents...`);
+    const downloadRes = await Filesystem.downloadFile({
+        url: fullAudioUrl,
+        path: `StreamifyDownloads/${fileName}`,
+        directory: 'DOCUMENTS',
+        recursive: true
+    });
+
+    let localCoverPath = null;
+    if (coverUrl && typeof coverUrl === 'string') {
+        try {
+            const cleanCover = coverUrl.split('?')[0];
+            const coverExt = cleanCover.includes('.') ? cleanCover.split('.').pop() : 'jpg';
+            const coverFileName = `streamify_offline_cover_${songId}.${coverExt}`;
+            const fullCoverUrl = new URL(coverUrl, baseOrigin).href;
+            const coverRes = await Filesystem.downloadFile({
+                url: fullCoverUrl,
+                path: `StreamifyDownloads/${coverFileName}`,
+                directory: 'DOCUMENTS',
+                recursive: true
+            });
+            localCoverPath = coverRes.path;
+        } catch (cErr) {
+            console.warn('[Offline Native] Non-fatal cover download failure:', cErr);
+        }
+    }
+
+    const enrichedSongData = {
+        ...songData,
+        localAudioPath: downloadRes.path,
+        localCoverPath: localCoverPath
+    };
+
+    if (activeUserKey !== user.key) {
+        throw new Error('The active user changed before the download could be committed');
+    }
+    await saveSongMetadata(enrichedSongData, user.key);
+    window.dispatchEvent(new CustomEvent('songDownloaded', { detail: { id: songData.id } }));
+    return true;
 }
 
 async function removeOfflineSong(songId) {
@@ -439,10 +500,31 @@ async function removeOfflineSong(songId) {
     const id = normalizeEntityId(songId);
     const song = await getOfflineSongForUser(db, user.key, id);
 
+    if (isCapacitorNative() && song && song.localAudioPath) {
+        try {
+            const Filesystem = window.Capacitor.Plugins.Filesystem;
+            const audioExt = (song.extension || 'mp3').replace(/^\./, '');
+            await Filesystem.deleteFile({
+                path: `StreamifyDownloads/streamify_offline_song_${id}.${audioExt}`,
+                directory: 'DOCUMENTS'
+            }).catch(() => null);
+            if (song.localCoverPath) {
+                const cleanCover = (song.cover || '').split('?')[0];
+                const coverExt = cleanCover.includes('.') ? cleanCover.split('.').pop() : 'jpg';
+                await Filesystem.deleteFile({
+                    path: `StreamifyDownloads/streamify_offline_cover_${id}.${coverExt}`,
+                    directory: 'DOCUMENTS'
+                }).catch(() => null);
+            }
+        } catch (nativeErr) {
+            console.warn('[Offline Native] Error cleaning native offline files:', nativeErr);
+        }
+    }
+
     if (typeof caches !== 'undefined') {
         const urls = new Set([`/api/stream/${encodeURIComponent(id)}`]);
         if (song && song.url) urls.add(song.url);
-        if (song && song.cover && song.cover.startsWith('/')) urls.add(song.cover);
+        if (song && song.cover && (song.cover.startsWith('/') || song.cover.startsWith('http'))) urls.add(song.cover);
 
         const cacheNames = [];
         const userCacheName = getMediaCacheName(user.key);
@@ -450,7 +532,9 @@ async function removeOfflineSong(songId) {
         for (const cacheName of cacheNames) {
             const cache = await caches.open(cacheName);
             for (const url of urls) {
-                await cache.delete(createCacheRequest(url), { ignoreVary: true });
+                try {
+                    await cache.delete(createCacheRequest(url), { ignoreVary: true });
+                } catch (delErr) {}
             }
         }
     }
@@ -509,7 +593,7 @@ async function fetchAndCacheResource(cache, url, requireByteLength) {
         credentials: 'include',
         cache: 'no-store'
     }));
-    if (response.status !== 200 || !response.body) {
+    if ((response.status !== 200 && response.status !== 206) || !response.body) {
         throw new Error(`Could not download ${networkUrl.pathname} (HTTP ${response.status})`);
     }
 
@@ -519,16 +603,20 @@ async function fetchAndCacheResource(cache, url, requireByteLength) {
         headers.delete('Content-Length');
     }
 
+    let responseBlob = null;
+    let contentLength = Number(headers.get('Content-Length'));
     if (requireByteLength) {
-        const contentLength = Number(headers.get('Content-Length'));
         if (!Number.isSafeInteger(contentLength) || contentLength <= 0) {
-            throw new Error('The media server did not provide a valid full-file length');
+            // Read blob to determine exact full size if Content-Length header is omitted by proxy/compression
+            responseBlob = await response.blob();
+            contentLength = responseBlob.size;
         }
         headers.set('Accept-Ranges', 'bytes');
         headers.set('Content-Length', String(contentLength));
     }
 
-    await cache.put(cacheRequest, new Response(response.body, {
+    const bodyToCache = responseBlob || response.body;
+    await cache.put(cacheRequest, new Response(bodyToCache, {
         status: 200,
         statusText: 'OK',
         headers
@@ -538,7 +626,7 @@ async function fetchAndCacheResource(cache, url, requireByteLength) {
 
 function describeDownloadError(error) {
     if (error && error.name === 'QuotaExceededError') {
-        return 'Not enough browser storage is available for this download.';
+        return 'Not enough device storage is available for this download.';
     }
     if (error && (error.name === 'AbortError' || error.name === 'TransactionInactiveError')) {
         return 'The offline storage transaction could not be committed.';
@@ -547,7 +635,8 @@ function describeDownloadError(error) {
 }
 
 async function downloadSong(songId) {
-    if (typeof caches === 'undefined' || (window.StreamifyEnv && !window.StreamifyEnv.canDownloadOffline)) {
+    const isNative = isCapacitorNative();
+    if (!isNative && (typeof caches === 'undefined' || (window.StreamifyEnv && !window.StreamifyEnv.canDownloadOffline))) {
         const error = new InsecureContextError();
         if (typeof showToast === 'function') showToast(error.message, 'error', 6000);
         throw error;
@@ -555,13 +644,19 @@ async function downloadSong(songId) {
 
     try {
         const user = await requireActiveUser();
-        const response = await fetch(`/api/play/${encodeURIComponent(songId)}`, {
+        const base = (window.API_BASE_URL || '').replace(/\/+$/, '');
+        const response = await fetch(`${base}/api/play/${encodeURIComponent(songId)}`, {
             credentials: 'include',
             cache: 'no-store'
         });
         if (!response.ok) throw new Error(`Failed to fetch song details (HTTP ${response.status})`);
         const songData = await response.json();
-        return await fallbackDownload(songData, songData.url, songData.cover, user);
+
+        if (isNative) {
+            return await downloadSongNative(songData, songData.url, songData.cover, user);
+        } else {
+            return await fallbackDownload(songData, songData.url, songData.cover, user);
+        }
     } catch (error) {
         console.error('[Offline DB] Download error:', error);
         if (typeof showToast === 'function') {
@@ -580,9 +675,13 @@ async function fallbackDownload(songData, audioUrl, coverUrl, user) {
         cleanupRequests.push(createCacheRequest(audioUrl));
         await fetchAndCacheResource(cache, audioUrl, true);
 
-        if (coverUrl && coverUrl.startsWith('/')) {
-            cleanupRequests.push(createCacheRequest(coverUrl));
-            await fetchAndCacheResource(cache, coverUrl, false);
+        if (coverUrl && typeof coverUrl === 'string' && (coverUrl.startsWith('/') || coverUrl.startsWith('http'))) {
+            try {
+                cleanupRequests.push(createCacheRequest(coverUrl));
+                await fetchAndCacheResource(cache, coverUrl, false);
+            } catch (coverErr) {
+                console.warn('[Offline DB] Non-fatal cover art caching failure:', coverErr);
+            }
         }
 
         if (activeUserKey !== user.key) {
@@ -620,7 +719,10 @@ window.OfflineStore = {
     getOfflinePlaylist,
     setCurrentUser,
     clearActiveUser,
-    isSupported: () => typeof caches !== 'undefined'
-        && (!window.StreamifyEnv || window.StreamifyEnv.canDownloadOffline),
+    isSupported: () => {
+        if (isCapacitorNative()) return true;
+        return typeof caches !== 'undefined'
+            && (!window.StreamifyEnv || window.StreamifyEnv.canDownloadOffline);
+    },
     InsecureContextError
 };
