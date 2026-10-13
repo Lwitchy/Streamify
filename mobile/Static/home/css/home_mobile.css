@@ -4,7 +4,23 @@
 @media screen and (max-width: 768px) {
 
     :root {
-        --mobile-top-bar-height: calc(50px + max(10px, env(safe-area-inset-top, 0px)));
+        --mobile-top-bar-safe-top: max(10px, env(safe-area-inset-top, 0px));
+        --mobile-top-bar-height: calc(50px + var(--mobile-top-bar-safe-top));
+    }
+
+    /* iOS WebKit hardware notch & Dynamic Island minimum fallback:
+       WKWebView often computes env(safe-area-inset-top) as 0px on subsequent opens
+       until an input is focused. This guarantees the bar never slips underneath the clock. */
+    @supports (-webkit-touch-callout: none) {
+        :root {
+            --mobile-top-bar-safe-top: max(47px, env(safe-area-inset-top, 47px));
+            --mobile-top-bar-height: calc(50px + var(--mobile-top-bar-safe-top));
+        }
+    }
+
+    html.is-ios {
+        --mobile-top-bar-safe-top: max(47px, env(safe-area-inset-top, 47px));
+        --mobile-top-bar-height: calc(50px + var(--mobile-top-bar-safe-top));
     }
 
     /* --- PREVENT HORIZONTAL SWIPE --- */
@@ -36,7 +52,7 @@
 
     /* The sidebar logo must clear the status bar and Dynamic Island clock */
     .sidebar .morph-logo {
-        padding-top: max(20px, calc(env(safe-area-inset-top, 0px) + 12px)) !important;
+        padding-top: max(20px, calc(var(--mobile-top-bar-safe-top) + 12px)) !important;
         padding-left: max(20px, env(safe-area-inset-left, 0px)) !important;
         margin-bottom: 12px;
     }
@@ -60,7 +76,7 @@
        (e.g. landscape, or a device with no notch). */
     .top-bar {
         padding: 10px 15px;
-        padding-top: max(10px, env(safe-area-inset-top, 0px));
+        padding-top: var(--mobile-top-bar-safe-top);
         padding-left: max(15px, env(safe-area-inset-left, 0px));
         padding-right: max(15px, env(safe-area-inset-right, 0px));
         gap: 10px;

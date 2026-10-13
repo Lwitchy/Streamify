@@ -167,6 +167,26 @@ window.StreamifyEnv = (function () {
             document.documentElement.classList.add('is-capacitor');
             if (isIOS) document.documentElement.classList.add('is-capacitor-ios');
         }
+
+        // iOS WKWebView safe-area timing bug workaround:
+        // In WKWebView, env(safe-area-inset-top) can temporarily evaluate to 0px on subsequent opens
+        // until a user interaction (like clicking search) occurs. Dispatching a reflow immediately
+        // and on pageshow prompts WebKit to settle hardware safe areas at boot.
+        if (isIOS) {
+            const forceSafeReflow = () => {
+                window.dispatchEvent(new Event('resize'));
+            };
+            window.addEventListener('pageshow', forceSafeReflow);
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    requestAnimationFrame(forceSafeReflow);
+                    setTimeout(forceSafeReflow, 350);
+                });
+            } else {
+                requestAnimationFrame(forceSafeReflow);
+                setTimeout(forceSafeReflow, 350);
+            }
+        }
     }
 
     /** Human-readable list of what is unavailable, for UI messaging. */
