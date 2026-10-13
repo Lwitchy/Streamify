@@ -186,7 +186,7 @@ function loadSong(song) {
     playerArtist.textContent = song.artist; // No badge in mini player
 
     let audioUrl = song.url;
-    let coverUrl = safeImageURL(song.cover, COVER_PLACEHOLDER);
+    let coverUrl = song.coverDataUrl || safeImageURL(song.cover, COVER_PLACEHOLDER);
 
     if (song.localAudioPath && window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
         audioUrl = window.Capacitor.convertFileSrc(song.localAudioPath);
@@ -194,7 +194,9 @@ function loadSong(song) {
         audioUrl = window.API_BASE_URL.replace(/\/+$/, '') + audioUrl;
     }
 
-    if (song.localCoverPath && window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
+    if (song.coverDataUrl) {
+        coverUrl = song.coverDataUrl;
+    } else if (song.localCoverPath && window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
         coverUrl = window.Capacitor.convertFileSrc(song.localCoverPath);
     } else if (coverUrl && coverUrl.startsWith('/') && window.API_BASE_URL) {
         coverUrl = window.API_BASE_URL.replace(/\/+$/, '') + coverUrl;
@@ -404,7 +406,12 @@ function _playSongFromPlaylist(index, pl, sh) {
 
     };
 
-    if ((!navigator.onLine || window.StreamifyOfflineMode) && window.OfflineStore) {
+    if (song.localAudioPath) {
+        loadAndPlay(song);
+        return;
+    }
+
+    if ((!navigator.onLine || window.StreamifyOfflineMode || (window.StreamifyNetwork && !window.StreamifyNetwork.isServerReachable)) && window.OfflineStore) {
         window.OfflineStore.getOfflineSong(song.id).then(cachedSong => {
             if (selectionSeq !== _songSelectionSeq || controller.signal.aborted) return;
             if (cachedSong) {
@@ -425,8 +432,12 @@ function _playSongFromPlaylist(index, pl, sh) {
     // Starting it directly removes an otherwise redundant metadata round trip.
     if (song.id !== undefined && song.id !== null && song.id !== '') {
         const base = (window.API_BASE_URL || '').replace(/\/+$/, '');
+        const sessionId = localStorage.getItem('streamify_session_id');
+        const streamUrl = sessionId
+            ? `${base}/api/stream/${encodeURIComponent(song.id)}?session_id=${encodeURIComponent(sessionId)}`
+            : `${base}/api/stream/${encodeURIComponent(song.id)}`;
         loadAndPlay({
-            url: `${base}/api/stream/${encodeURIComponent(song.id)}`,
+            url: streamUrl,
             cover: song.cover,
             bitrate: song.bitrate,
             extension: song.extension

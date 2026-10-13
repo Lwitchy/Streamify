@@ -337,9 +337,55 @@ async function cacheUserProfile(username, avatarUrl) {
     const userKey = normalizeUsername(username);
     if (!userKey) throw new TypeError('A username is required for offline storage');
 
+    let localAvatarPath = null;
+    let avatarDataUrl = null;
+
+    if (isCapacitorNative() && avatarUrl && typeof avatarUrl === 'string') {
+        try {
+            const Filesystem = window.Capacitor.Plugins.Filesystem;
+            const cleanAvatar = avatarUrl.split('?')[0];
+            const avatarExt = cleanAvatar.includes('.') ? cleanAvatar.split('.').pop() : 'jpg';
+            const avatarFileName = `streamify_offline_avatar_${userKey}.${avatarExt}`;
+            const baseOrigin = window.API_BASE_URL || window.location.origin;
+            let fullAvatarUrl = new URL(avatarUrl, baseOrigin).href;
+            const sessionId = localStorage.getItem('streamify_session_id');
+            if (sessionId && !fullAvatarUrl.includes('session_id=')) {
+                const u = new URL(fullAvatarUrl);
+                u.searchParams.set('session_id', sessionId);
+                fullAvatarUrl = u.href;
+            }
+
+            const avatarRes = await Filesystem.downloadFile({
+                url: fullAvatarUrl,
+                path: `StreamifyDownloads/${avatarFileName}`,
+                directory: 'DOCUMENTS',
+                recursive: true
+            });
+            localAvatarPath = avatarRes.path;
+
+            try {
+                const readRes = await Filesystem.readFile({
+                    path: `StreamifyDownloads/${avatarFileName}`,
+                    directory: 'DOCUMENTS'
+                });
+                if (readRes && readRes.data) {
+                    const mime = avatarExt === 'png' ? 'image/png' : 'image/jpeg';
+                    avatarDataUrl = readRes.data.startsWith('data:') ? readRes.data : `data:${mime};base64,${readRes.data}`;
+                }
+            } catch (rErr) {}
+        } catch (aErr) {
+            console.warn('[Offline DB] Non-fatal native avatar caching failure:', aErr);
+        }
+    }
+
     const db = await getDB();
     await runTransaction(db, [STORE_PROFILE, STORE_STATE], 'readwrite', transaction => {
-        transaction.objectStore(STORE_PROFILE).put({ offlineUser: userKey, username, avatarUrl });
+        transaction.objectStore(STORE_PROFILE).put({
+            offlineUser: userKey,
+            username,
+            avatarUrl: avatarDataUrl || (localAvatarPath && window.Capacitor ? window.Capacitor.convertFileSrc(localAvatarPath) : avatarUrl),
+            localAvatarPath
+        });
         transaction.objectStore(STORE_STATE).put({ key: 'activeUser', offlineUser: userKey, username });
     });
 
@@ -398,48 +444,66 @@ async function saveSongMetadata(songData, expectedUserKey = null) {
     });
 }
 
+function enrichOfflineSongUrls(record) {
+    const song = stripOfflineScope(record);
+    if (song.coverDataUrl) {
+        song.cover = song.coverDataUrl;
+    } else if (song.localCoverPath && window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
+        song.cover = window.Capacitor.convertFileSrc(song.localCoverPath);
+    }
+    if (song.localAudioPath && window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
+        song.url = window.Capacitor.convertFileSrc(song.localAudioPath);
+    }
+    return song;
+}
+
 async function getOfflineSongs() {
     const db = await getDB();
+    let records = [];
     if (activeUserKey) {
         const userKey = activeUserKey;
-        const records = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
+        records = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
             const request = transaction.objectStore(STORE_SONGS).index(USER_INDEX).getAll(userKey);
             request.onsuccess = () => setResult(request.result || []);
         });
-        if (records && records.length > 0) return records.map(stripOfflineScope);
     }
 
-    // Fallback: return all songs in STORE_SONGS
-    try {
-        const allRecords = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
-            const request = transaction.objectStore(STORE_SONGS).getAll();
-            request.onsuccess = () => setResult(request.result || []);
-        });
-        return (allRecords || []).map(stripOfflineScope);
-    } catch (e) {
-        return [];
+    // Fallback: return all songs in STORE_SONGS if none found for activeUserKey
+    if (!records || records.length === 0) {
+        try {
+            records = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
+                const request = transaction.objectStore(STORE_SONGS).getAll();
+                request.onsuccess = () => setResult(request.result || []);
+            });
+        } catch (e) {
+            records = [];
+        }
     }
+
+    return (records || []).map(enrichOfflineSongUrls);
 }
 
 async function getOfflineSong(songId) {
     const db = await getDB();
     const id = normalizeEntityId(songId);
+    let found = null;
     if (activeUserKey) {
-        const found = await getOfflineSongForUser(db, activeUserKey, id);
-        if (found) return found;
+        found = await getOfflineSongForUser(db, activeUserKey, id);
     }
 
     // Fallback: search across all records
-    try {
-        const allRecords = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
-            const request = transaction.objectStore(STORE_SONGS).getAll();
-            request.onsuccess = () => setResult(request.result || []);
-        });
-        const match = (allRecords || []).find(r => normalizeEntityId(r.id) === id);
-        return match ? stripOfflineScope(match) : null;
-    } catch (e) {
-        return null;
+    if (!found) {
+        try {
+            const allRecords = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
+                const request = transaction.objectStore(STORE_SONGS).getAll();
+                request.onsuccess = () => setResult(request.result || []);
+            });
+            const match = (allRecords || []).find(r => normalizeEntityId(r.id) === id);
+            if (match) found = match;
+        } catch (e) {}
     }
+
+    return found ? enrichOfflineSongUrls(found) : null;
 }
 
 async function getOfflineSongForUser(db, userKey, songId) {
@@ -489,7 +553,14 @@ async function downloadSongNative(songData, audioUrl, coverUrl, user) {
     const audioExt = (songData.extension || 'mp3').replace(/^\./, '');
     const fileName = `streamify_offline_song_${songId}.${audioExt}`;
     const baseOrigin = window.API_BASE_URL || window.location.origin;
-    const fullAudioUrl = new URL(audioUrl, baseOrigin).href;
+    const sessionId = localStorage.getItem('streamify_session_id');
+
+    let fullAudioUrl = new URL(audioUrl, baseOrigin).href;
+    if (sessionId && !fullAudioUrl.includes('session_id=')) {
+        const u = new URL(fullAudioUrl);
+        u.searchParams.set('session_id', sessionId);
+        fullAudioUrl = u.href;
+    }
 
     console.log(`[Offline Native] Downloading audio for song ${songId} to native documents...`);
     const downloadRes = await Filesystem.downloadFile({
@@ -500,12 +571,19 @@ async function downloadSongNative(songData, audioUrl, coverUrl, user) {
     });
 
     let localCoverPath = null;
+    let coverDataUrl = null;
     if (coverUrl && typeof coverUrl === 'string') {
         try {
             const cleanCover = coverUrl.split('?')[0];
             const coverExt = cleanCover.includes('.') ? cleanCover.split('.').pop() : 'jpg';
             const coverFileName = `streamify_offline_cover_${songId}.${coverExt}`;
-            const fullCoverUrl = new URL(coverUrl, baseOrigin).href;
+            let fullCoverUrl = new URL(coverUrl, baseOrigin).href;
+            if (sessionId && !fullCoverUrl.includes('session_id=')) {
+                const u = new URL(fullCoverUrl);
+                u.searchParams.set('session_id', sessionId);
+                fullCoverUrl = u.href;
+            }
+
             const coverRes = await Filesystem.downloadFile({
                 url: fullCoverUrl,
                 path: `StreamifyDownloads/${coverFileName}`,
@@ -513,6 +591,17 @@ async function downloadSongNative(songData, audioUrl, coverUrl, user) {
                 recursive: true
             });
             localCoverPath = coverRes.path;
+
+            try {
+                const readRes = await Filesystem.readFile({
+                    path: `StreamifyDownloads/${coverFileName}`,
+                    directory: 'DOCUMENTS'
+                });
+                if (readRes && readRes.data) {
+                    const mime = coverExt === 'png' ? 'image/png' : (coverExt === 'webp' ? 'image/webp' : 'image/jpeg');
+                    coverDataUrl = readRes.data.startsWith('data:') ? readRes.data : `data:${mime};base64,${readRes.data}`;
+                }
+            } catch (rErr) {}
         } catch (cErr) {
             console.warn('[Offline Native] Non-fatal cover download failure:', cErr);
         }
@@ -521,7 +610,9 @@ async function downloadSongNative(songData, audioUrl, coverUrl, user) {
     const enrichedSongData = {
         ...songData,
         localAudioPath: downloadRes.path,
-        localCoverPath: localCoverPath
+        localCoverPath: localCoverPath,
+        coverDataUrl: coverDataUrl,
+        cover: coverDataUrl || (localCoverPath && window.Capacitor ? window.Capacitor.convertFileSrc(localCoverPath) : songData.cover)
     };
 
     if (activeUserKey !== user.key) {

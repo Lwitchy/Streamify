@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Streamify</title>
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('streamify_server_url')) {
+                    window.location.replace('Static/home/home.html');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <script src="jsQR.js"></script>
     <style>
         :root {
@@ -295,7 +304,7 @@
         </div>
 
         <!-- Initial Connect Options -->
-        <div class="card" id="form-card">
+        <div class="card hidden" id="form-card">
             <div id="error-box" class="error-banner"></div>
 
             <button class="btn" id="open-scan-btn">
@@ -404,11 +413,22 @@
 
                 clearTimeout(timeout);
 
-                // Even if not 200, if server responds, we know the origin is alive!
                 localStorage.setItem(STORAGE_KEY, baseUrl);
                 statusText.textContent = 'Connected! Opening Streamify...';
+
+                // Check auth status
+                const sessionId = localStorage.getItem('streamify_session_id');
+                const meRes = await fetch(`${baseUrl}/api/me`, {
+                    headers: sessionId ? { 'x-session-id': sessionId } : {},
+                    credentials: 'include'
+                }).catch(() => null);
+
                 setTimeout(() => {
-                    window.location.replace(`${baseUrl}/home`);
+                    if (meRes && meRes.ok) {
+                        window.location.replace('Static/home/home.html');
+                    } else {
+                        window.location.replace('Static/loginpage/login.html');
+                    }
                 }, 250);
             } catch (err) {
                 clearTimeout(timeout);
@@ -586,32 +606,13 @@
         });
 
         // Auto-connect if URL was previously saved
-        window.addEventListener('DOMContentLoaded', async () => {
+        window.addEventListener('DOMContentLoaded', () => {
             const saved = localStorage.getItem(STORAGE_KEY);
-            if (!saved) return;
-
-            // Fast health check (1500ms timeout)
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 1500);
-
-            try {
-                const res = await fetch(`${saved}/api/config/public`, {
-                    signal: controller.signal,
-                    cache: 'no-store'
-                }).catch(() => null);
-                clearTimeout(timeout);
-                if (res && (res.ok || res.status === 200 || res.status === 401)) {
-                    // Server is reachable! Open live Streamify server app
-                    window.location.replace(`${saved}/home`);
-                    return;
-                }
-            } catch (e) {
-                clearTimeout(timeout);
+            if (saved) {
+                window.location.replace('Static/home/home.html');
+            } else {
+                formCard.classList.remove('hidden');
             }
-
-            // Server is not reachable (offline / away from home)
-            // Boot straight into local offline music player without locking user out
-            window.location.replace('Static/home/home.html');
         });
     </script>
 </body>

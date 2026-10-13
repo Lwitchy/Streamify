@@ -256,8 +256,14 @@ function renderSongList(songs, listContainer, options = {}) {
 
     const createSongRow = (song, index) => {
         const duration = song.duration || '--:--';
-        const hasCover = !!(song.cover);
-        const cover = safeImageURL(hasCover ? song.cover : COVER_PLACEHOLDER, COVER_PLACEHOLDER);
+        let songCover = song.coverDataUrl || song.cover;
+        if (song.localCoverPath && window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
+            songCover = window.Capacitor.convertFileSrc(song.localCoverPath);
+        } else if (songCover && songCover.startsWith('/') && window.API_BASE_URL) {
+            songCover = window.API_BASE_URL.replace(/\/+$/, '') + songCover;
+        }
+        const hasCover = !!(songCover);
+        const cover = safeImageURL(hasCover ? songCover : COVER_PLACEHOLDER, COVER_PLACEHOLDER);
 
         const title = escapeHTML(song.title);
         const artist = escapeHTML(song.artist);
@@ -3065,12 +3071,21 @@ function fetchCurrentUser(forceRefresh = false) {
     if (_currentUserPromise) return _currentUserPromise;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
 
     const request = fetch(window.API_BASE_URL + '/api/me', { credentials: 'include', signal: controller.signal })
-        .then(r => {
+        .then(async r => {
             clearTimeout(timeoutId);
-            if (!r.ok) throw new Error(`User request failed: ${r.status}`);
+            if (!r.ok) {
+                if (r.status === 401 && window.StreamifyEnv && window.StreamifyEnv.isCapacitor) {
+                    const cached = window.OfflineStore ? await window.OfflineStore.getCachedUserProfile().catch(() => null) : null;
+                    if (!cached) {
+                        window.location.replace('/Static/loginpage/login.html');
+                    }
+                }
+                throw new Error(`User request failed: ${r.status}`);
+            }
+            if (window.StreamifyNetwork) window.StreamifyNetwork.setServerReachable(true);
             return r.json();
         })
         .then(async data => {
@@ -3092,6 +3107,7 @@ function fetchCurrentUser(forceRefresh = false) {
         .catch(err => {
             clearTimeout(timeoutId);
             console.warn('Network error fetching user, falling back to offline profile:', err);
+            if (window.StreamifyNetwork) window.StreamifyNetwork.setServerReachable(false);
             if (window.OfflineStore) {
                 return window.OfflineStore.getCachedUserProfile().then(profile => {
                     const fallbackUser = profile
@@ -3169,7 +3185,7 @@ function fetchLibrary(forceRefresh = false, options = {}) {
     const shouldRender = options.render !== false;
     const renderOptions = options.renderOptions || {};
 
-    if (!navigator.onLine && window.OfflineStore) {
+    if ((!navigator.onLine || window.StreamifyOfflineMode || (window.StreamifyNetwork && !window.StreamifyNetwork.isServerReachable)) && window.OfflineStore) {
         return window.OfflineStore.getOfflineSongs().then(songs => {
             if (shouldRender) renderSongList(songs, list, renderOptions);
             return songs;
@@ -3183,7 +3199,7 @@ function fetchLibrary(forceRefresh = false, options = {}) {
     }
     const seq = ++_fetchLibrarySeq;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
 
     return fetch(window.API_BASE_URL + '/api/library', { signal: controller.signal })
         .then(r => {
@@ -3193,6 +3209,7 @@ function fetchLibrary(forceRefresh = false, options = {}) {
         })
         .then(songs => {
             clearTimeout(timeoutId);
+            if (window.StreamifyNetwork) window.StreamifyNetwork.setServerReachable(true);
             appCache.library = songs;
             appCache.libraryTime = Date.now();
             if (!shouldRender || window.currentActiveView !== 'library' || seq !== _fetchLibrarySeq) return songs;
@@ -3202,6 +3219,7 @@ function fetchLibrary(forceRefresh = false, options = {}) {
         .catch(err => {
             clearTimeout(timeoutId);
             console.warn('Network error fetching library, checking offline storage:', err);
+            if (window.StreamifyNetwork) window.StreamifyNetwork.setServerReachable(false);
             if (window.OfflineStore) {
                 return window.OfflineStore.getOfflineSongs().then(songs => {
                     if (shouldRender) renderSongList(songs, list, renderOptions);

@@ -1,4 +1,4 @@
-window.API_BASE_URL = window.API_BASE_URL || '';
+window.API_BASE_URL = window.API_BASE_URL || localStorage.getItem('streamify_server_url') || '';
 
 const loginForm = document.getElementById('loginForm');
 const registerForm = document.getElementById('registerForm');
@@ -8,7 +8,7 @@ const showRegisterBtn = document.getElementById('showRegister');
 const showLoginBtn = document.getElementById('showLogin');
 const loadingSpinner = document.getElementById('loadingSpinner');
 
-fetch('/api/config/public')
+fetch((window.API_BASE_URL || '') + '/api/config/public')
   .then(res => res.json())
   .then(config => {
     if (config.is_fresh_install || config.user_count === 0) {
@@ -75,7 +75,11 @@ if (loginForm) {
       const data = await res.json();
       
       if (res.ok && data.success) {
-        window.location.href = '/home';
+        if (data.sessionId) {
+          localStorage.setItem('streamify_session_id', data.sessionId);
+        }
+        const isCapacitor = window.location.protocol.startsWith('capacitor') || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        window.location.href = isCapacitor ? '/Static/home/home.html' : '/home';
       } else {
         loginWrapper.classList.remove('hidden');
         loadingSpinner.style.display = 'none';
@@ -128,7 +132,11 @@ if (registerForm) {
       const data = await res.json();
       
       if (res.ok && data.success) {
-        window.location.href = '/home';
+        if (data.sessionId) {
+          localStorage.setItem('streamify_session_id', data.sessionId);
+        }
+        const isCapacitor = window.location.protocol.startsWith('capacitor') || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        window.location.href = isCapacitor ? '/Static/home/home.html' : '/home';
       } else {
         registerWrapper.classList.remove('hidden');
         loadingSpinner.style.display = 'none';

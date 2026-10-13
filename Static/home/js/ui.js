@@ -121,8 +121,12 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ===================================================
      * OFFLINE MODE MANAGEMENT
      * =================================================== */
-    function handleOfflineMode() {
-        if (!navigator.onLine) {
+    function handleOfflineMode(forceState) {
+        const isOffline = (typeof forceState === 'boolean')
+            ? forceState
+            : (!navigator.onLine || window.StreamifyOfflineMode || (window.StreamifyNetwork && !window.StreamifyNetwork.isServerReachable));
+
+        if (isOffline) {
             document.body.classList.add('offline-mode');
             showToast('You are offline. Switching to Offline Library.', 'warning');
 
@@ -211,13 +215,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof fetchLibrary === 'function') fetchLibrary();
         }
     }
+    window.handleOfflineMode = handleOfflineMode;
 
-    window.addEventListener('offline', handleOfflineMode);
-    window.addEventListener('online', handleOfflineMode);
+    window.addEventListener('offline', () => handleOfflineMode(true));
+    window.addEventListener('online', () => {
+        if (window.StreamifyNetwork) window.StreamifyNetwork.checkServer();
+        else handleOfflineMode(false);
+    });
+
+    window.addEventListener('streamifynetworkchange', (e) => {
+        handleOfflineMode(!e.detail.isServerReachable);
+    });
 
     // Initial check
-    if (!navigator.onLine) {
-        handleOfflineMode();
+    if (!navigator.onLine || window.StreamifyOfflineMode || (window.StreamifyNetwork && !window.StreamifyNetwork.isServerReachable)) {
+        handleOfflineMode(true);
     }
 
 
@@ -239,7 +251,12 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 console.error('[LOGOUT] Failed to clear offline account state:', error);
             }
-            window.location.href = '/login';
+            localStorage.removeItem('streamify_session_id');
+            if (window.StreamifyEnv && window.StreamifyEnv.isCapacitor) {
+                window.location.replace('/Static/loginpage/login.html');
+            } else {
+                window.location.href = '/login';
+            }
         });
     }
 
@@ -1346,10 +1363,25 @@ themeInputs.forEach(input => {
     };
 
     if (connectPhoneLink) {
-        connectPhoneLink.addEventListener('click', e => {
-            e.preventDefault();
-            openConnectPhone();
-        });
+        if (window.StreamifyEnv && window.StreamifyEnv.isCapacitor) {
+            const span = connectPhoneLink.querySelector('span');
+            if (span) span.textContent = 'Server Connection';
+            const icon = connectPhoneLink.querySelector('i');
+            if (icon) icon.className = 'bx bx-server';
+            connectPhoneLink.addEventListener('click', e => {
+                e.preventDefault();
+                if (confirm(`Currently connected to:\n${window.API_BASE_URL || 'Local Server'}\n\nDo you want to disconnect and change server?`)) {
+                    localStorage.removeItem('streamify_server_url');
+                    localStorage.removeItem('streamify_session_id');
+                    window.location.replace('/index.html');
+                }
+            });
+        } else {
+            connectPhoneLink.addEventListener('click', e => {
+                e.preventDefault();
+                openConnectPhone();
+            });
+        }
     }
     if (closeConnectPhoneBtn) {
         closeConnectPhoneBtn.addEventListener('click', closeConnectPhone);

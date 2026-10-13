@@ -303,7 +303,10 @@ const EXTRA_ORIGINS = (process.env.FRONTEND_URL || '')
     .filter(Boolean);
 
 function isTrustedOrigin(origin) {
-    if (EXTRA_ORIGINS.includes(origin.replace(/\/$/, ''))) return true;
+    if (!origin) return false;
+    const normalized = origin.replace(/\/$/, '');
+    if (EXTRA_ORIGINS.includes(normalized)) return true;
+    if (normalized.startsWith('capacitor://') || normalized.startsWith('ionic://')) return true;
 
     let hostname;
     try {
@@ -345,7 +348,11 @@ app.use((req, res, next) => {
     }
     next();
 });
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({
+    origin: true,
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id', 'Range', 'Accept']
+}));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -963,6 +970,8 @@ const getCurrentUser = async (req) => {
         if (typeof auth === 'string') {
             sessionId = auth.startsWith('Bearer ') ? auth.substring(7).trim() : auth.trim();
         }
+    } else if (req.query && req.query.session_id) {
+        sessionId = req.query.session_id;
     }
     if (sessionId) {
         return await Auth.getSessionUser(sessionId);
@@ -1423,7 +1432,7 @@ app.post('/loginrequest', authLimiter, async (req, res) => {
             maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         }));
 
-        return res.json({ success: true, message: "Logged in" });
+        return res.json({ success: true, message: "Logged in", sessionId: sessionId });
     } else {
         Auth.addAttempt(ip);
         return res.status(401).json({ error: "Invalid credentials" });
@@ -1489,7 +1498,7 @@ app.post('/register', authLimiter, async (req, res) => {
             maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         }));
 
-        return res.json({ success: true, message: "Registered", auto_logged_in: true });
+        return res.json({ success: true, message: "Registered", auto_logged_in: true, sessionId: sessionId });
     } catch (err) {
         console.error('[REGISTER]', err);
         return res.status(500).json({ error: "Registration failed" });
@@ -1498,7 +1507,7 @@ app.post('/register', authLimiter, async (req, res) => {
 
 // Logout
 app.post('/logout', async (req, res) => {
-    const sessionId = req.cookies.session_id;
+    const sessionId = (req.cookies && req.cookies.session_id) || (req.headers && req.headers['x-session-id']);
     if (sessionId) {
         await Auth.removeSession(sessionId);
     }

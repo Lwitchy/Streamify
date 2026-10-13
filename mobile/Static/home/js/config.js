@@ -11,26 +11,83 @@
 window.API_BASE_URL = window.API_BASE_URL || localStorage.getItem('streamify_server_url') || '';
 
 // If running in a mobile shell where API_BASE_URL is a remote server, automatically
-// route relative API and user-media calls to the remote server origin.
+// route relative API and user-media calls to the remote server origin and attach session credentials.
 if (window.API_BASE_URL && typeof window.fetch === 'function') {
     const _originalFetch = window.fetch;
     const _serverBase = window.API_BASE_URL.replace(/\/+$/, '');
+
+    const _attachAuthHeaders = (headers) => {
+        const sessionId = localStorage.getItem('streamify_session_id');
+        if (!sessionId) return headers;
+        if (headers instanceof Headers) {
+            if (!headers.has('x-session-id')) headers.set('x-session-id', sessionId);
+            if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${sessionId}`);
+            return headers;
+        } else if (Array.isArray(headers)) {
+            const copy = [...headers];
+            copy.push(['x-session-id', sessionId]);
+            copy.push(['Authorization', `Bearer ${sessionId}`]);
+            return copy;
+        } else {
+            return {
+                ...(headers || {}),
+                'x-session-id': sessionId,
+                'Authorization': `Bearer ${sessionId}`
+            };
+        }
+    };
+
     window.fetch = function (resource, options) {
+        options = options || {};
+
         if (typeof resource === 'string') {
-            if (resource.startsWith('/api/') || resource === '/logout' || resource.startsWith('/loginrequest')) {
+            const isApiOrAuth = resource.startsWith('/api/') || resource === '/logout' || resource.startsWith('/loginrequest') || resource === '/register';
+            const isMedia = resource.startsWith('/Static/covers/') || resource.startsWith('/Static/avatars/') || resource.startsWith('/Static/banners/');
+            const isServerTarget = resource.startsWith(_serverBase);
+
+            if (isApiOrAuth || isMedia) {
                 resource = _serverBase + resource;
-            } else if (resource.startsWith('/Static/covers/') || resource.startsWith('/Static/avatars/') || resource.startsWith('/Static/banners/')) {
-                resource = _serverBase + resource;
+            }
+            if (isApiOrAuth || isServerTarget) {
+                options.headers = _attachAuthHeaders(options.headers);
+                options.credentials = options.credentials || 'include';
             }
         } else if (resource instanceof Request) {
             try {
                 const reqUrl = new URL(resource.url);
-                if (reqUrl.pathname.startsWith('/api/') || reqUrl.pathname === '/logout' || reqUrl.pathname.startsWith('/loginrequest') ||
-                    reqUrl.pathname.startsWith('/Static/covers/') || reqUrl.pathname.startsWith('/Static/avatars/') || reqUrl.pathname.startsWith('/Static/banners/')) {
+                const isApiOrAuth = reqUrl.pathname.startsWith('/api/') || reqUrl.pathname === '/logout' || reqUrl.pathname.startsWith('/loginrequest') || reqUrl.pathname === '/register';
+                const isMedia = reqUrl.pathname.startsWith('/Static/covers/') || reqUrl.pathname.startsWith('/Static/avatars/') || reqUrl.pathname.startsWith('/Static/banners/');
+                const isServerTarget = resource.url.startsWith(_serverBase);
+
+                if (isApiOrAuth || isMedia) {
                     if (reqUrl.origin === window.location.origin && reqUrl.origin !== new URL(_serverBase).origin) {
                         const targetUrl = _serverBase + reqUrl.pathname + reqUrl.search;
-                        resource = new Request(targetUrl, resource);
+                        const reqHeaders = _attachAuthHeaders(resource.headers);
+                        resource = new Request(targetUrl, {
+                            method: resource.method,
+                            headers: reqHeaders,
+                            body: resource.body,
+                            mode: resource.mode,
+                            credentials: resource.credentials || 'include',
+                            cache: resource.cache,
+                            redirect: resource.redirect,
+                            referrer: resource.referrer,
+                            integrity: resource.integrity
+                        });
                     }
+                } else if (isServerTarget) {
+                    const reqHeaders = _attachAuthHeaders(resource.headers);
+                    resource = new Request(resource.url, {
+                        method: resource.method,
+                        headers: reqHeaders,
+                        body: resource.body,
+                        mode: resource.mode,
+                        credentials: resource.credentials || 'include',
+                        cache: resource.cache,
+                        redirect: resource.redirect,
+                        referrer: resource.referrer,
+                        integrity: resource.integrity
+                    });
                 }
             } catch (e) {}
         }
@@ -356,15 +413,104 @@ window.addEventListener('streamifythemechange', () => {
 function safeImageURL(value, fallback = '') {
     if (value === COVER_PLACEHOLDER) return value;
     if (typeof value !== 'string' || !value.trim()) return fallback;
+    if (value.startsWith('data:image/') || value.startsWith('blob:')) return value;
+
+    // Relative paths in mobile shell should resolve to server origin if available
+    const base = window.API_BASE_URL ? window.API_BASE_URL.replace(/\/+$/, '') : '';
+    let target = value;
+    if (base && (target.startsWith('/Static/covers/') || target.startsWith('/Static/avatars/') || target.startsWith('/Static/banners/'))) {
+        target = base + target;
+    }
 
     try {
-        const parsed = new URL(value, window.location.origin);
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : fallback;
+        const parsed = new URL(target, window.location.origin);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'capacitor:' || parsed.protocol === 'ionic:') {
+            return parsed.href;
+        }
+        return fallback;
     } catch (err) {
         return fallback;
     }
 }
 window.safeImageURL = safeImageURL;
+
+window.StreamifyOfflineMode = false;
+
+window.StreamifyNetwork = (function () {
+    let _isServerReachable = true;
+    let _checking = false;
+
+    function setServerReachable(reachable) {
+        const wasReachable = _isServerReachable;
+        _isServerReachable = Boolean(reachable);
+        window.StreamifyOfflineMode = !_isServerReachable;
+
+        if (document.body) {
+            if (!_isServerReachable) {
+                document.body.classList.add('offline-mode');
+            } else if (navigator.onLine) {
+                document.body.classList.remove('offline-mode');
+            }
+        }
+
+        if (wasReachable !== _isServerReachable) {
+            window.dispatchEvent(new CustomEvent('streamifynetworkchange', {
+                detail: { isServerReachable: _isServerReachable, isOnline: navigator.onLine && _isServerReachable }
+            }));
+            if (typeof window.handleOfflineMode === 'function') {
+                window.handleOfflineMode(!_isServerReachable);
+            }
+        }
+    }
+
+    async function checkServer(timeoutMs = 1800) {
+        if (!navigator.onLine) {
+            setServerReachable(false);
+            return false;
+        }
+        if (!window.API_BASE_URL) {
+            setServerReachable(true);
+            return true;
+        }
+        if (_checking) return _isServerReachable;
+        _checking = true;
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const base = window.API_BASE_URL.replace(/\/+$/, '');
+            const res = await fetch(`${base}/api/config/public`, {
+                signal: controller.signal,
+                cache: 'no-store'
+            });
+            clearTimeout(timer);
+            const alive = !!(res && (res.ok || res.status === 200 || res.status === 401));
+            setServerReachable(alive);
+            _checking = false;
+            return alive;
+        } catch (e) {
+            clearTimeout(timer);
+            setServerReachable(false);
+            _checking = false;
+            return false;
+        }
+    }
+
+    window.addEventListener('online', () => {
+        checkServer(1800);
+    });
+    window.addEventListener('offline', () => {
+        setServerReachable(false);
+    });
+
+    return {
+        get isServerReachable() { return _isServerReachable; },
+        get isOnline() { return navigator.onLine && _isServerReachable; },
+        setServerReachable,
+        checkServer
+    };
+})();
 
 /* --- Shared Helpers --- */
 function escapeHTML(str) {
