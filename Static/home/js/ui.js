@@ -2047,6 +2047,14 @@ themeInputs.forEach(input => {
         ) {
             window.closeDesktopPlayerOverlay({ animateUnderlay: false, focusCover: false });
         }
+        if (
+            !preserveDedicatedPlayer &&
+            !document.body.classList.contains('desktop-player-overlay-enabled') &&
+            document.body.classList.contains('player-section-active') &&
+            typeof window.finalizeCloseDedicatedPlayer === 'function'
+        ) {
+            window.finalizeCloseDedicatedPlayer();
+        }
         if (typeof window.cancelPlaylistDetailRequest === 'function') window.cancelPlaylistDetailRequest();
         if (window.currentActiveView !== 'playlist') {
             window.requestedPlaylistId = null;

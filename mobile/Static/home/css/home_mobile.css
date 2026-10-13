@@ -159,14 +159,9 @@
         overflow: hidden;
     }
 
-    body.player-section-active .content-container {
-        padding: 0 !important;
-        overflow: hidden;
-    }
-
-    /* Hide top bar for true full-screen player experience on mobile */
-    body.player-section-active .top-bar {
-        display: none !important;
+    /* Player sheet overlay on mobile covers top bar via z-index (2000), keeping underlay stable without reflow */
+    body.player-section-active:not(.player-is-dismissing) .top-bar {
+        pointer-events: none;
     }
 
     /* Fill the entire screen, including the area behind the browser toolbar.

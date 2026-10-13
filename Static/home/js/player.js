@@ -1282,6 +1282,7 @@ if (dedicatedBtnRepeat) dedicatedBtnRepeat.addEventListener('click', toggleRepea
 
 // Open Dedicated Player Page (from mini player image)
 let previousSectionId = null;
+let savedUnderlayScrollTop = 0;
 let previousSidebarActiveEl = null; // snapshot of the active sidebar link (nav or playlist)
 let desktopPlayerUnderlayState = null;
 const desktopPlayerMedia = window.matchMedia('(min-width: 901px)');
@@ -1666,9 +1667,21 @@ function openDedicatedPlayerFromCover() {
     }
 
     // Remember which section we were on before opening the player
-    const activeSection = document.querySelector('main.main-content > div.content-container > section:not(.hidden)');
-    if (activeSection && activeSection.id !== 'player-section') {
+    const activeSection = document.querySelector(
+        'main.main-content > div.content-container > section:not(.hidden):not(#player-section)'
+    );
+    if (activeSection) {
         previousSectionId = activeSection.id;
+        activeSection.inert = true;
+        activeSection.setAttribute('aria-hidden', 'true');
+    } else if (!previousSectionId) {
+        previousSectionId = 'trending-section';
+    }
+
+    // Save scroll position of the underlay container so dismiss never jumps or resets
+    const scrollContainer = window.getAppScrollContainer ? window.getAppScrollContainer() : document.querySelector('.main-content');
+    if (scrollContainer) {
+        savedUnderlayScrollTop = scrollContainer.scrollTop;
     }
 
     // Snapshot the active sidebar element so we can restore it when the player is closed
@@ -1676,29 +1689,22 @@ function openDedicatedPlayerFromCover() {
         '.sidebar-nav a.active, #sidebar-playlist-list li a.active, #sidebar-playlist-list li.active > a'
     );
 
-    if (typeof window.hideAllSections === 'function' && playerSection) {
-        window.hideAllSections({ preserveDedicatedPlayer: true });
-        // Apply final player geometry while the section is still hidden, so
-        // showSection's animation restart does not lay it out twice.
+    if (playerSection) {
         setDedicatedPlayerActive(true);
-        window.showSection(playerSection);
+        playerSection.classList.remove('hidden');
         syncThemeColorToCover(dedicatedImg ? dedicatedImg.src : null);
         updateMarquees(dedicatedTitle, dedicatedArtist);
-    } else {
-        // Fallback if ui.js navigation is not available
-        document.querySelectorAll('main.main-content > div.content-container > section').forEach(sec => {
-            sec.classList.add('hidden');
-        });
-        document.querySelectorAll('.sidebar-nav ul li a').forEach(link => {
-            link.classList.remove('active');
-        });
 
-        if (playerSection) {
-            setDedicatedPlayerActive(true);
-            playerSection.classList.remove('hidden');
-            syncThemeColorToCover(dedicatedImg ? dedicatedImg.src : null);
-            updateMarquees(dedicatedTitle, dedicatedArtist);
-        }
+        // Native iOS sheet slide-up presentation animation
+        playerSection.style.transition = 'none';
+        playerSection.style.transform = 'translate3d(0, 100%, 0)';
+        void playerSection.offsetHeight;
+        playerSection.style.transition = 'transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1)';
+        playerSection.style.transform = 'translate3d(0, 0, 0)';
+        setTimeout(() => {
+            playerSection.style.transition = '';
+            playerSection.style.transform = '';
+        }, 300);
     }
     focusDedicatedPlayerClose();
 }
@@ -1715,46 +1721,94 @@ if (playerImg) {
 let isClosingMobilePlayer = false;
 
 function finalizeCloseDedicatedPlayer() {
+    if (playerSection) {
+        playerSection.classList.add('hidden');
+        playerSection.classList.remove('player-dismissing');
+        playerSection.style.transition = '';
+        playerSection.style.transform = '';
+        playerSection.style.opacity = '';
+        playerSection.style.borderTopLeftRadius = '';
+        playerSection.style.borderTopRightRadius = '';
+        playerSection.style.boxShadow = '';
+        playerSection.style.borderRadius = '';
+    }
+    document.body.classList.remove('player-is-dismissing');
+    isClosingMobilePlayer = false;
+
     setDedicatedPlayerActive(false);
     setThemeColor(DEFAULT_THEME_COLOR);
 
-    if (typeof window.hideAllSections === 'function' && previousSectionId) {
-        const prevSec = document.getElementById(previousSectionId);
-        if (prevSec) {
-            window.hideAllSections();
-            window.showSection(prevSec);
+    const secId = previousSectionId || 'trending-section';
+    const prevSec = document.getElementById(secId);
+    if (prevSec) {
+        prevSec.classList.remove('hidden');
+        prevSec.inert = false;
+        prevSec.removeAttribute('aria-hidden');
 
-            // Re-highlight the correct sidebar nav link
-            const navMap = {
-                'trending-section':   'library-link',
-                'upload-section':     'upload-link',
-                'playlist-detail-section': null,
-            };
-            const linkId = navMap[previousSectionId];
-            if (linkId) document.getElementById(linkId)?.classList.add('active');
-
-            // Restore sidebar playlist / nav highlight
-            if (previousSidebarActiveEl) {
-                previousSidebarActiveEl.classList.add('active');
-            }
-
-            // Re-apply the "now playing" blue highlight on the song row
-            const listContainer = prevSec.querySelector('.song-list, #trending-list, #playlist-songs-list');
-            if (listContainer && typeof highlightCurrentSong === 'function') {
-                highlightCurrentSong(listContainer);
-            }
-
-            playerImg?.focus({ preventScroll: true });
-            return;
+        // Restore scroll position so library list never jumps
+        const scrollContainer = window.getAppScrollContainer ? window.getAppScrollContainer() : document.querySelector('.main-content');
+        if (scrollContainer && typeof savedUnderlayScrollTop === 'number') {
+            scrollContainer.scrollTop = savedUnderlayScrollTop;
         }
+
+        // Re-highlight the correct sidebar nav link without clicking or re-fetching
+        const navMap = {
+            'trending-section':   'library-link',
+            'downloads-section':  'downloads-link',
+            'upload-section':     'upload-link',
+            'playlist-detail-section': null,
+        };
+        const linkId = navMap[secId];
+        if (linkId) document.getElementById(linkId)?.classList.add('active');
+
+        // Restore sidebar playlist / nav highlight
+        if (previousSidebarActiveEl) {
+            previousSidebarActiveEl.classList.add('active');
+        }
+
+        // Re-apply the "now playing" blue highlight on the song row
+        const listContainer = prevSec.querySelector('.song-list, #trending-list, #playlist-songs-list');
+        if (listContainer && typeof highlightCurrentSong === 'function') {
+            highlightCurrentSong(listContainer);
+        }
+
+        playerImg?.focus({ preventScroll: true });
+        return;
     }
 
-    // True fallback: history was lost, go to library
-    document.getElementById('library-link')?.click();
+    // Safety fallback: ensure trending-section is visible without clicking #library-link or calling fetchLibrary()
+    const fallbackSec = document.getElementById('trending-section');
+    if (fallbackSec) {
+        fallbackSec.classList.remove('hidden');
+        fallbackSec.inert = false;
+        fallbackSec.removeAttribute('aria-hidden');
+        document.getElementById('library-link')?.classList.add('active');
+    }
     playerImg?.focus({ preventScroll: true });
 }
 
-function dismissDedicatedPlayerMobile(initialY = 0) {
+function snapBackDedicatedPlayerMobile() {
+    if (!playerSection) return;
+
+    playerSection.style.transition = 'transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), border-radius 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease';
+    playerSection.style.transform = 'translate3d(0, 0, 0)';
+    playerSection.style.borderTopLeftRadius = '';
+    playerSection.style.borderTopRightRadius = '';
+    playerSection.style.boxShadow = '';
+    playerSection.style.opacity = '1';
+
+    setTimeout(() => {
+        playerSection.classList.remove('player-dismissing');
+        document.body.classList.remove('player-is-dismissing');
+        playerSection.style.transition = '';
+        playerSection.style.transform = '';
+        playerSection.style.borderTopLeftRadius = '';
+        playerSection.style.borderTopRightRadius = '';
+        playerSection.style.boxShadow = '';
+    }, 260);
+}
+
+function dismissDedicatedPlayerMobile(initialY = 0, velocity = 0) {
     if (!playerSection || !document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
     isClosingMobilePlayer = true;
 
@@ -1768,24 +1822,24 @@ function dismissDedicatedPlayerMobile(initialY = 0) {
         playerSection.style.transform = `translate3d(0, ${initialY}px, 0)`;
     }
 
-    // Force layout reflow before triggering transition
     void playerSection.offsetHeight;
 
-    playerSection.style.transition = 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.28s ease';
+    let duration = 0.24;
+    if (velocity > 0.6) duration = 0.18;
+    else if (velocity > 0.35) duration = 0.21;
+
+    playerSection.style.transition = `transform ${duration}s cubic-bezier(0.32, 0.72, 0, 1), opacity ${duration}s ease, border-radius ${duration}s ease`;
     playerSection.style.transform = 'translate3d(0, 100%, 0)';
-    playerSection.style.opacity = '0.3';
+    playerSection.style.opacity = '0.5';
 
     setTimeout(() => {
-        playerSection.classList.remove('player-dismissing');
-        document.body.classList.remove('player-is-dismissing');
-        playerSection.style.transition = '';
-        playerSection.style.transform = '';
-        playerSection.style.opacity = '';
-        playerSection.style.borderRadius = '';
-        isClosingMobilePlayer = false;
         finalizeCloseDedicatedPlayer();
-    }, 280);
+    }, duration * 1000 + 30);
 }
+
+window.dismissDedicatedPlayerMobile = dismissDedicatedPlayerMobile;
+window.snapBackDedicatedPlayerMobile = snapBackDedicatedPlayerMobile;
+window.finalizeCloseDedicatedPlayer = finalizeCloseDedicatedPlayer;
 
 // Back Button from Dedicated Player
 const btnCloseDedicated = document.getElementById('close-dedicated-player');
@@ -2012,7 +2066,6 @@ if (btnCloseLyrics) {
 }
 
 /* ========== DEDICATED PLAYER & LYRICS SWIPE GESTURES ========== */
-/* ========== DEDICATED PLAYER & LYRICS SWIPE GESTURES ========== */
 (function setupDedicatedPlayerGestures() {
     const dedicatedView = document.getElementById('dedicated-player-view');
     if (!dedicatedView || !playerSection) return;
@@ -2023,17 +2076,27 @@ if (btnCloseLyrics) {
     let isGestureIgnored = false;
     let isPullingDown = false;
     let currentPullY = 0;
+    let lastMoveTime = 0;
+    let lastMoveY = 0;
+    let currentVelocity = 0;
 
     dedicatedView.addEventListener('touchstart', e => {
         if (!document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
+        if (isDesktopPlayerOverlayEnabled()) return;
         if (e.touches.length !== 1) {
             isGestureIgnored = true;
             return;
         }
 
         const target = e.target;
-        // Never hijack progress sliders, volume sliders, or buttons
-        if (target.closest('.dedicated-progress-bar-wrapper, .progress-bar-wrapper, .volume-slider, button, input, .lyric-sync-btn, .lyric-edit-input')) {
+        // Never hijack progress sliders, volume sliders, buttons, inputs, links, or lyric edit controls
+        if (target.closest('.dedicated-progress-bar-wrapper, .progress-bar-wrapper, .volume-slider, button, input, a, .lyric-sync-btn, .lyric-edit-input')) {
+            isGestureIgnored = true;
+            return;
+        }
+
+        // If lyrics view is active and scrolled down, let user scroll lyrics
+        if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 5) {
             isGestureIgnored = true;
             return;
         }
@@ -2041,13 +2104,17 @@ if (btnCloseLyrics) {
         isGestureIgnored = false;
         isPullingDown = false;
         currentPullY = 0;
+        currentVelocity = 0;
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
+        lastMoveY = touchStartY;
         touchStartTime = Date.now();
+        lastMoveTime = touchStartTime;
     }, { passive: true });
 
     dedicatedView.addEventListener('touchmove', e => {
         if (isGestureIgnored || !document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
+        if (isDesktopPlayerOverlayEnabled()) return;
         if (!e.touches || e.touches.length === 0) return;
 
         const currentX = e.touches[0].clientX;
@@ -2057,10 +2124,15 @@ if (btnCloseLyrics) {
         const absX = Math.abs(deltaX);
 
         if (!isPullingDown) {
+            // Horizontal swipe (e.g. lyrics switch back)
+            if (absX > 16 && absX > deltaY) {
+                isGestureIgnored = true;
+                return;
+            }
+
             // Check if pulling downwards predominantly
-            if (deltaY > 12 && deltaY > absX * 1.3) {
-                // If lyrics view is active and scrolled down, let user scroll lyrics
-                if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 10) {
+            if (deltaY > 8 && deltaY > absX * 1.1) {
+                if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 5) {
                     isGestureIgnored = true;
                     return;
                 }
@@ -2075,18 +2147,39 @@ if (btnCloseLyrics) {
 
         if (isPullingDown) {
             if (e.cancelable) e.preventDefault();
-            // Apply pull translation with slight resistance
-            currentPullY = Math.max(0, deltaY);
+
+            // Calculate instantaneous velocity for flick detection
+            const now = Date.now();
+            const timeStep = now - lastMoveTime;
+            if (timeStep > 0) {
+                currentVelocity = (currentY - lastMoveY) / timeStep;
+                lastMoveTime = now;
+                lastMoveY = currentY;
+            }
+
+            // Direct 1:1 finger tracking
+            if (deltaY < 0) {
+                // High rubber-band resistance when dragging above top
+                currentPullY = deltaY * 0.15;
+            } else {
+                currentPullY = deltaY;
+            }
+
+            const clampedY = Math.max(0, currentPullY);
             playerSection.style.transition = 'none';
-            playerSection.style.transform = `translate3d(0, ${currentPullY}px, 0)`;
-            const progress = Math.min(1, currentPullY / (window.innerHeight || 800));
-            playerSection.style.opacity = `${Math.max(0.4, 1 - progress * 0.6)}`;
-            playerSection.style.borderRadius = `${Math.min(24, currentPullY * 0.18)}px`;
+            playerSection.style.transform = `translate3d(0, ${clampedY}px, 0)`;
+
+            // Apple Music / Spotify sheet styling
+            const radius = Math.min(32, Math.max(0, clampedY * 0.22));
+            playerSection.style.borderTopLeftRadius = `${radius}px`;
+            playerSection.style.borderTopRightRadius = `${radius}px`;
+            playerSection.style.boxShadow = clampedY > 2 ? '0 -12px 48px rgba(0, 0, 0, 0.75)' : '';
         }
     }, { passive: false });
 
     dedicatedView.addEventListener('touchend', e => {
         if (isGestureIgnored || !document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
+        if (isDesktopPlayerOverlayEnabled()) return;
         if (!e.changedTouches || e.changedTouches.length === 0) return;
 
         const touchEndX = e.changedTouches[0].clientX;
@@ -2096,7 +2189,7 @@ if (btnCloseLyrics) {
         const absX = Math.abs(deltaX);
 
         if (!isPullingDown) {
-            // 1. Swipe Left-to-Right in Lyrics view to go back to album art view
+            // Swipe Left-to-Right in Lyrics view to go back to album art view
             if (isLyricsActive && deltaX > 60 && absX > Math.abs(deltaY) * 1.3) {
                 deactivateLyricsView();
             }
@@ -2104,29 +2197,23 @@ if (btnCloseLyrics) {
         }
 
         isPullingDown = false;
-        const duration = Math.max(1, Date.now() - touchStartTime);
-        const velocity = deltaY / duration;
+        const totalDuration = Math.max(1, Date.now() - touchStartTime);
+        const overallVelocity = deltaY / totalDuration;
+        const effectiveVelocity = Math.max(overallVelocity, currentVelocity);
 
-        // Dismiss if dragged down far enough or flicked downwards
-        if (deltaY > 100 || velocity > 0.4) {
-            dismissDedicatedPlayerMobile(currentPullY);
+        // Apple Music / Spotify threshold: dragged down > 120px OR flicked down with velocity > 0.4 px/ms
+        if (currentPullY > 120 || (currentPullY > 30 && effectiveVelocity > 0.4)) {
+            dismissDedicatedPlayerMobile(currentPullY, effectiveVelocity);
         } else {
-            // Cancel and spring back up
-            playerSection.style.transition = 'transform 0.24s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.24s ease, border-radius 0.24s ease';
-            playerSection.style.transform = 'translate3d(0, 0, 0)';
-            playerSection.style.opacity = '1';
-            playerSection.style.borderRadius = '';
+            // Snaps back smoothly if let go early
+            snapBackDedicatedPlayerMobile();
+        }
+    }, { passive: true });
 
-            setTimeout(() => {
-                playerSection.classList.remove('player-dismissing');
-                document.body.classList.remove('player-is-dismissing');
-                playerSection.style.transition = '';
-                playerSection.style.transform = '';
-                playerSection.style.opacity = '';
-                playerSection.style.borderRadius = '';
-                const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
-                if (prevSec) prevSec.classList.add('hidden');
-            }, 240);
+    dedicatedView.addEventListener('touchcancel', () => {
+        if (isPullingDown) {
+            isPullingDown = false;
+            snapBackDedicatedPlayerMobile();
         }
     }, { passive: true });
 })();
