@@ -363,14 +363,26 @@ async function cacheUserProfile(username, avatarUrl) {
 
 async function getCachedUserProfile() {
     const db = await getDB();
-    if (!activeUserKey) return null;
-    const userKey = activeUserKey;
+    if (activeUserKey) {
+        const userKey = activeUserKey;
+        const profile = await runTransaction(db, STORE_PROFILE, 'readonly', (transaction, setResult) => {
+            const request = transaction.objectStore(STORE_PROFILE).get(userKey);
+            request.onsuccess = () => setResult(request.result || null);
+        });
+        if (profile) return stripOfflineScope(profile);
+    }
 
-    const profile = await runTransaction(db, STORE_PROFILE, 'readonly', (transaction, setResult) => {
-        const request = transaction.objectStore(STORE_PROFILE).get(userKey);
-        request.onsuccess = () => setResult(request.result || null);
-    });
-    return stripOfflineScope(profile);
+    // Fallback: load first available cached profile if activeUserKey is not yet set
+    try {
+        const allProfiles = await runTransaction(db, STORE_PROFILE, 'readonly', (transaction, setResult) => {
+            const request = transaction.objectStore(STORE_PROFILE).getAll();
+            request.onsuccess = () => setResult(request.result || []);
+        });
+        if (allProfiles && allProfiles.length > 0) {
+            return stripOfflineScope(allProfiles[0]);
+        }
+    } catch (e) {}
+    return null;
 }
 
 async function saveSongMetadata(songData, expectedUserKey = null) {
@@ -388,20 +400,46 @@ async function saveSongMetadata(songData, expectedUserKey = null) {
 
 async function getOfflineSongs() {
     const db = await getDB();
-    if (!activeUserKey) return [];
-    const userKey = activeUserKey;
+    if (activeUserKey) {
+        const userKey = activeUserKey;
+        const records = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
+            const request = transaction.objectStore(STORE_SONGS).index(USER_INDEX).getAll(userKey);
+            request.onsuccess = () => setResult(request.result || []);
+        });
+        if (records && records.length > 0) return records.map(stripOfflineScope);
+    }
 
-    const records = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
-        const request = transaction.objectStore(STORE_SONGS).index(USER_INDEX).getAll(userKey);
-        request.onsuccess = () => setResult(request.result || []);
-    });
-    return records.map(stripOfflineScope);
+    // Fallback: return all songs in STORE_SONGS
+    try {
+        const allRecords = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
+            const request = transaction.objectStore(STORE_SONGS).getAll();
+            request.onsuccess = () => setResult(request.result || []);
+        });
+        return (allRecords || []).map(stripOfflineScope);
+    } catch (e) {
+        return [];
+    }
 }
 
 async function getOfflineSong(songId) {
     const db = await getDB();
-    if (!activeUserKey) return null;
-    return getOfflineSongForUser(db, activeUserKey, normalizeEntityId(songId));
+    const id = normalizeEntityId(songId);
+    if (activeUserKey) {
+        const found = await getOfflineSongForUser(db, activeUserKey, id);
+        if (found) return found;
+    }
+
+    // Fallback: search across all records
+    try {
+        const allRecords = await runTransaction(db, STORE_SONGS, 'readonly', (transaction, setResult) => {
+            const request = transaction.objectStore(STORE_SONGS).getAll();
+            request.onsuccess = () => setResult(request.result || []);
+        });
+        const match = (allRecords || []).find(r => normalizeEntityId(r.id) === id);
+        return match ? stripOfflineScope(match) : null;
+    } catch (e) {
+        return null;
+    }
 }
 
 async function getOfflineSongForUser(db, userKey, songId) {

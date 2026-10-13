@@ -408,7 +408,7 @@
                 localStorage.setItem(STORAGE_KEY, baseUrl);
                 statusText.textContent = 'Connected! Opening Streamify...';
                 setTimeout(() => {
-                    window.location.replace('Static/home/home.html');
+                    window.location.replace(`${baseUrl}/home`);
                 }, 250);
             } catch (err) {
                 clearTimeout(timeout);
@@ -586,12 +586,32 @@
         });
 
         // Auto-connect if URL was previously saved
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) {
-                // Instantly boot into local app shell without blocking network call
-                window.location.replace('Static/home/home.html');
+            if (!saved) return;
+
+            // Fast health check (1500ms timeout)
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 1500);
+
+            try {
+                const res = await fetch(`${saved}/api/config/public`, {
+                    signal: controller.signal,
+                    cache: 'no-store'
+                }).catch(() => null);
+                clearTimeout(timeout);
+                if (res && (res.ok || res.status === 200 || res.status === 401)) {
+                    // Server is reachable! Open live Streamify server app
+                    window.location.replace(`${saved}/home`);
+                    return;
+                }
+            } catch (e) {
+                clearTimeout(timeout);
             }
+
+            // Server is not reachable (offline / away from home)
+            // Boot straight into local offline music player without locking user out
+            window.location.replace('Static/home/home.html');
         });
     </script>
 </body>

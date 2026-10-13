@@ -3064,12 +3064,17 @@ function fetchCurrentUser(forceRefresh = false) {
 
     if (_currentUserPromise) return _currentUserPromise;
 
-    const request = fetch(window.API_BASE_URL + '/api/me', { credentials: 'include' })
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    const request = fetch(window.API_BASE_URL + '/api/me', { credentials: 'include', signal: controller.signal })
         .then(r => {
+            clearTimeout(timeoutId);
             if (!r.ok) throw new Error(`User request failed: ${r.status}`);
             return r.json();
         })
         .then(async data => {
+            clearTimeout(timeoutId);
             const user = data.user || data;
             appCache.user = user;
             appCache.userTime = Date.now();
@@ -3085,23 +3090,30 @@ function fetchCurrentUser(forceRefresh = false) {
             return user;
         })
         .catch(err => {
-            console.error('Error fetching user:', err);
+            clearTimeout(timeoutId);
+            console.warn('Network error fetching user, falling back to offline profile:', err);
             if (window.OfflineStore) {
                 return window.OfflineStore.getCachedUserProfile().then(profile => {
-                    if (profile) {
-                        renderUserUI({ username: profile.username, avatar: profile.avatarUrl });
-                        return { username: profile.username, avatar: profile.avatarUrl, role: 'User' };
-                    }
-                    const userPillName = document.querySelector('.user-pill span');
-                    if (userPillName) userPillName.textContent = 'Offline';
-                    return null;
+                    const fallbackUser = profile
+                        ? { username: profile.username, avatar: profile.avatarUrl, role: 'User' }
+                        : { username: 'Offline User', avatar: '', role: 'User' };
+                    renderUserUI(fallbackUser);
+                    appCache.user = fallbackUser;
+                    return fallbackUser;
+                }).catch(() => {
+                    const defaultOffline = { username: 'Offline User', avatar: '', role: 'User' };
+                    renderUserUI(defaultOffline);
+                    appCache.user = defaultOffline;
+                    return defaultOffline;
                 });
             }
-            const userPillName = document.querySelector('.user-pill span');
-            if (userPillName) userPillName.textContent = 'Offline';
-            return null;
+            const defaultOffline = { username: 'Offline User', avatar: '', role: 'User' };
+            renderUserUI(defaultOffline);
+            appCache.user = defaultOffline;
+            return defaultOffline;
         })
         .finally(() => {
+            clearTimeout(timeoutId);
             if (_currentUserPromise === request) _currentUserPromise = null;
         });
 
@@ -3170,12 +3182,17 @@ function fetchLibrary(forceRefresh = false, options = {}) {
         return Promise.resolve(appCache.library);
     }
     const seq = ++_fetchLibrarySeq;
-    return fetch(window.API_BASE_URL + '/api/library')
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    return fetch(window.API_BASE_URL + '/api/library', { signal: controller.signal })
         .then(r => {
+            clearTimeout(timeoutId);
             if (!r.ok) throw new Error(`Library request failed: ${r.status}`);
             return r.json();
         })
         .then(songs => {
+            clearTimeout(timeoutId);
             appCache.library = songs;
             appCache.libraryTime = Date.now();
             if (!shouldRender || window.currentActiveView !== 'library' || seq !== _fetchLibrarySeq) return songs;
@@ -3183,7 +3200,8 @@ function fetchLibrary(forceRefresh = false, options = {}) {
             return songs;
         })
         .catch(err => {
-            console.error('Error fetching library:', err);
+            clearTimeout(timeoutId);
+            console.warn('Network error fetching library, checking offline storage:', err);
             if (window.OfflineStore) {
                 return window.OfflineStore.getOfflineSongs().then(songs => {
                     if (shouldRender) renderSongList(songs, list, renderOptions);

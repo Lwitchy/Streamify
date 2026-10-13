@@ -953,8 +953,19 @@ const uploadCover = multer({
 
 // --- Auth Helper ---
 const getCurrentUser = async (req) => {
+    let sessionId = null;
     if (req.cookies && req.cookies.session_id) {
-        return await Auth.getSessionUser(req.cookies.session_id);
+        sessionId = req.cookies.session_id;
+    } else if (req.headers && req.headers['x-session-id']) {
+        sessionId = req.headers['x-session-id'];
+    } else if (req.headers && req.headers['authorization']) {
+        const auth = req.headers['authorization'];
+        if (typeof auth === 'string') {
+            sessionId = auth.startsWith('Bearer ') ? auth.substring(7).trim() : auth.trim();
+        }
+    }
+    if (sessionId) {
+        return await Auth.getSessionUser(sessionId);
     }
     return null;
 };
