@@ -22,7 +22,7 @@ on:
 jobs:
   build-ios:
     name: Build iOS Application (.ipa)
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 45
 
     steps:
@@ -43,6 +43,7 @@ jobs:
 
       - name: Build Xcode Archive
         run: |
+          xcodebuild -version
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
