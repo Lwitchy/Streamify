@@ -161,24 +161,13 @@
         overflow: hidden;
     }
 
-    /* Hide top bar and mini-player while Big Picture player is active on mobile */
-    body.player-section-active:not(.player-is-dismissing) .top-bar {
+    /* Hide top bar and mini-player while Big Picture player is active on mobile; revealed smoothly in JS during drag-to-dismiss */
+    body.player-section-active .top-bar {
         display: none !important;
     }
 
-    body.player-section-active:not(.player-is-dismissing) .music-player {
+    body.player-section-active .music-player {
         display: none !important;
-    }
-
-    /* Fill the entire screen, including the area behind the browser toolbar.
-       lvh not dvh: dvh stops at the visible viewport edge, which is what left
-       a solid band under the toolbar instead of the artwork showing through. */
-    body.player-section-active .main-content {
-        display: flex;
-        flex-direction: column;
-        min-height: 100vh;
-        min-height: 100lvh;
-        padding-bottom: 0 !important;
     }
 
     /* Safari browser chrome tint hack: only applies when running inside mobile Safari browser tabs.
@@ -236,17 +225,6 @@
         }
     }
 
-    body.player-section-active .content-container {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-    }
-
-    body.player-section-active #player-section {
-        flex: 1;
-        min-height: 0;
-    }
 
     /* --- GRIDS --- */
     .grid-container {

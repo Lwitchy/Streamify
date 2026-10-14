@@ -457,9 +457,6 @@ window.StreamifyNetwork = (function () {
             window.dispatchEvent(new CustomEvent('streamifynetworkchange', {
                 detail: { isServerReachable: _isServerReachable, isOnline: navigator.onLine && _isServerReachable }
             }));
-            if (typeof window.handleOfflineMode === 'function') {
-                window.handleOfflineMode(!_isServerReachable);
-            }
         }
     }
 
@@ -502,6 +499,20 @@ window.StreamifyNetwork = (function () {
     });
     window.addEventListener('offline', () => {
         setServerReachable(false);
+    });
+
+    // Periodic heartbeat check: every 15s to detect server drop while device stays connected to Wi-Fi
+    setInterval(() => {
+        if (navigator.onLine && window.API_BASE_URL) {
+            checkServer(2500);
+        }
+    }, 15000);
+
+    // Re-verify immediately when app is brought to foreground
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && navigator.onLine && window.API_BASE_URL) {
+            checkServer(2000);
+        }
     });
 
     return {

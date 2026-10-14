@@ -121,14 +121,24 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ===================================================
      * OFFLINE MODE MANAGEMENT
      * =================================================== */
+    let _currentOfflineMode = null;
+    let _lastOfflineToastTime = 0;
+
     function handleOfflineMode(forceState) {
         const isOffline = (typeof forceState === 'boolean')
             ? forceState
             : (!navigator.onLine || window.StreamifyOfflineMode || (window.StreamifyNetwork && !window.StreamifyNetwork.isServerReachable));
 
+        if (_currentOfflineMode === isOffline) return;
+        _currentOfflineMode = isOffline;
+
         if (isOffline) {
             document.body.classList.add('offline-mode');
-            showToast('You are offline. Switching to Offline Library.', 'warning');
+            const now = Date.now();
+            if (now - _lastOfflineToastTime > 3000) {
+                _lastOfflineToastTime = now;
+                showToast('You are offline. Switching to Offline Library.', 'warning');
+            }
 
             // Disable other links
             ['upload-link'].forEach(id => {
@@ -184,7 +194,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else {
             document.body.classList.remove('offline-mode');
-            showToast('You are back online.', 'success');
+            const now = Date.now();
+            if (now - _lastOfflineToastTime > 3000) {
+                _lastOfflineToastTime = now;
+                showToast('You are back online.', 'success');
+            }
 
             // Re-enable links
             ['upload-link'].forEach(id => {
@@ -3020,12 +3034,18 @@ themeInputs.forEach(input => {
     /* ===================================================
      * INITIAL ROUTING & NAVIGATION
      * =================================================== */
+    function isHomeOrRootRoute(path = window.location.pathname) {
+        if (path === '/home' || path === '/' || path.endsWith('/home.html') || path.endsWith('/index.html')) return true;
+        if (window.Capacitor || document.documentElement.classList.contains('is-capacitor') || document.documentElement.classList.contains('is-ios')) return true;
+        return false;
+    }
+
     function isInitialLibraryRoute() {
         const path = window.location.pathname;
         const hash = window.location.hash;
         const params = new URLSearchParams(window.location.search);
         if (params.has('playlist') || path.startsWith('/profile/')) return false;
-        if (path !== '/home' && path !== '/') return false;
+        if (!isHomeOrRootRoute(path)) return false;
         return !hash || hash === '#library' || hash === '#feed' || hash === '#people';
     }
 
@@ -3050,14 +3070,20 @@ themeInputs.forEach(input => {
     }
 
     async function revealInitialLibrary(libraryPromise) {
-        if (window.location.pathname !== '/home' && window.location.pathname !== '/') return false;
+        if (!isHomeOrRootRoute(window.location.pathname)) return false;
 
         window.currentActiveView = 'library';
         hideAllSections();
         libraryLink?.classList.add('active');
         document.title = 'Streamify | Library';
         if (window.location.hash !== '#library') {
-            history.replaceState({ view: 'library' }, '', '/home#library');
+            const isCap = window.Capacitor || document.documentElement.classList.contains('is-capacitor');
+            const targetUrl = isCap ? `${window.location.pathname}#library` : '/home#library';
+            try {
+                history.replaceState({ view: 'library' }, '', targetUrl);
+            } catch (e) {
+                // Ignore history rewrite errors on restricted mobile webviews
+            }
         }
 
         const songs = await libraryPromise;
@@ -3153,12 +3179,17 @@ themeInputs.forEach(input => {
                 }
             }
         } else {
-            // Default to the personal library on /home or root.
-            if (libraryLink && (path === '/home' || path === '/')) {
+            // Default to the personal library on /home, root, or Capacitor mobile app launch
+            if (libraryLink && isHomeOrRootRoute(path)) {
                 if (trendingSection && trendingSection.classList.contains('hidden')) {
                     libraryLink.click();
                 }
             }
+        }
+
+        // Safety fallback: if no content section is visible on screen, default to Library
+        if (libraryLink && (!window.currentActiveView || (trendingSection && trendingSection.classList.contains('hidden') && !document.querySelector('.content-container > section:not(.hidden)')))) {
+            libraryLink.click();
         }
     }
 

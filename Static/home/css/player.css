@@ -1519,15 +1519,10 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
 /* Responsive adjustments */
 @media (max-width: 900px) {
 
-    /* Remove padding and transform from parent container to allow full-screen feel and fixed positioning */
+    /* Preserve underlying container padding and geometry so music list never shifts during dismiss */
     body.player-section-active .content-container {
-        padding: 0 !important;
         transform: none !important;
         animation: none !important;
-    }
-
-    body.player-section-active .main-content {
-        padding-bottom: 0 !important;
     }
 
     .player-section {

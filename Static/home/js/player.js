@@ -1666,10 +1666,10 @@ function openDedicatedPlayerFromCover() {
         return;
     }
 
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) topBar.style.setProperty('display', 'none', 'important');
     const miniPlayer = document.querySelector('.music-player');
-    if (miniPlayer) {
-        miniPlayer.style.display = 'none';
-    }
+    if (miniPlayer) miniPlayer.style.setProperty('display', 'none', 'important');
 
     // Remember which section we were on before opening the player
     const activeSection = document.querySelector(
@@ -1740,6 +1740,14 @@ function finalizeCloseDedicatedPlayer() {
     }
     document.body.classList.remove('player-is-dismissing');
     isClosingMobilePlayer = false;
+
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) {
+        topBar.style.removeProperty('display');
+        topBar.style.removeProperty('opacity');
+        topBar.style.removeProperty('transition');
+        topBar.style.removeProperty('pointer-events');
+    }
 
     const miniPlayer = document.querySelector('.music-player');
     if (miniPlayer) {
@@ -1812,6 +1820,12 @@ function snapBackDedicatedPlayerMobile() {
     playerSection.style.opacity = '1';
     playerSection.style.willChange = '';
 
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) {
+        topBar.style.transition = 'opacity 0.2s ease';
+        topBar.style.opacity = '0';
+    }
+
     const miniPlayer = document.querySelector('.music-player');
     if (miniPlayer) {
         miniPlayer.style.transition = 'opacity 0.2s ease';
@@ -1826,8 +1840,12 @@ function snapBackDedicatedPlayerMobile() {
         playerSection.style.borderTopLeftRadius = '';
         playerSection.style.borderTopRightRadius = '';
         playerSection.style.boxShadow = '';
+        if (topBar) {
+            topBar.style.setProperty('display', 'none', 'important');
+            topBar.style.transition = '';
+        }
         if (miniPlayer) {
-            miniPlayer.style.display = 'none';
+            miniPlayer.style.setProperty('display', 'none', 'important');
             miniPlayer.style.transition = '';
         }
     }, 260);
@@ -1843,9 +1861,17 @@ function dismissDedicatedPlayerMobile(initialY = 0, velocity = 0) {
     document.body.classList.add('player-is-dismissing');
     playerSection.classList.add('player-dismissing');
 
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) {
+        topBar.style.setProperty('display', 'flex', 'important');
+        topBar.style.transition = 'opacity 0.25s ease';
+        topBar.style.opacity = '1';
+        topBar.style.pointerEvents = '';
+    }
+
     const miniPlayer = document.querySelector('.music-player');
     if (miniPlayer) {
-        miniPlayer.style.display = 'flex';
+        miniPlayer.style.setProperty('display', 'flex', 'important');
         miniPlayer.style.transition = 'opacity 0.25s ease';
         miniPlayer.style.opacity = '1';
         miniPlayer.style.pointerEvents = '';
@@ -1913,8 +1939,129 @@ document.addEventListener('keydown', event => {
     } else if (!event.shiftKey && document.activeElement === last) {
         event.preventDefault();
         first.focus();
-    }
 });
+
+/* ========== DESKTOP GLOBAL KEYBOARD SHORTCUTS ========== */
+(function setupDesktopKeyboardShortcuts() {
+    function isInteractiveInputTarget(target) {
+        if (!target) return false;
+        const tagName = target.tagName;
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return true;
+        if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') return true;
+        return false;
+    }
+
+    function isModalOrEditorOpen() {
+        return Boolean(document.querySelector('.modal:not(.hidden), .confirm-modal:not(.hidden), #edit-song-modal:not(.hidden), #settings-modal:not(.hidden), #connect-phone-modal:not(.hidden), #ai-metadata-modal:not(.hidden), #lyrics-selection-modal:not(.hidden), .lyrics-editing'));
+    }
+
+    document.addEventListener('keydown', event => {
+        // If user is focused on an input element, don't hijack keystrokes
+        if (isInteractiveInputTarget(event.target)) {
+            if (event.key === 'Escape') {
+                event.target.blur();
+            }
+            return;
+        }
+
+        // If a modal or lyrics editor is active, don't run global shortcuts
+        if (isModalOrEditorOpen()) return;
+
+        // Search shortcut: '/'
+        if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            const searchInput = document.querySelector('.search-wrapper input, #search-input');
+            if (searchInput) {
+                event.preventDefault();
+                searchInput.focus();
+                searchInput.select();
+                return;
+            }
+        }
+
+        // Toggle Play / Pause: Space
+        if (event.key === ' ' || event.code === 'Space') {
+            event.preventDefault();
+            if (typeof togglePlay === 'function') togglePlay();
+            return;
+        }
+
+        // Next Track: Shift + ArrowRight OR 'j' / 'J'
+        if ((event.shiftKey && event.key === 'ArrowRight') || ((event.key === 'j' || event.key === 'J') && !event.ctrlKey && !event.metaKey && !event.altKey)) {
+            event.preventDefault();
+            if (typeof nextSong === 'function') nextSong();
+            return;
+        }
+
+        // Previous Track: Shift + ArrowLeft OR 'k' / 'K'
+        if ((event.shiftKey && event.key === 'ArrowLeft') || ((event.key === 'k' || event.key === 'K') && !event.ctrlKey && !event.metaKey && !event.altKey)) {
+            event.preventDefault();
+            if (typeof prevSong === 'function') prevSong();
+            return;
+        }
+
+        // Seek Forward 5s: ArrowRight (without Shift)
+        if (event.key === 'ArrowRight' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+            event.preventDefault();
+            if (audio && !isNaN(audio.duration) && audio.duration > 0) {
+                audio.currentTime = Math.min(audio.duration, audio.currentTime + 5);
+            }
+            return;
+        }
+
+        // Seek Backward 5s: ArrowLeft (without Shift)
+        if (event.key === 'ArrowLeft' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+            event.preventDefault();
+            if (audio && !isNaN(audio.duration) && audio.duration > 0) {
+                audio.currentTime = Math.max(0, audio.currentTime - 5);
+            }
+            return;
+        }
+
+        // Volume Up 5%: ArrowUp
+        if (event.key === 'ArrowUp' && !event.metaKey && !event.ctrlKey) {
+            event.preventDefault();
+            if (audio) {
+                const newVol = Math.min(1, Math.round((audio.volume + 0.05) * 100) / 100);
+                audio.volume = newVol;
+                lastVolume = newVol;
+                localStorage.setItem('streamify_volume', newVol);
+                if (typeof updateVolumeUI === 'function') updateVolumeUI(newVol);
+            }
+            return;
+        }
+
+        // Volume Down 5%: ArrowDown
+        if (event.key === 'ArrowDown' && !event.metaKey && !event.ctrlKey) {
+            event.preventDefault();
+            if (audio) {
+                const newVol = Math.max(0, Math.round((audio.volume - 0.05) * 100) / 100);
+                audio.volume = newVol;
+                lastVolume = newVol;
+                localStorage.setItem('streamify_volume', newVol);
+                if (typeof updateVolumeUI === 'function') updateVolumeUI(newVol);
+            }
+            return;
+        }
+
+        // Mute / Unmute: 'm' / 'M'
+        if ((event.key === 'm' || event.key === 'M') && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            event.preventDefault();
+            if (typeof toggleMute === 'function') toggleMute();
+            return;
+        }
+
+        // Toggle Lyrics: 'l' / 'L'
+        if ((event.key === 'l' || event.key === 'L') && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            event.preventDefault();
+            if (isLyricsActive) {
+                if (typeof deactivateLyricsView === 'function') deactivateLyricsView();
+            } else if (btnLyrics) {
+                btnLyrics.click();
+            }
+            return;
+        }
+    });
+})();
 
 
 /* ========== DEDICATED PLAYER LYRICS LOGIC ========== */
@@ -2202,17 +2349,31 @@ if (btnCloseLyrics) {
             playerSection.style.borderTopRightRadius = `${radius}px`;
             playerSection.style.boxShadow = clampedY > 2 ? '0 -12px 48px rgba(0, 0, 0, 0.75)' : '';
 
-            // Reveal mini-player gradually only after dragging past 35% of the screen
+            // Reveal both top-bar and mini-player gradually only after dragging past 35% of the screen
+            const triggerThreshold = window.innerHeight * 0.35;
+            const topBar = document.querySelector('.top-bar');
             const miniPlayer = document.querySelector('.music-player');
-            if (miniPlayer) {
-                const triggerThreshold = window.innerHeight * 0.35;
-                if (clampedY > triggerThreshold) {
-                    const progress = Math.min(1, (clampedY - triggerThreshold) / (window.innerHeight * 0.45));
-                    miniPlayer.style.display = 'flex';
-                    miniPlayer.style.opacity = progress.toFixed(2);
+
+            if (clampedY > triggerThreshold) {
+                const progress = Math.min(1, (clampedY - triggerThreshold) / (window.innerHeight * 0.45));
+                const opacityStr = progress.toFixed(2);
+                if (topBar) {
+                    topBar.style.setProperty('display', 'flex', 'important');
+                    topBar.style.opacity = opacityStr;
+                    topBar.style.pointerEvents = 'none';
+                }
+                if (miniPlayer) {
+                    miniPlayer.style.setProperty('display', 'flex', 'important');
+                    miniPlayer.style.opacity = opacityStr;
                     miniPlayer.style.pointerEvents = 'none';
-                } else {
-                    miniPlayer.style.display = 'none';
+                }
+            } else {
+                if (topBar) {
+                    topBar.style.setProperty('display', 'none', 'important');
+                    topBar.style.opacity = '0';
+                }
+                if (miniPlayer) {
+                    miniPlayer.style.setProperty('display', 'none', 'important');
                     miniPlayer.style.opacity = '0';
                 }
             }
