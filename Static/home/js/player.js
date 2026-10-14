@@ -1939,6 +1939,7 @@ document.addEventListener('keydown', event => {
     } else if (!event.shiftKey && document.activeElement === last) {
         event.preventDefault();
         first.focus();
+    }
 });
 
 /* ========== DESKTOP GLOBAL KEYBOARD SHORTCUTS ========== */
