@@ -1466,22 +1466,21 @@ function setDedicatedPlayerActive(active) {
     if (!active) {
         _themeColorToken++;
         deactivateLyricsView();
-        const restoreRootScroll = () => {
-            document.documentElement.scrollTop = 0;
-            document.body.scrollTop = 0;
-            window.scrollTo(0, 0);
-        };
+        const offset = parseFloat(getComputedStyle(document.documentElement)
+            .getPropertyValue('--safari-player-scroll-offset')) || 0;
+        if (offset > 0) {
+            const restoreRootScroll = () => {
+                document.documentElement.scrollTop = 0;
+                document.body.scrollTop = 0;
+                window.scrollTo(0, 0);
+            };
 
-        restoreRootScroll();
-        requestAnimationFrame(() => {
-            if (document.documentElement.classList.contains('player-chrome-active')) return;
             restoreRootScroll();
             requestAnimationFrame(() => {
-                if (!document.documentElement.classList.contains('player-chrome-active')) {
-                    restoreRootScroll();
-                }
+                if (document.documentElement.classList.contains('player-chrome-active')) return;
+                restoreRootScroll();
             });
-        });
+        }
         return;
     }
 
@@ -1679,6 +1678,8 @@ function openDedicatedPlayerFromCover() {
         previousSectionId = activeSection.id;
         activeSection.inert = true;
         activeSection.setAttribute('aria-hidden', 'true');
+        activeSection.classList.remove('fade-in-animate');
+        activeSection.style.animation = 'none';
     } else if (!previousSectionId) {
         previousSectionId = 'trending-section';
     }
@@ -1741,6 +1742,9 @@ function finalizeCloseDedicatedPlayer() {
     document.body.classList.remove('player-is-dismissing');
     isClosingMobilePlayer = false;
 
+    setDedicatedPlayerActive(false);
+    setThemeColor(DEFAULT_THEME_COLOR);
+
     const topBar = document.querySelector('.top-bar');
     if (topBar) {
         topBar.style.removeProperty('display');
@@ -1757,13 +1761,11 @@ function finalizeCloseDedicatedPlayer() {
         miniPlayer.style.removeProperty('pointer-events');
     }
 
-    setDedicatedPlayerActive(false);
-    setThemeColor(DEFAULT_THEME_COLOR);
-
     const secId = previousSectionId || 'trending-section';
     const prevSec = document.getElementById(secId);
     if (prevSec) {
-        prevSec.classList.remove('hidden');
+        prevSec.classList.remove('hidden', 'fade-in-animate');
+        prevSec.style.animation = 'none';
         prevSec.inert = false;
         prevSec.removeAttribute('aria-hidden');
 
@@ -1772,6 +1774,10 @@ function finalizeCloseDedicatedPlayer() {
         if (scrollContainer && typeof savedUnderlayScrollTop === 'number') {
             scrollContainer.scrollTop = savedUnderlayScrollTop;
         }
+
+        requestAnimationFrame(() => {
+            if (prevSec) prevSec.style.animation = '';
+        });
 
         // Re-highlight the correct sidebar nav link without clicking or re-fetching
         const navMap = {
@@ -1794,19 +1800,23 @@ function finalizeCloseDedicatedPlayer() {
             highlightCurrentSong(listContainer);
         }
 
-        playerImg?.focus({ preventScroll: true });
+        if (isDesktopPlayerOverlayEnabled()) playerImg?.focus({ preventScroll: true });
         return;
     }
 
     // Safety fallback: ensure trending-section is visible without clicking #library-link or calling fetchLibrary()
     const fallbackSec = document.getElementById('trending-section');
     if (fallbackSec) {
-        fallbackSec.classList.remove('hidden');
+        fallbackSec.classList.remove('hidden', 'fade-in-animate');
+        fallbackSec.style.animation = 'none';
         fallbackSec.inert = false;
         fallbackSec.removeAttribute('aria-hidden');
         document.getElementById('library-link')?.classList.add('active');
+        requestAnimationFrame(() => {
+            if (fallbackSec) fallbackSec.style.animation = '';
+        });
     }
-    playerImg?.focus({ preventScroll: true });
+    if (isDesktopPlayerOverlayEnabled()) playerImg?.focus({ preventScroll: true });
 }
 
 function snapBackDedicatedPlayerMobile() {
@@ -1856,7 +1866,10 @@ function dismissDedicatedPlayerMobile(initialY = 0, velocity = 0) {
     isClosingMobilePlayer = true;
 
     const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
-    if (prevSec) prevSec.classList.remove('hidden');
+    if (prevSec) {
+        prevSec.classList.remove('hidden', 'fade-in-animate');
+        prevSec.style.animation = 'none';
+    }
 
     document.body.classList.add('player-is-dismissing');
     playerSection.classList.add('player-dismissing');
@@ -2313,7 +2326,10 @@ if (btnCloseLyrics) {
                 isPullingDown = true;
                 playerSection.style.willChange = 'transform';
                 const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
-                if (prevSec) prevSec.classList.remove('hidden');
+                if (prevSec) {
+                    prevSec.classList.remove('hidden', 'fade-in-animate');
+                    prevSec.style.animation = 'none';
+                }
 
                 document.body.classList.add('player-is-dismissing');
                 playerSection.classList.add('player-dismissing');

@@ -2050,6 +2050,9 @@ themeInputs.forEach(input => {
         section.classList.remove('fade-in-animate');
         section.classList.add('fade-in-animate');
         section.classList.remove('hidden');
+        section.addEventListener('animationend', () => {
+            section.classList.remove('fade-in-animate');
+        }, { once: true });
     }
 
     function hideAllSections({ preserveDedicatedPlayer = false } = {}) {

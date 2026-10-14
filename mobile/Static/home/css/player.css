@@ -1520,7 +1520,12 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
 @media (max-width: 900px) {
 
     /* Preserve underlying container padding and geometry so music list never shifts during dismiss */
-    body.player-section-active .content-container {
+    body.player-section-active .content-container,
+    body.player-is-dismissing .content-container,
+    body.player-section-active .trending,
+    body.player-is-dismissing .trending,
+    body.player-section-active .song-list,
+    body.player-is-dismissing .song-list {
         transform: none !important;
         animation: none !important;
     }
@@ -1570,21 +1575,23 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
         position: relative;
     }
 
-    /* Contain the backdrop inside the mobile player sheet so it never leaks
-       onto the underlying library and moves with the sheet during drag-to-dismiss. */
+    /* Contain the backdrop inside the mobile player sheet so it covers the entire
+       sheet from behind the header down to the bottom, and moves with the sheet during drag-to-dismiss. */
     .dedicated-player-backdrop {
         position: absolute !important;
-        inset: -20px !important;
-        width: calc(100% + 40px) !important;
-        height: calc(100% + 40px) !important;
-        transform: scale(1.15) !important;
+        inset: -40px !important;
+        width: calc(100% + 80px) !important;
+        height: calc(100% + 80px) !important;
+        top: -40px !important;
+        left: -40px !important;
+        transform: none !important;
         border-radius: inherit !important;
-        z-index: -1 !important;
+        z-index: 0 !important;
         background-color: var(--player-tint, var(--bg-color)) !important;
         background-image: var(--player-backdrop-image, none) !important;
         background-size: cover !important;
         background-position: center !important;
-        filter: blur(40px) brightness(0.45) saturate(1.5) !important;
+        filter: blur(50px) brightness(0.42) saturate(1.6) !important;
         pointer-events: none !important;
     }
 
@@ -1864,6 +1871,8 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
         /* Clear the status bar and Dynamic Island safely */
         margin-top: calc(max(14px, env(safe-area-inset-top, 0px)) + 10px);
         flex-shrink: 0;
+        position: relative !important;
+        z-index: 2 !important;
     }
 
     /* Fixed 100% height for lyrics view on mobile so ONLY lyrics scroll, never the page */

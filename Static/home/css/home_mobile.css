@@ -193,23 +193,8 @@
             --safari-player-scroll-offset: 0px !important;
         }
 
-        @media (display-mode: standalone) {
-            html.player-chrome-active {
-                --safari-player-scroll-offset: 0px !important;
-            }
-            html.player-chrome-active body.player-section-active .main-content {
-                margin-top: 0px !important;
-            }
-        }
-
-
-        html.player-chrome-active body.player-section-active .main-content {
-            flex: 0 0 100%;
-            height: 100dvh;
-            min-height: 100dvh;
+        html.player-chrome-active:not(.is-standalone):not(.is-capacitor) body.player-section-active .main-content {
             margin-top: var(--safari-player-scroll-offset, 0px);
-            overflow: hidden;
-            overscroll-behavior: none;
         }
 
         html.player-chrome-active body.player-section-active:not(.lyrics-view-active) .dedicated-player-view,
