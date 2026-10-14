@@ -1666,6 +1666,11 @@ function openDedicatedPlayerFromCover() {
         return;
     }
 
+    const miniPlayer = document.querySelector('.music-player');
+    if (miniPlayer) {
+        miniPlayer.style.display = 'none';
+    }
+
     // Remember which section we were on before opening the player
     const activeSection = document.querySelector(
         'main.main-content > div.content-container > section:not(.hidden):not(#player-section)'
@@ -1731,9 +1736,18 @@ function finalizeCloseDedicatedPlayer() {
         playerSection.style.borderTopRightRadius = '';
         playerSection.style.boxShadow = '';
         playerSection.style.borderRadius = '';
+        playerSection.style.willChange = '';
     }
     document.body.classList.remove('player-is-dismissing');
     isClosingMobilePlayer = false;
+
+    const miniPlayer = document.querySelector('.music-player');
+    if (miniPlayer) {
+        miniPlayer.style.removeProperty('display');
+        miniPlayer.style.removeProperty('opacity');
+        miniPlayer.style.removeProperty('transition');
+        miniPlayer.style.removeProperty('pointer-events');
+    }
 
     setDedicatedPlayerActive(false);
     setThemeColor(DEFAULT_THEME_COLOR);
@@ -1796,6 +1810,13 @@ function snapBackDedicatedPlayerMobile() {
     playerSection.style.borderTopRightRadius = '';
     playerSection.style.boxShadow = '';
     playerSection.style.opacity = '1';
+    playerSection.style.willChange = '';
+
+    const miniPlayer = document.querySelector('.music-player');
+    if (miniPlayer) {
+        miniPlayer.style.transition = 'opacity 0.2s ease';
+        miniPlayer.style.opacity = '0';
+    }
 
     setTimeout(() => {
         playerSection.classList.remove('player-dismissing');
@@ -1805,6 +1826,10 @@ function snapBackDedicatedPlayerMobile() {
         playerSection.style.borderTopLeftRadius = '';
         playerSection.style.borderTopRightRadius = '';
         playerSection.style.boxShadow = '';
+        if (miniPlayer) {
+            miniPlayer.style.display = 'none';
+            miniPlayer.style.transition = '';
+        }
     }, 260);
 }
 
@@ -1817,6 +1842,14 @@ function dismissDedicatedPlayerMobile(initialY = 0, velocity = 0) {
 
     document.body.classList.add('player-is-dismissing');
     playerSection.classList.add('player-dismissing');
+
+    const miniPlayer = document.querySelector('.music-player');
+    if (miniPlayer) {
+        miniPlayer.style.display = 'flex';
+        miniPlayer.style.transition = 'opacity 0.25s ease';
+        miniPlayer.style.opacity = '1';
+        miniPlayer.style.pointerEvents = '';
+    }
 
     if (initialY > 0) {
         playerSection.style.transform = `translate3d(0, ${initialY}px, 0)`;
@@ -2095,12 +2128,6 @@ if (btnCloseLyrics) {
             return;
         }
 
-        // If lyrics view is active and scrolled down, let user scroll lyrics
-        if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 5) {
-            isGestureIgnored = true;
-            return;
-        }
-
         isGestureIgnored = false;
         isPullingDown = false;
         currentPullY = 0;
@@ -2124,19 +2151,19 @@ if (btnCloseLyrics) {
         const absX = Math.abs(deltaX);
 
         if (!isPullingDown) {
-            // Horizontal swipe (e.g. lyrics switch back)
-            if (absX > 16 && absX > deltaY) {
-                isGestureIgnored = true;
+            // Horizontal motion (e.g. lyrics switch back) - ignore for pull-down, but don't drop gesture
+            if (absX > 10 && absX > Math.abs(deltaY)) {
                 return;
             }
 
             // Check if pulling downwards predominantly
             if (deltaY > 8 && deltaY > absX * 1.1) {
+                // If lyrics view is scrolled down, let user scroll lyrics rather than dismissing sheet
                 if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 5) {
-                    isGestureIgnored = true;
                     return;
                 }
                 isPullingDown = true;
+                playerSection.style.willChange = 'transform';
                 const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
                 if (prevSec) prevSec.classList.remove('hidden');
 
@@ -2174,11 +2201,26 @@ if (btnCloseLyrics) {
             playerSection.style.borderTopLeftRadius = `${radius}px`;
             playerSection.style.borderTopRightRadius = `${radius}px`;
             playerSection.style.boxShadow = clampedY > 2 ? '0 -12px 48px rgba(0, 0, 0, 0.75)' : '';
+
+            // Reveal mini-player gradually only after dragging past 35% of the screen
+            const miniPlayer = document.querySelector('.music-player');
+            if (miniPlayer) {
+                const triggerThreshold = window.innerHeight * 0.35;
+                if (clampedY > triggerThreshold) {
+                    const progress = Math.min(1, (clampedY - triggerThreshold) / (window.innerHeight * 0.45));
+                    miniPlayer.style.display = 'flex';
+                    miniPlayer.style.opacity = progress.toFixed(2);
+                    miniPlayer.style.pointerEvents = 'none';
+                } else {
+                    miniPlayer.style.display = 'none';
+                    miniPlayer.style.opacity = '0';
+                }
+            }
         }
     }, { passive: false });
 
     dedicatedView.addEventListener('touchend', e => {
-        if (isGestureIgnored || !document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
+        if (!document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
         if (isDesktopPlayerOverlayEnabled()) return;
         if (!e.changedTouches || e.changedTouches.length === 0) return;
 
@@ -2190,11 +2232,14 @@ if (btnCloseLyrics) {
 
         if (!isPullingDown) {
             // Swipe Left-to-Right in Lyrics view to go back to album art view
-            if (isLyricsActive && deltaX > 60 && absX > Math.abs(deltaY) * 1.3) {
+            if (!isGestureIgnored && isLyricsActive && deltaX > 45 && absX > Math.abs(deltaY) * 1.1) {
                 deactivateLyricsView();
             }
             return;
         }
+
+        playerSection.style.willChange = '';
+        if (isGestureIgnored) return;
 
         isPullingDown = false;
         const totalDuration = Math.max(1, Date.now() - touchStartTime);

@@ -38,16 +38,18 @@
     .sidebar {
         display: flex !important;
         position: fixed;
-        left: -280px;
+        left: 0;
         top: 0;
         bottom: 0;
         z-index: 1000;
-        transition: left 0.3s ease, box-shadow 0.3s ease;
-        width: 250px;
-        background: rgba(0, 0, 0, 0.92);
-        backdrop-filter: blur(40px);
-        -webkit-backdrop-filter: blur(40px);
+        width: 260px;
+        transform: translate3d(-100%, 0, 0);
+        transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.28s ease;
+        background: rgba(14, 14, 18, 0.96);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
         box-shadow: none;
+        will-change: transform;
     }
 
     /* The sidebar logo must clear the status bar and Dynamic Island clock */
@@ -65,8 +67,8 @@
     }
 
     .sidebar.mobile-active {
-        left: 0;
-        box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
+        transform: translate3d(0, 0, 0);
+        box-shadow: 6px 0 25px rgba(0, 0, 0, 0.6);
     }
 
     /* --- TOP BAR --- */
@@ -159,9 +161,13 @@
         overflow: hidden;
     }
 
-    /* Player sheet overlay on mobile covers top bar via z-index (2000), keeping underlay stable without reflow */
+    /* Hide top bar and mini-player while Big Picture player is active on mobile */
     body.player-section-active:not(.player-is-dismissing) .top-bar {
-        pointer-events: none;
+        display: none !important;
+    }
+
+    body.player-section-active:not(.player-is-dismissing) .music-player {
+        display: none !important;
     }
 
     /* Fill the entire screen, including the area behind the browser toolbar.
@@ -207,26 +213,6 @@
             }
         }
 
-        /* Paint the cover on the root scrolling canvas rather than inside the
-           clipped app shell. Pseudo-elements are ignored by Safari's toolbar
-           tint sampler, so the toolbar keeps reading the player colors. */
-        html.player-chrome-active body.player-section-active::before {
-            content: '';
-            position: absolute;
-            inset: -120px -120px -200px;
-            z-index: -1;
-            background-color: var(--player-tint, var(--bg-color));
-            background-image: var(--player-backdrop-image, none);
-            background-position: center;
-            background-size: cover;
-            filter: blur(100px) brightness(0.4) saturate(1.8);
-            opacity: 0.85;
-            pointer-events: none;
-        }
-
-        html.player-chrome-active .dedicated-player-backdrop {
-            display: none;
-        }
 
         html.player-chrome-active body.player-section-active .main-content {
             flex: 0 0 100%;

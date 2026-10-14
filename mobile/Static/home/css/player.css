@@ -1353,10 +1353,7 @@ html.no-volume-control .dedicated-bottom-actions {
     height: 4px;
 }
 
-/* Fallback color when Safari cannot composite player pixels behind its chrome. */
-body.player-section-active {
-    background-color: var(--player-tint, var(--bg-color));
-}
+
 
 /* display:none matters on Safari 26: transformed fixed elements can still be
    sampled and extended as a solid color behind the browser toolbar. */
@@ -1554,7 +1551,6 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
         z-index: 2000 !important;
         display: flex !important;
         overflow: hidden !important;
-        will-change: transform, border-radius !important;
         background: var(--bg-color);
         box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.75) !important;
     }
@@ -1562,11 +1558,6 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
     body.player-section-active #player-section:not(.hidden) .dedicated-player-backdrop,
     body.player-is-dismissing #player-section:not(.hidden) .dedicated-player-backdrop {
         border-radius: inherit !important;
-    }
-
-    body.player-is-dismissing .music-player {
-        display: flex !important;
-        opacity: 1 !important;
     }
 
     .dedicated-player-view {
@@ -1584,37 +1575,26 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
         position: relative;
     }
 
-    /* Keep the fixed viewport layer transparent. Safari 26 extends the
-       background color of fixed edge elements behind its toolbar as a solid
-       strip, so the artwork is painted by the absolute pseudo-element instead. */
+    /* Contain the backdrop inside the mobile player sheet so it never leaks
+       onto the underlying library and moves with the sheet during drag-to-dismiss. */
     .dedicated-player-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        height: 100lvh;
-        transform: none;
-        border-radius: 0;
-        z-index: -2;
-        background-color: transparent;
-        background-image: none;
-        filter: none;
-        pointer-events: none;
+        position: absolute !important;
+        inset: -20px !important;
+        width: calc(100% + 40px) !important;
+        height: calc(100% + 40px) !important;
+        transform: scale(1.15) !important;
+        border-radius: inherit !important;
+        z-index: -1 !important;
+        background-color: var(--player-tint, var(--bg-color)) !important;
+        background-image: var(--player-backdrop-image, none) !important;
+        background-size: cover !important;
+        background-position: center !important;
+        filter: blur(40px) brightness(0.45) saturate(1.5) !important;
+        pointer-events: none !important;
     }
 
     .dedicated-player-backdrop::before {
-        content: '';
-        /* Fixed positioning lets the paint layer escape the player's
-           overflow-clipped layout box and cover the full obscured inset. */
-        position: fixed;
-        inset: -120px -120px -200px;
-        background-color: var(--player-tint, var(--bg-color));
-        background-image: var(--player-backdrop-image, none);
-        background-size: cover;
-        background-position: center;
-        filter: blur(100px) brightness(0.4) saturate(1.8);
-        pointer-events: none;
+        display: none !important;
     }
 
     .dedicated-player-content {

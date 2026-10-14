@@ -240,10 +240,12 @@ body {
     white-space: nowrap;
 }
 
-body.player-section-active .top-bar-logo {
-    width: 150px;
-    opacity: 1;
-    margin-right: 24px;
+@media (min-width: 901px) {
+    body.player-section-active .top-bar-logo {
+        width: 150px;
+        opacity: 1;
+        margin-right: 24px;
+    }
 }
 
 /* Navigation arrow buttons (back/forward) */
