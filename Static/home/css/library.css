@@ -511,6 +511,13 @@ body.offline-mode .row-download-btn.downloaded {
     contain-intrinsic-size: auto 70px;
 }
 
+@media (max-width: 900px) {
+    #trending-list > .song-row:not(.header-row) {
+        content-visibility: visible !important;
+        contain-intrinsic-size: none !important;
+    }
+}
+
 .row-menu-btn {
     background: none;
     border: none;

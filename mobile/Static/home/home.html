@@ -509,129 +509,130 @@
                 </div>
             </section>
 
-            <!-- DEDICATED PLAYER VIEW (Big Mode Page) -->
-            <section class="player-section hidden" id="player-section" role="dialog" aria-modal="true"
-                aria-labelledby="dedicated-player-title">
-                <div class="dedicated-player-view" id="dedicated-player-view">
-                    <div class="dedicated-player-backdrop" id="dedicated-player-backdrop"></div>
-
-                    <div class="dedicated-header">
-                        <button class="btn btn-outline btn-sm" id="close-dedicated-player"
-                            style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 8px 16px; margin-right: auto; z-index: 10;">
-                            <i class='bx bx-arrow-back'></i> Back
-                        </button>
-                        <div class="dedicated-header-text">Now Playing</div>
-                        <div style="width: 80px;"></div> <!-- spacer -->
-                    </div>
-
-                    <div class="dedicated-player-content">
-                        <div class="dedicated-art-wrapper">
-                            <div class="dedicated-art-container">
-                                <img id="dedicated-player-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%231a1a1a'/%3E%3C/svg%3E" alt="Album Art">
-                            </div>
-                        </div>
-
-                        <div class="dedicated-right-panel">
-                            <!-- Standard Info & Controls Container -->
-                            <div id="dedicated-standard-container">
-                                <div class="dedicated-info-container">
-                                    <div class="dedicated-track-info">
-                                        <h2 id="dedicated-player-title">Select a Song</h2>
-                                        <h3 id="dedicated-player-artist">...</h3>
-                                    </div>
-                                </div>
-
-                                <div class="dedicated-progress-container">
-                                    <div class="dedicated-progress-bar-wrapper" id="dedicated-progress-container">
-                                        <div class="dedicated-progress-bar" id="dedicated-progress-bar"></div>
-                                    </div>
-                                    <div class="dedicated-time-info">
-                                        <span id="dedicated-current-time">0:00</span>
-                                        <span id="dedicated-duration">0:00</span>
-                                    </div>
-                                </div>
-
-                                <div class="dedicated-controls">
-                                    <button type="button" class="control-btn" id="dedicated-btn-shuffle"
-                                        aria-label="Shuffle" aria-pressed="false"><i
-                                            class='bx bx-shuffle'></i></button>
-                                    <button type="button" class="control-btn" id="dedicated-btn-prev" aria-label="Previous track"><i
-                                            class='bx bx-skip-previous'></i></button>
-                                    <button type="button" class="play-pause-btn dedicated-play-pause-btn" id="dedicated-btn-play"
-                                        aria-label="Play">
-                                        <i class='bx bx-play' style="margin-left: 4px;"></i>
-                                    </button>
-                                    <button type="button" class="control-btn" id="dedicated-btn-next" aria-label="Next track"><i
-                                            class='bx bx-skip-next'></i></button>
-                                    <button type="button" class="control-btn" id="dedicated-btn-repeat"
-                                        aria-label="Repeat off" aria-pressed="false"><i
-                                            class='bx bx-repeat'></i></button>
-                                </div>
-
-                                <div class="dedicated-bottom-actions">
-                                    <button class="control-btn" id="dedicated-btn-lyrics" title="Lyrics"
-                                        style="font-size: 24px;">
-                                        <i class='bx bx-microphone'></i>
-                                    </button>
-                                    <button class="control-btn" id="dedicated-btn-find-lyrics" title="Find Lyrics"
-                                        style="font-size: 24px;">
-                                        <i class='bx bx-search'></i>
-                                    </button>
-                                    <div class="dedicated-volume-wrapper">
-                                        <i class='bx bx-volume-full' id="dedicated-vol-icon"></i>
-                                        <input type="range" min="0" max="100" value="70" class="volume-slider"
-                                            id="dedicated-volume-slider">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div id="dedicated-lyrics-container" class="hidden">
-                                <div class="lyrics-header"
-                                    style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 20px;">
-                                    <button class="btn btn-outline btn-sm" id="close-lyrics-btn"
-                                        style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                        <i class='bx bx-x'></i> Close
-                                    </button>
-
-                                    <div id="lyric-editor-controls" class="hidden" style="display: flex; gap: 8px;">
-                                        <button class="btn btn-sm" id="save-lyrics-btn"
-                                            style="background: var(--accent); color: var(--on-accent); border-radius: 30px; padding: 4px 16px; font-weight: 600;">
-                                            <i class='bx bx-check'></i> Save
-                                        </button>
-                                        <button class="btn btn-outline btn-sm" id="clear-lyrics-btn"
-                                            style="border-radius: 30px; padding: 4px 12px; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
-                                            <i class='bx bx-trash'></i> Clear
-                                        </button>
-                                        <button class="btn btn-outline btn-sm" id="cancel-lyric-edit-btn"
-                                            style="border-radius: 30px; padding: 4px 12px;">
-                                            Cancel
-                                        </button>
-                                    </div>
-
-                                    <div style="display: flex; gap: 8px; margin-left: auto;">
-                                        <button class="btn btn-outline btn-sm" id="re-request-lyrics-btn"
-                                            style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                            <i class='bx bx-search'></i> Find Lyrics
-                                        </button>
-                                        <button class="btn btn-outline btn-sm" id="edit-lyrics-btn"
-                                            style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                            <i class='bx bx-edit-alt'></i> Edit Lyrics
-                                        </button>
-                                    </div>
-                                </div>
-                                <section class="lyrics-scroll-area" id="lyrics-scroll-area"
-                                    aria-label="Synchronized lyrics">
-                                    <div class="lyrics-content" id="lyrics-content">
-                                        <!-- Lyrics lines injected here -->
-                                    </div>
-                                </section>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
         </div>
     </main>
+
+    <!-- DEDICATED PLAYER VIEW (Big Mode Page) -->
+    <section class="player-section hidden" id="player-section" role="dialog" aria-modal="true"
+        aria-labelledby="dedicated-player-title">
+        <div class="dedicated-player-view" id="dedicated-player-view">
+            <div class="dedicated-player-backdrop" id="dedicated-player-backdrop"></div>
+
+            <div class="dedicated-header">
+                <button class="btn btn-outline btn-sm" id="close-dedicated-player"
+                    style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 8px 16px; margin-right: auto; z-index: 10;">
+                    <i class='bx bx-arrow-back'></i> Back
+                </button>
+                <div class="dedicated-header-text">Now Playing</div>
+                <div style="width: 80px;"></div> <!-- spacer -->
+            </div>
+
+            <div class="dedicated-player-content">
+                <div class="dedicated-art-wrapper">
+                    <div class="dedicated-art-container">
+                        <img id="dedicated-player-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%231a1a1a'/%3E%3C/svg%3E" alt="Album Art">
+                    </div>
+                </div>
+
+                <div class="dedicated-right-panel">
+                    <!-- Standard Info & Controls Container -->
+                    <div id="dedicated-standard-container">
+                        <div class="dedicated-info-container">
+                            <div class="dedicated-track-info">
+                                <h2 id="dedicated-player-title">Select a Song</h2>
+                                <h3 id="dedicated-player-artist">...</h3>
+                            </div>
+                        </div>
+
+                        <div class="dedicated-progress-container">
+                            <div class="dedicated-progress-bar-wrapper" id="dedicated-progress-container">
+                                <div class="dedicated-progress-bar" id="dedicated-progress-bar"></div>
+                            </div>
+                            <div class="dedicated-time-info">
+                                <span id="dedicated-current-time">0:00</span>
+                                <span id="dedicated-duration">0:00</span>
+                            </div>
+                        </div>
+
+                        <div class="dedicated-controls">
+                            <button type="button" class="control-btn" id="dedicated-btn-shuffle"
+                                aria-label="Shuffle" aria-pressed="false"><i
+                                    class='bx bx-shuffle'></i></button>
+                            <button type="button" class="control-btn" id="dedicated-btn-prev" aria-label="Previous track"><i
+                                    class='bx bx-skip-previous'></i></button>
+                            <button type="button" class="play-pause-btn dedicated-play-pause-btn" id="dedicated-btn-play"
+                                aria-label="Play">
+                                <i class='bx bx-play' style="margin-left: 4px;"></i>
+                            </button>
+                            <button type="button" class="control-btn" id="dedicated-btn-next" aria-label="Next track"><i
+                                    class='bx bx-skip-next'></i></button>
+                            <button type="button" class="control-btn" id="dedicated-btn-repeat"
+                                aria-label="Repeat off" aria-pressed="false"><i
+                                    class='bx bx-repeat'></i></button>
+                        </div>
+
+                        <div class="dedicated-bottom-actions">
+                            <button class="control-btn" id="dedicated-btn-lyrics" title="Lyrics"
+                                style="font-size: 24px;">
+                                <i class='bx bx-microphone'></i>
+                            </button>
+                            <button class="control-btn" id="dedicated-btn-find-lyrics" title="Find Lyrics"
+                                style="font-size: 24px;">
+                                <i class='bx bx-search'></i>
+                            </button>
+                            <div class="dedicated-volume-wrapper">
+                                <i class='bx bx-volume-full' id="dedicated-vol-icon"></i>
+                                <input type="range" min="0" max="100" value="70" class="volume-slider"
+                                    id="dedicated-volume-slider">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="dedicated-lyrics-container" class="hidden">
+                        <div class="lyrics-header"
+                            style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 20px;">
+                            <button class="btn btn-outline btn-sm" id="close-lyrics-btn"
+                                style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
+                                <i class='bx bx-x'></i> Close
+                            </button>
+
+                            <div id="lyric-editor-controls" class="hidden" style="display: flex; gap: 8px;">
+                                <button class="btn btn-sm" id="save-lyrics-btn"
+                                    style="background: var(--accent); color: var(--on-accent); border-radius: 30px; padding: 4px 16px; font-weight: 600;">
+                                    <i class='bx bx-check'></i> Save
+                                </button>
+                                <button class="btn btn-outline btn-sm" id="clear-lyrics-btn"
+                                    style="border-radius: 30px; padding: 4px 12px; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
+                                    <i class='bx bx-trash'></i> Clear
+                                </button>
+                                <button class="btn btn-outline btn-sm" id="cancel-lyric-edit-btn"
+                                    style="border-radius: 30px; padding: 4px 12px;">
+                                    Cancel
+                                </button>
+                            </div>
+
+                            <div style="display: flex; gap: 8px; margin-left: auto;">
+                                <button class="btn btn-outline btn-sm" id="re-request-lyrics-btn"
+                                    style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
+                                    <i class='bx bx-search'></i> Find Lyrics
+                                </button>
+                                <button class="btn btn-outline btn-sm" id="edit-lyrics-btn"
+                                    style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
+                                    <i class='bx bx-edit-alt'></i> Edit Lyrics
+                                </button>
+                            </div>
+                        </div>
+                        <section class="lyrics-scroll-area" id="lyrics-scroll-area"
+                            aria-label="Synchronized lyrics">
+                            <div class="lyrics-content" id="lyrics-content">
+                                <!-- Lyrics lines injected here -->
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <!-- MUSIC PLAYER FOOTER -->
     <footer class="music-player">

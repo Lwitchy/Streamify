@@ -161,13 +161,11 @@
         overflow: hidden;
     }
 
-    /* Hide top bar and mini-player while Big Picture player is active on mobile; revealed smoothly in JS during drag-to-dismiss */
-    body.player-section-active .top-bar {
-        display: none !important;
-    }
-
+    /* Underlay elements stay rendered and positioned on mobile so dismiss never causes a jump or refresh.
+       pointer-events: none ensures touches don't leak through the full-screen modal sheet. */
+    body.player-section-active .top-bar,
     body.player-section-active .music-player {
-        display: none !important;
+        pointer-events: none;
     }
 
     /* Safari browser chrome tint hack: only applies when running inside mobile Safari browser tabs.

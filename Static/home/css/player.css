@@ -1530,6 +1530,10 @@ body.desktop-player-overlay-enabled #player-section.player-overlay-mounted {
         animation: none !important;
     }
 
+    body.player-section-active .music-player {
+        display: flex !important;
+    }
+
     .player-section {
         border-radius: 0;
         box-shadow: none;

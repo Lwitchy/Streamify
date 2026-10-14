@@ -1354,6 +1354,12 @@ function unmountDesktopPlayerOverlay() {
 function applyDedicatedPlayerClasses(active) {
     document.body.classList.toggle('player-section-active', active);
     document.documentElement.classList.toggle('player-chrome-active', active);
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) {
+        topBar.inert = active;
+        if (active) topBar.setAttribute('aria-hidden', 'true');
+        else topBar.removeAttribute('aria-hidden');
+    }
     const miniPlayer = document.querySelector('.music-player');
     if (miniPlayer) {
         miniPlayer.inert = active;
@@ -1665,11 +1671,6 @@ function openDedicatedPlayerFromCover() {
         return;
     }
 
-    const topBar = document.querySelector('.top-bar');
-    if (topBar) topBar.style.setProperty('display', 'none', 'important');
-    const miniPlayer = document.querySelector('.music-player');
-    if (miniPlayer) miniPlayer.style.setProperty('display', 'none', 'important');
-
     // Remember which section we were on before opening the player
     const activeSection = document.querySelector(
         'main.main-content > div.content-container > section:not(.hidden):not(#player-section)'
@@ -1822,25 +1823,12 @@ function finalizeCloseDedicatedPlayer() {
 function snapBackDedicatedPlayerMobile() {
     if (!playerSection) return;
 
-    playerSection.style.transition = 'transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), border-radius 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease';
+    playerSection.style.transition = 'transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), border-radius 0.25s ease, box-shadow 0.25s ease';
     playerSection.style.transform = 'translate3d(0, 0, 0)';
     playerSection.style.borderTopLeftRadius = '';
     playerSection.style.borderTopRightRadius = '';
     playerSection.style.boxShadow = '';
-    playerSection.style.opacity = '1';
     playerSection.style.willChange = '';
-
-    const topBar = document.querySelector('.top-bar');
-    if (topBar) {
-        topBar.style.transition = 'opacity 0.2s ease';
-        topBar.style.opacity = '0';
-    }
-
-    const miniPlayer = document.querySelector('.music-player');
-    if (miniPlayer) {
-        miniPlayer.style.transition = 'opacity 0.2s ease';
-        miniPlayer.style.opacity = '0';
-    }
 
     setTimeout(() => {
         playerSection.classList.remove('player-dismissing');
@@ -1850,14 +1838,6 @@ function snapBackDedicatedPlayerMobile() {
         playerSection.style.borderTopLeftRadius = '';
         playerSection.style.borderTopRightRadius = '';
         playerSection.style.boxShadow = '';
-        if (topBar) {
-            topBar.style.setProperty('display', 'none', 'important');
-            topBar.style.transition = '';
-        }
-        if (miniPlayer) {
-            miniPlayer.style.setProperty('display', 'none', 'important');
-            miniPlayer.style.transition = '';
-        }
     }, 260);
 }
 
@@ -1874,22 +1854,6 @@ function dismissDedicatedPlayerMobile(initialY = 0, velocity = 0) {
     document.body.classList.add('player-is-dismissing');
     playerSection.classList.add('player-dismissing');
 
-    const topBar = document.querySelector('.top-bar');
-    if (topBar) {
-        topBar.style.setProperty('display', 'flex', 'important');
-        topBar.style.transition = 'opacity 0.25s ease';
-        topBar.style.opacity = '1';
-        topBar.style.pointerEvents = '';
-    }
-
-    const miniPlayer = document.querySelector('.music-player');
-    if (miniPlayer) {
-        miniPlayer.style.setProperty('display', 'flex', 'important');
-        miniPlayer.style.transition = 'opacity 0.25s ease';
-        miniPlayer.style.opacity = '1';
-        miniPlayer.style.pointerEvents = '';
-    }
-
     if (initialY > 0) {
         playerSection.style.transform = `translate3d(0, ${initialY}px, 0)`;
     }
@@ -1900,9 +1864,8 @@ function dismissDedicatedPlayerMobile(initialY = 0, velocity = 0) {
     if (velocity > 0.6) duration = 0.18;
     else if (velocity > 0.35) duration = 0.21;
 
-    playerSection.style.transition = `transform ${duration}s cubic-bezier(0.32, 0.72, 0, 1), opacity ${duration}s ease, border-radius ${duration}s ease`;
+    playerSection.style.transition = `transform ${duration}s cubic-bezier(0.32, 0.72, 0, 1), border-radius ${duration}s ease`;
     playerSection.style.transform = 'translate3d(0, 100%, 0)';
-    playerSection.style.opacity = '0.5';
 
     setTimeout(() => {
         finalizeCloseDedicatedPlayer();
@@ -2274,6 +2237,8 @@ if (btnCloseLyrics) {
     let lastMoveY = 0;
     let currentVelocity = 0;
 
+    let lastMoveX = 0;
+
     dedicatedView.addEventListener('touchstart', e => {
         if (!document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
         if (isDesktopPlayerOverlayEnabled()) return;
@@ -2295,6 +2260,7 @@ if (btnCloseLyrics) {
         currentVelocity = 0;
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
+        lastMoveX = touchStartX;
         lastMoveY = touchStartY;
         touchStartTime = Date.now();
         lastMoveTime = touchStartTime;
@@ -2312,8 +2278,12 @@ if (btnCloseLyrics) {
         const absX = Math.abs(deltaX);
 
         if (!isPullingDown) {
-            // Horizontal motion (e.g. lyrics switch back) - ignore for pull-down, but don't drop gesture
+            // Horizontal motion (e.g. lyrics switch back)
             if (absX > 10 && absX > Math.abs(deltaY)) {
+                if (isLyricsActive && deltaX > 0 && e.cancelable) {
+                    e.preventDefault();
+                }
+                lastMoveX = currentX;
                 return;
             }
 
@@ -2365,35 +2335,6 @@ if (btnCloseLyrics) {
             playerSection.style.borderTopLeftRadius = `${radius}px`;
             playerSection.style.borderTopRightRadius = `${radius}px`;
             playerSection.style.boxShadow = clampedY > 2 ? '0 -12px 48px rgba(0, 0, 0, 0.75)' : '';
-
-            // Reveal both top-bar and mini-player gradually only after dragging past 35% of the screen
-            const triggerThreshold = window.innerHeight * 0.35;
-            const topBar = document.querySelector('.top-bar');
-            const miniPlayer = document.querySelector('.music-player');
-
-            if (clampedY > triggerThreshold) {
-                const progress = Math.min(1, (clampedY - triggerThreshold) / (window.innerHeight * 0.45));
-                const opacityStr = progress.toFixed(2);
-                if (topBar) {
-                    topBar.style.setProperty('display', 'flex', 'important');
-                    topBar.style.opacity = opacityStr;
-                    topBar.style.pointerEvents = 'none';
-                }
-                if (miniPlayer) {
-                    miniPlayer.style.setProperty('display', 'flex', 'important');
-                    miniPlayer.style.opacity = opacityStr;
-                    miniPlayer.style.pointerEvents = 'none';
-                }
-            } else {
-                if (topBar) {
-                    topBar.style.setProperty('display', 'none', 'important');
-                    topBar.style.opacity = '0';
-                }
-                if (miniPlayer) {
-                    miniPlayer.style.setProperty('display', 'none', 'important');
-                    miniPlayer.style.opacity = '0';
-                }
-            }
         }
     }, { passive: false });
 
@@ -2410,7 +2351,7 @@ if (btnCloseLyrics) {
 
         if (!isPullingDown) {
             // Swipe Left-to-Right in Lyrics view to go back to album art view
-            if (!isGestureIgnored && isLyricsActive && deltaX > 45 && absX > Math.abs(deltaY) * 1.1) {
+            if (!isGestureIgnored && isLyricsActive && deltaX > 35 && absX > Math.abs(deltaY)) {
                 deactivateLyricsView();
             }
             return;
@@ -2437,6 +2378,11 @@ if (btnCloseLyrics) {
         if (isPullingDown) {
             isPullingDown = false;
             snapBackDedicatedPlayerMobile();
+        } else if (isLyricsActive && !isGestureIgnored) {
+            const lastDeltaX = (lastMoveX || touchStartX) - touchStartX;
+            if (lastDeltaX > 35) {
+                deactivateLyricsView();
+            }
         }
     }, { passive: true });
 })();
