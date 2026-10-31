@@ -18,6 +18,7 @@
     "cap:sync": "npx cap sync ios",
     "cap:copy": "npx cap copy ios",
     "mobile:sync": "node Scripts/sync-mobile.js && npx cap sync ios",
+    "mobile:check": "node Scripts/sync-mobile.js --check",
     "test:metadata": "node --test Tests/metadataMatching.test.js Tests/metadataProviders.test.js Tests/metadataEngine.test.js Tests/fingerprint.test.js Tests/enrichmentSummary.test.js",
     "test:wiring": "node Tests/domWiring.check.js",
     "test:theme": "node --test Tests/theme.test.js",

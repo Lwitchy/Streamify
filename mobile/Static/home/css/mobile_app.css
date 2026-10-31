@@ -1,0 +1,541 @@
+/* =============================================================================
+   Streamify - phone / iOS app polish
+   Loaded last so it can override the desktop-first component styles.
+   Everything here is behind a width query; desktop is untouched.
+
+   1. Safe-area tokens            (all widths; values only matter on iOS)
+   2. Native behaviour            (callouts, rubber-banding, tap highlight)
+   3. Bottom sheets               (every small modal on phones)
+   4. Full-screen Settings
+   5. Full-screen player header   (status bar / Dynamic Island clearance)
+   6. Lyrics on phones            (depth, blur, word-sync, entrance)
+   ========================================================================== */
+
+/* 1. Safe-area tokens ------------------------------------------------------
+   env() is the truth when WebKit reports it; js/safe-area.js supplies a floor
+   for the launches where WKWebView reports 0px. */
+:root {
+    --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-top-min, 0px));
+    --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-bottom-min, 0px));
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --sheet-bg: rgba(24, 24, 28, 0.97);
+    --sheet-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (max-width: 768px) {
+
+    /* 2. Native behaviour -------------------------------------------------- */
+    html.is-capacitor,
+    html.is-capacitor body,
+    html.is-standalone,
+    html.is-standalone body {
+        /* The app scrolls inside .content-container; the document itself must
+           never rubber-band, or the whole UI (top bar included) bounces. */
+        overscroll-behavior: none;
+    }
+
+    html.is-capacitor * {
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    html.is-capacitor img {
+        -webkit-touch-callout: none;
+        -webkit-user-drag: none;
+    }
+
+    /* 3. Bottom sheets ------------------------------------------------------
+       Small dialogs were floating desktop cards with an 8px gap all round.
+       On a phone they become edge-to-edge sheets that rise from the bottom,
+       with a grabber and swipe-down to dismiss (js/mobile_app.js). */
+    .modal-overlay:not(#settings-modal):not(#ai-metadata-modal):not(#oobe-modal) {
+        align-items: flex-end !important;
+        justify-content: stretch !important;
+        padding: 0 !important;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        animation: sheetBackdropIn 0.28s ease backwards;
+    }
+
+    .modal-overlay:not(#settings-modal):not(#ai-metadata-modal):not(#oobe-modal) > :is(.modal-box, .modal-box-user) {
+        position: relative;
+        width: 100% !important;
+        max-width: none !important;
+        max-height: calc(100dvh - var(--safe-top) - 10px) !important;
+        margin: 0 !important;
+        padding: 30px max(20px, var(--safe-right)) calc(18px + var(--safe-bottom)) max(20px, var(--safe-left)) !important;
+        border: 0 !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 22px 22px 0 0 !important;
+        background: var(--sheet-bg) !important;
+        backdrop-filter: blur(40px) saturate(1.6);
+        -webkit-backdrop-filter: blur(40px) saturate(1.6);
+        box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45) !important;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        transform: none;
+        opacity: 1;
+        /* backwards (not both): once finished the animation stops applying, so the
+           drag gesture's inline transform and fixed-position children work. */
+        animation: sheetUp 0.42s var(--sheet-ease) backwards;
+    }
+
+    /* Grabber */
+    .modal-overlay:not(#settings-modal):not(#ai-metadata-modal):not(#oobe-modal) > :is(.modal-box, .modal-box-user)::before {
+        content: '';
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        width: 38px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.26);
+        transform: translateX(-50%);
+        pointer-events: none;
+    }
+
+    .modal-overlay.sheet-dragging > :is(.modal-box, .modal-box-user) {
+        transition: none !important;
+    }
+
+    /* Header: title left, round grey close button right (iOS sheet style) */
+    .modal-overlay:not(#settings-modal) .modal-header {
+        margin-bottom: 18px !important;
+        gap: 12px;
+    }
+
+    .modal-overlay:not(#settings-modal) .modal-header h3 {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+
+    .modal-overlay .modal-header > i.bx-x,
+    .modal-overlay .modal-header .modal-close-button {
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 20px;
+        border: 0;
+        outline: none;
+    }
+
+    .modal-overlay .modal-header .modal-close-button i {
+        font-size: 20px;
+    }
+
+    /* Form controls sized for thumbs (16px avoids iOS focus zoom) */
+    .modal-overlay .input-group input,
+    .modal-overlay .input-group select,
+    .modal-overlay .input-group textarea {
+        min-height: 50px;
+        padding: 13px 15px;
+        border-radius: 13px;
+        font-size: 16px;
+        background: rgba(255, 255, 255, 0.07);
+    }
+
+    .modal-overlay:not(#settings-modal) .modal-actions {
+        gap: 10px !important;
+        margin-top: 22px !important;
+    }
+
+    .modal-overlay:not(#settings-modal) .modal-actions .btn {
+        flex: 1 1 0;
+        min-height: 50px;
+        border-radius: 14px;
+        font-size: 16px;
+        font-weight: 650;
+        justify-content: center;
+    }
+
+    /* Create / rename playlist: the body had 20px padding stacked on margins */
+    #create-playlist-modal .modal-box > div[style*="padding: 20px 0"],
+    #rename-playlist-modal .modal-box > div[style*="padding: 20px 0"] {
+        padding: 4px 0 0 !important;
+    }
+
+    /* Profile sheet */
+    #profile-modal .profile-content .user-avatar {
+        width: 104px !important;
+        height: 104px !important;
+        margin-bottom: 14px !important;
+    }
+
+    #profile-modal .profile-stats {
+        margin-top: 8px;
+    }
+
+    #profile-modal #view-full-profile-btn {
+        min-height: 50px;
+        border-radius: 14px;
+    }
+
+    /* 4. Full-screen Settings ----------------------------------------------
+       Settings was a rounded box pinned under the status bar. On a phone it is
+       a full page: large title under the status bar, chips, content to the
+       home indicator. */
+    #settings-modal {
+        padding: 0 !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        background: var(--bg-color, #0b0b0e);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    #settings-modal .settings-modal-box {
+        width: 100% !important;
+        max-width: none !important;
+        height: 100% !important;
+        max-height: none !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        background: var(--bg-color, #0b0b0e) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        animation: settingsPageIn 0.38s var(--sheet-ease) backwards;
+    }
+
+    #settings-modal .settings-modal-box > .modal-header {
+        padding: calc(var(--safe-top) + 8px) max(18px, var(--safe-right)) 6px max(18px, var(--safe-left)) !important;
+        border-bottom: 0 !important;
+    }
+
+    #settings-modal .settings-modal-box > .modal-header h3 {
+        font-size: 32px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }
+
+    #settings-modal .settings-container {
+        flex: 1 1 auto;
+        height: auto !important;
+        min-height: 0;
+    }
+
+    #settings-modal .settings-sidebar {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        background: transparent !important;
+        padding-top: 4px;
+        padding-bottom: 10px;
+    }
+
+    #settings-modal .settings-tab {
+        background: rgba(255, 255, 255, 0.06);
+        min-height: 38px;
+    }
+
+    #settings-modal .settings-content {
+        padding-bottom: calc(28px + var(--safe-bottom)) !important;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #settings-modal .metadata-settings-actions {
+        bottom: calc(-28px - var(--safe-bottom));
+        margin-bottom: calc(-28px - var(--safe-bottom)) !important;
+        padding-bottom: calc(12px + var(--safe-bottom));
+    }
+
+    /* Smart metadata + first-run sheets: respect the measured safe area */
+    #ai-metadata-modal .ai-enrich-workspace {
+        height: calc(100dvh - var(--safe-top) - 8px) !important;
+        max-height: calc(100dvh - var(--safe-top) - 8px) !important;
+    }
+
+    #oobe-modal .oobe-modal-box {
+        max-height: calc(100dvh - var(--safe-top) - 8px) !important;
+        padding-bottom: calc(16px + var(--safe-bottom)) !important;
+    }
+
+    /* Mini player + drawer clear the home indicator even when env() is 0 */
+    .music-player {
+        padding-bottom: max(14px, calc(8px + var(--safe-bottom))) !important;
+    }
+
+    .sidebar .morph-logo {
+        padding-top: calc(var(--safe-top) + 12px) !important;
+    }
+}
+
+/* 5. Full-screen player header ---------------------------------------------- */
+@media (max-width: 768px) {
+    .dedicated-header {
+        min-height: 44px;
+    }
+
+    /* Grabber above the header: signals swipe-down to close */
+    .dedicated-player-view::before {
+        content: '';
+        position: absolute;
+        top: calc(var(--safe-top) + 2px);
+        left: 50%;
+        z-index: 3;
+        width: 38px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.32);
+        transform: translateX(-50%);
+        pointer-events: none;
+    }
+
+    /* "Back" becomes a round chevron-down button, like Apple Music / Spotify.
+       !important beats the button's inline desktop styles. */
+    #close-dedicated-player {
+        width: 40px !important;
+        height: 40px !important;
+        padding: 0 !important;
+        border-radius: 50% !important;
+        display: grid !important;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12) !important;
+        border: 0 !important;
+        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(16px);
+    }
+
+    #close-dedicated-player .dedicated-back-icon,
+    #close-dedicated-player .dedicated-back-label {
+        display: none;
+    }
+
+    #close-dedicated-player .dedicated-down-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        font-size: 28px;
+        line-height: 1;
+        margin: 0;
+    }
+
+    /* The player focuses this button on open for keyboard users; on touch
+       that left a white ring around it. Keep the ring for real keyboards. */
+    #close-dedicated-player:focus:not(:focus-visible),
+    html.is-ios #close-dedicated-player:focus {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
+    .dedicated-header > div[style*="width: 80px"] {
+        width: 40px !important;
+    }
+
+    /* Title + artist dead-centre: equal 44px columns either side, the heart
+       in the right one and an empty spacer in the left. Before, the heart
+       sat in the flow and pushed the text off-centre to the left. */
+    .dedicated-info-container {
+        display: grid !important;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        align-items: center;
+        column-gap: 8px;
+        text-align: center;
+    }
+
+    .dedicated-info-container::before {
+        content: '';
+    }
+
+    .dedicated-track-info {
+        min-width: 0;
+        text-align: center;
+    }
+
+    .dedicated-info-container .dedicated-like-btn {
+        justify-self: end;
+        margin: 0;
+    }
+
+    /* Mini player: title block takes the free space, heart sits at the right edge */
+    .music-player .player-left .track-info {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .music-player .player-left .player-like-btn {
+        margin-left: auto;
+        flex: 0 0 auto;
+    }
+
+    .dedicated-header-text {
+        font-size: 12px;
+        letter-spacing: 1.6px;
+    }
+
+    /* Lyrics view hides its header buttons behind the status bar otherwise */
+    body.lyrics-view-active .dedicated-header {
+        margin-bottom: 4px;
+    }
+}
+
+/* 6. Lyrics on phones / tablets ---------------------------------------------
+   Desktop got the Apple Music-style depth (blur + scale + fade around the
+   sung line); phones only had a colour change. Same model here, tuned for a
+   small screen and native finger scrolling. player.js now sets
+   data-distance on phones too. */
+@media (max-width: 900px) {
+    .lyrics-scroll-area {
+        --m-lyric-ease: cubic-bezier(0.22, 1, 0.36, 1);
+        --m-lyric-dur: 520ms;
+        overscroll-behavior: contain;
+    }
+
+    .lyrics-content:not(.lyrics-editing) {
+        gap: 20px;
+        padding-left: 6px;
+        padding-right: 14px;
+    }
+
+    .lyrics-content:not(.lyrics-editing) .lyric-line,
+    .lyrics-content:not(.lyrics-editing) .lyric-line.active {
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+        font-size: 25px;
+        font-weight: 750;
+        line-height: 1.24;
+        letter-spacing: -0.012em;
+        color: #fff;
+        transform-origin: left center;
+        backface-visibility: hidden;
+        transition:
+            opacity var(--m-lyric-dur) var(--m-lyric-ease),
+            transform var(--m-lyric-dur) var(--m-lyric-ease),
+            filter var(--m-lyric-dur) var(--m-lyric-ease),
+            translate 560ms var(--m-lyric-ease),
+            color 0.3s ease,
+            text-shadow 0.3s ease;
+    }
+
+    /* Before the first sync tick every line is readable */
+    .lyrics-content:not(.lyrics-editing) .lyric-line:not([data-distance]) {
+        opacity: 0.55;
+    }
+
+    .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"] {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"]:not(.word-synced) {
+        filter: blur(0px);
+        text-shadow: 0 6px 22px rgba(0, 0, 0, 0.3);
+    }
+
+    .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-1"],
+    .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="1"] {
+        opacity: 0.42;
+        transform: scale(0.965);
+        filter: blur(0.6px);
+    }
+
+    .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-2"],
+    .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="2"] {
+        opacity: 0.32;
+        transform: scale(0.95);
+        filter: blur(1.2px);
+    }
+
+    .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-3"],
+    .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="3"] {
+        opacity: 0.26;
+        transform: scale(0.945);
+        filter: blur(1.7px);
+    }
+
+    /* Far lines: dim but unblurred (cheap to paint, still scrollable/readable) */
+    .lyrics-content:not(.lyrics-editing) .lyric-line.lyric-line-far {
+        visibility: visible;
+        pointer-events: auto;
+        opacity: 0.22;
+        transform: scale(0.945);
+        filter: none;
+    }
+
+    /* Browsing with a finger: everything sharp, sung line still brightest */
+    .lyrics-scroll-area.is-user-scrolling .lyrics-content:not(.lyrics-editing) .lyric-line {
+        opacity: 0.6;
+        filter: none;
+        transform: scale(0.97);
+        --m-lyric-dur: 260ms;
+    }
+
+    .lyrics-scroll-area.is-user-scrolling .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"] {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    /* Unsynced (plain) lyrics: just readable text */
+    .lyrics-content.lyrics-unsynced:not(.lyrics-editing) .lyric-line {
+        opacity: 0.85;
+        filter: none;
+        transform: none;
+        font-size: 22px;
+    }
+
+    /* Entrance: lines on screen start here and transition to their depth */
+    .lyrics-content .lyric-pre-enter,
+    .lyrics-content:not(.lyrics-editing) .lyric-line.lyric-pre-enter {
+        opacity: 0 !important;
+        translate: 0 22px;
+        filter: blur(6px) !important;
+        transition: none !important;
+    }
+
+    /* Header pills + container: quick, not 0.8s */
+    #dedicated-lyrics-container:not(.hidden) {
+        animation-duration: 0.36s;
+    }
+
+    /* Appearance settings: phone sizes */
+    :root[data-lyrics-size="small"] .lyrics-content:not(.lyrics-editing) .lyric-line,
+    :root[data-lyrics-size="small"] .lyrics-content:not(.lyrics-editing) .lyric-line.active {
+        font-size: 21px;
+    }
+
+    :root[data-lyrics-size="large"] .lyrics-content:not(.lyrics-editing) .lyric-line,
+    :root[data-lyrics-size="large"] .lyrics-content:not(.lyrics-editing) .lyric-line.active {
+        font-size: 30px;
+    }
+
+    :root.lyrics-bold .lyrics-content:not(.lyrics-editing) .lyric-line {
+        font-weight: 850;
+    }
+
+    :root.lyrics-no-motion .lyrics-content:not(.lyrics-editing) .lyric-line {
+        transition: opacity 0.2s linear, color 0.2s linear;
+        transform: none !important;
+        filter: none !important;
+    }
+}
+
+@media (max-width: 900px) and (prefers-reduced-motion: reduce) {
+    .lyrics-content:not(.lyrics-editing) .lyric-line {
+        transition: opacity 0.2s linear;
+        transform: none !important;
+        filter: none !important;
+    }
+}
+
+@keyframes sheetUp {
+    from { transform: translate3d(0, 100%, 0); }
+    to   { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes sheetBackdropIn {
+    from { background-color: rgba(0, 0, 0, 0); }
+    to   { background-color: rgba(0, 0, 0, 0.5); }
+}
+
+@keyframes settingsPageIn {
+    from { transform: translate3d(0, 6%, 0); opacity: 0; }
+    to   { transform: translate3d(0, 0, 0); opacity: 1; }
+}

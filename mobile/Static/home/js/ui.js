@@ -919,6 +919,7 @@ themeInputs.forEach(input => {
             if (appCache.user && appCache.user.role === 'Owner') loadMusicDirectories();
         } else if (targetTab.dataset.tab === 'metadata' && isOwnerRole) {
             loadMetadataSettings();
+            if (window.StreamifyArtists) window.StreamifyArtists.loadPhotoSetting();
         } else if (targetTab.dataset.tab === 'downloads' && isOwnerRole) {
             loadDownloadSettings();
         } else if (targetTab.dataset.tab === 'discord') {
@@ -1788,6 +1789,22 @@ themeInputs.forEach(input => {
         });
     }
 
+    const clearHistoryBtn = document.getElementById('clear-history-btn');
+    if (clearHistoryBtn) {
+        clearHistoryBtn.addEventListener('click', async () => {
+            if (!window.confirm('Clear your entire listening history? Home recommendations and stats will start over.')) return;
+            clearHistoryBtn.disabled = true;
+            try {
+                await window.clearListeningHistory();
+                showToast('Listening history cleared.', 'success');
+            } catch (err) {
+                showToast(err.message || 'Failed to clear listening history', 'error');
+            } finally {
+                clearHistoryBtn.disabled = false;
+            }
+        });
+    }
+
     /* --- Discord Rich Presence --- */
 
     const discordRpcToggle = document.getElementById('discord-rpc-toggle');
@@ -2030,6 +2047,11 @@ themeInputs.forEach(input => {
     const searchSection = document.getElementById('search-section');
     const profileDetailSection = document.getElementById('profile-detail-section');
     const playlistDetailSection = document.getElementById('playlist-detail-section');
+    const albumDetailSection = document.getElementById('album-detail-section');
+    const artistDetailSection = document.getElementById('artist-detail-section');
+    const homeSection = document.getElementById('home-section');
+    const likedSongsSection = document.getElementById('liked-songs-section');
+    const likedSongsLink = document.getElementById('liked-songs-link');
     const playerSection = document.getElementById('player-section'); // Added player section reference
     const dmSection = null;
 
@@ -2085,7 +2107,7 @@ themeInputs.forEach(input => {
         if (window.currentActiveView !== 'downloads' && window.StreamifyDownloads) {
             window.StreamifyDownloads.close();
         }
-        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection];
+        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection, albumDetailSection, artistDetailSection, likedSongsSection, homeSection];
         if (!document.body.classList.contains('desktop-player-overlay-enabled')) routedSections.push(playerSection);
         routedSections.forEach(sec => {
             if (sec) { sec.classList.add('hidden'); sec.classList.remove('fade-in-animate'); }
@@ -2104,7 +2126,7 @@ themeInputs.forEach(input => {
                 setThemeColor(DEFAULT_THEME_COLOR);
             }
         }
-        [libraryLink, downloadsLink, uploadLink].forEach(l => l && l.classList.remove('active'));
+        [homeLink, libraryLink, downloadsLink, uploadLink, likedSongsLink].forEach(l => l && l.classList.remove('active'));
         document.querySelectorAll('.sidebar-playlist-link').forEach(l => l.classList.remove('active'));
         // Reset edit modes on view switch to prevent stale UI state
         if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode) {
@@ -2144,6 +2166,7 @@ themeInputs.forEach(input => {
             libraryLink.classList.add('active');
             showSection(trendingSection);
             fetchLibrary();
+            if (window.StreamifyAlbums) window.StreamifyAlbums.onLibraryShown();
             document.title = "Streamify | Library";
         });
     }
@@ -2807,8 +2830,15 @@ themeInputs.forEach(input => {
     /* ===================================================
      * PLAYLIST NAVIGATION & HANDLERS
      * =================================================== */
-    window.navigateToPlaylist = function (playlistId) {
+    window.navigateToPlaylist = function (playlistId, { fromHistory = false, fromBack = false } = {}) {
         if (!playlistId) return;
+
+        // Remember where we came from so Back returns there (shared with the
+        // album, artist, Liked Songs and Home pages via StreamifyNav).
+        const alreadyHere = window.currentActiveView === 'playlist' &&
+            [window.requestedPlaylistId, window.currentPlaylistId, window.currentPlaylistShareId]
+                .some(id => id !== null && id !== undefined && String(id) === String(playlistId));
+        if (!fromBack && !alreadyHere && window.StreamifyNav) window.StreamifyNav.rememberOrigin();
 
         if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
         window.lastViewBeforePlaylist = window.currentActiveView;
@@ -2816,7 +2846,7 @@ themeInputs.forEach(input => {
         window.requestedPlaylistId = playlistId;
         window.currentPlaylistId = null;
 
-        if (window.location.hash !== `#playlist-${playlistId}`) {
+        if (!fromHistory && window.location.hash !== `#playlist-${playlistId}`) {
             history.pushState({ view: 'playlist', id: playlistId }, '', `/home#playlist-${playlistId}`);
         }
 
@@ -2835,14 +2865,8 @@ themeInputs.forEach(input => {
     const backFromPlaylistBtn = document.getElementById('back-from-playlist-btn');
     if (backFromPlaylistBtn) {
         backFromPlaylistBtn.addEventListener('click', () => {
-            const lastView = window.lastViewBeforePlaylist || 'home';
-            if (lastView === 'library') {
-                libraryLink && libraryLink.click();
-            } else if (lastView === 'people') {
-                libraryLink && libraryLink.click();
-            } else {
-                libraryLink && libraryLink.click();
-            }
+            if (window.StreamifyNav) window.StreamifyNav.goBack();
+            else if (libraryLink) libraryLink.click();
         });
     }
 
@@ -3049,7 +3073,7 @@ themeInputs.forEach(input => {
         const params = new URLSearchParams(window.location.search);
         if (params.has('playlist') || path.startsWith('/profile/')) return false;
         if (!isHomeOrRootRoute(path)) return false;
-        return !hash || hash === '#library' || hash === '#feed' || hash === '#people';
+        return hash === '#library' || hash === '#feed' || hash === '#people';
     }
 
     async function preloadInitialLibraryVisuals(songs) {
@@ -3104,6 +3128,7 @@ themeInputs.forEach(input => {
         // entrance animation starts, so the animation cannot be invalidated
         // halfway through by the library response.
         showSection(trendingSection);
+        if (window.StreamifyAlbums) window.StreamifyAlbums.onLibraryShown();
         return true;
     }
 
@@ -3148,10 +3173,34 @@ themeInputs.forEach(input => {
                 // The Beta Info page is gone; keep old bookmarks working.
                 if (libraryLink) libraryLink.click();
                 return;
+            } else if (hash === '#home') {
+                if (typeof window.navigateToHome === 'function') window.navigateToHome({ fromHistory: true });
+                else if (libraryLink) libraryLink.click();
+                return;
+            } else if (hash === '#liked') {
+                if (typeof window.navigateToLiked === 'function') window.navigateToLiked({ fromHistory: true });
+                else if (libraryLink) libraryLink.click();
+                return;
+            } else if (hash.startsWith('#artist-')) {
+                const artistUid = hash.slice('#artist-'.length);
+                if (typeof window.navigateToArtist === 'function' && /^[a-f0-9]{20}$/.test(artistUid)) {
+                    window.navigateToArtist(artistUid, { fromHistory: true });
+                } else if (libraryLink) {
+                    libraryLink.click();
+                }
+                return;
+            } else if (hash.startsWith('#album-')) {
+                const albumUid = hash.slice('#album-'.length);
+                if (typeof window.navigateToAlbum === 'function' && /^[a-f0-9]{20}$/.test(albumUid)) {
+                    window.navigateToAlbum(albumUid, { fromHistory: true });
+                } else if (libraryLink) {
+                    libraryLink.click();
+                }
+                return;
             } else if (hash.startsWith('#playlist-')) {
                 const pid = hash.replace('#playlist-', '');
                 if (typeof window.navigateToPlaylist === 'function') {
-                    window.navigateToPlaylist(pid);
+                    window.navigateToPlaylist(pid, { fromHistory: true });
                 }
                 return;
             } else if (hash.startsWith('#post-')) {
@@ -3182,11 +3231,10 @@ themeInputs.forEach(input => {
                 }
             }
         } else {
-            // Default to the personal library on /home, root, or Capacitor mobile app launch
-            if (libraryLink && isHomeOrRootRoute(path)) {
-                if (trendingSection && trendingSection.classList.contains('hidden')) {
-                    libraryLink.click();
-                }
+            // Default to Home on /home, root, or Capacitor mobile app launch
+            if (isHomeOrRootRoute(path) && homeSection && homeSection.classList.contains('hidden')) {
+                if (typeof window.navigateToHome === 'function') window.navigateToHome({ fromHistory: !window.location.hash });
+                else if (libraryLink) libraryLink.click();
             }
         }
 

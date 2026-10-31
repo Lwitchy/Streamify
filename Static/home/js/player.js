@@ -153,6 +153,48 @@ function getQualityBadgeHTML(song) {
     return `<span class="artist-separator"></span><span class="quality-badge">${label}</span>`;
 }
 
+/* Now-playing title opens the album, artist opens the artist page. */
+const TRACK_LINK_UID = /^[a-f0-9]{20}$/;
+
+function setTrackLink(element, kind, uid) {
+    if (!element) return;
+    const valid = typeof uid === 'string' && TRACK_LINK_UID.test(uid);
+    element.classList.toggle('is-link', valid);
+    if (valid) {
+        element.dataset.linkKind = kind;
+        element.dataset.linkUid = uid;
+        element.setAttribute('role', 'link');
+        element.tabIndex = 0;
+        element.title = kind === 'album' ? 'Go to album' : 'Go to artist';
+    } else {
+        delete element.dataset.linkKind;
+        delete element.dataset.linkUid;
+        element.removeAttribute('role');
+        element.removeAttribute('tabindex');
+        element.removeAttribute('title');
+    }
+}
+
+function followTrackLink(event) {
+    const element = event.currentTarget;
+    const uid = element.dataset.linkUid;
+    if (!uid) return;
+    if (event.type === 'keydown' && event.key !== 'Enter') return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (element.dataset.linkKind === 'album' && typeof window.navigateToAlbum === 'function') {
+        window.navigateToAlbum(uid);
+    } else if (element.dataset.linkKind === 'artist' && typeof window.navigateToArtist === 'function') {
+        window.navigateToArtist(uid);
+    }
+}
+
+[playerTitle, playerArtist, dedicatedTitle, dedicatedArtist].forEach(element => {
+    if (!element) return;
+    element.addEventListener('click', followTrackLink);
+    element.addEventListener('keydown', followTrackLink);
+});
+
 function loadSong(song) {
     const endReason = pendingPlaybackEndReason || 'selected';
     pendingPlaybackEndReason = null;
@@ -162,6 +204,10 @@ function loadSong(song) {
 
     playerTitle.textContent = song.title;
     playerArtist.textContent = song.artist; // No badge in mini player
+    setTrackLink(playerTitle, 'album', song.album_uid);
+    setTrackLink(playerArtist, 'artist', song.artist_uid);
+    setTrackLink(dedicatedTitle, 'album', song.album_uid);
+    setTrackLink(dedicatedArtist, 'artist', song.artist_uid);
 
     let audioUrl = song.url;
     let coverUrl = song.coverDataUrl || safeImageURL(song.cover, COVER_PLACEHOLDER);
@@ -376,6 +422,8 @@ function _playSongFromPlaylist(index, pl, sh) {
             title: song.title,
             artist: song.artist,
             album: song.album,
+            album_uid: song.album_uid || songData.album_uid || null,
+            artist_uid: song.artist_uid || songData.artist_uid || null,
             url: songData.url,
             cover: cover,
             bitrate: songData.bitrate || song.bitrate,
@@ -1428,6 +1476,46 @@ function prepareDesktopPlayerOverlay() {
 window.prepareDesktopPlayerOverlay = prepareDesktopPlayerOverlay;
 desktopPlayerMedia.addEventListener('change', syncDesktopPlayerOverlayMode);
 
+/* ---------------------------------------------------------------------------
+ * Underlay entrance animations must never replay.
+ *
+ * The page behind the mobile player has one-shot entrance animations
+ * (.content-container fadeInUp, .playlist-detail-section fadeInPlaylist, ...).
+ * Closing the player used to set `animation: none` on the section and restore
+ * it a frame later, and the stylesheet switched .content-container to
+ * `animation: none !important` while the player was open. Both restart the
+ * keyframes when they are undone, so every swipe-down replayed the whole
+ * page's fade/slide-in and looked like the page had refreshed.
+ *
+ * Instead: the container's entrance is marked finished for good once it has
+ * run, and a section's animation is frozen until the next real navigation
+ * (the section gets .hidden or .fade-in-animate again).
+ * ------------------------------------------------------------------------- */
+const contentContainerEl = document.querySelector('.content-container');
+function settleUnderlayEntrance() {
+    if (contentContainerEl) contentContainerEl.classList.add('entrance-done');
+}
+if (contentContainerEl) {
+    const onEntranceEnd = event => { if (event.target === contentContainerEl) settleUnderlayEntrance(); };
+    contentContainerEl.addEventListener('animationend', onEntranceEnd);
+    contentContainerEl.addEventListener('animationcancel', onEntranceEnd);
+}
+
+function freezeSectionEntrance(section) {
+    if (!section) return;
+    section.style.animation = 'none';
+    if (section._entranceFreeze) return;
+    const observer = new MutationObserver(() => {
+        if (section.classList.contains('hidden') || section.classList.contains('fade-in-animate')) {
+            observer.disconnect();
+            section._entranceFreeze = null;
+            section.style.animation = '';
+        }
+    });
+    section._entranceFreeze = observer;
+    observer.observe(section, { attributes: true, attributeFilter: ['class'] });
+}
+
 function openDedicatedPlayerFromCover() {
     if (isDesktopPlayerOverlayEnabled()) {
         openDesktopPlayerOverlay();
@@ -1443,10 +1531,11 @@ function openDedicatedPlayerFromCover() {
         activeSection.inert = true;
         activeSection.setAttribute('aria-hidden', 'true');
         activeSection.classList.remove('fade-in-animate');
-        activeSection.style.animation = 'none';
+        freezeSectionEntrance(activeSection);
     } else if (!previousSectionId) {
         previousSectionId = 'trending-section';
     }
+    settleUnderlayEntrance();
 
     // Save scroll position of the underlay container so dismiss never jumps or resets
     const scrollContainer = window.getAppScrollContainer ? window.getAppScrollContainer() : document.querySelector('.main-content');
@@ -1529,7 +1618,7 @@ function finalizeCloseDedicatedPlayer() {
     const prevSec = document.getElementById(secId);
     if (prevSec) {
         prevSec.classList.remove('hidden', 'fade-in-animate');
-        prevSec.style.animation = 'none';
+        freezeSectionEntrance(prevSec);
         prevSec.inert = false;
         prevSec.removeAttribute('aria-hidden');
 
@@ -1538,10 +1627,6 @@ function finalizeCloseDedicatedPlayer() {
         if (scrollContainer && typeof savedUnderlayScrollTop === 'number') {
             scrollContainer.scrollTop = savedUnderlayScrollTop;
         }
-
-        requestAnimationFrame(() => {
-            if (prevSec) prevSec.style.animation = '';
-        });
 
         // Re-highlight the correct sidebar nav link without clicking or re-fetching
         const navMap = {
@@ -1572,13 +1657,10 @@ function finalizeCloseDedicatedPlayer() {
     const fallbackSec = document.getElementById('trending-section');
     if (fallbackSec) {
         fallbackSec.classList.remove('hidden', 'fade-in-animate');
-        fallbackSec.style.animation = 'none';
+        freezeSectionEntrance(fallbackSec);
         fallbackSec.inert = false;
         fallbackSec.removeAttribute('aria-hidden');
         document.getElementById('library-link')?.classList.add('active');
-        requestAnimationFrame(() => {
-            if (fallbackSec) fallbackSec.style.animation = '';
-        });
     }
     if (isDesktopPlayerOverlayEnabled()) playerImg?.focus({ preventScroll: true });
 }
@@ -1611,7 +1693,7 @@ function dismissDedicatedPlayerMobile(initialY = 0, velocity = 0) {
     const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
     if (prevSec) {
         prevSec.classList.remove('hidden', 'fade-in-animate');
-        prevSec.style.animation = 'none';
+        freezeSectionEntrance(prevSec);
     }
 
     document.body.classList.add('player-is-dismissing');
@@ -1937,10 +2019,56 @@ function resetDesktopLyricsPresentation({ resetLineDepth = true } = {}) {
 function handleLyricsInteraction() {
     if (!isLyricsActive || window.innerWidth > 900) return;
     isUserScrollingLyrics = true;
+    // While the finger is browsing, every line is shown sharp and readable
+    // (Apple Music behaviour); depth/blur returns when auto-follow resumes.
+    if (lyricsScrollArea) lyricsScrollArea.classList.add('is-user-scrolling');
     if (userScrollingLyricsTimeout) clearTimeout(userScrollingLyricsTimeout);
     userScrollingLyricsTimeout = setTimeout(() => {
         isUserScrollingLyrics = false;
+        userScrollingLyricsTimeout = null;
+        if (lyricsScrollArea) lyricsScrollArea.classList.remove('is-user-scrolling');
+        if (isLyricsActive && !isLyricEditMode) scrollToActiveLyric();
     }, 3000); // Resume auto-scroll after 3 seconds of no manual interaction
+}
+
+/* Lyrics open animation (phones / tablets).
+ * The old CSS gave .lyric-line:nth-child(1..20) increasing delays and every
+ * other line none. The view opens scrolled to the current line, so mid-song
+ * the lines on screen were a mix of "wait up to 1s" and "appear instantly" -
+ * half the screen animated, half did not. Now exactly the lines that are on
+ * screen are staggered top-to-bottom; off-screen lines are left alone. The
+ * class only drives a transition, so the line lands on its real depth
+ * (opacity / scale / blur) instead of snapping from a keyframe end state. */
+let lyricsEntranceTimers = [];
+function clearLyricsEntrance() {
+    lyricsEntranceTimers.forEach(clearTimeout);
+    lyricsEntranceTimers = [];
+    if (lyricsContent) {
+        lyricsContent.querySelectorAll('.lyric-pre-enter').forEach(el => el.classList.remove('lyric-pre-enter'));
+    }
+}
+
+function playLyricsEntrance() {
+    clearLyricsEntrance();
+    if (!lyricsContent || !lyricsScrollArea || window.innerWidth > 900 || isLyricEditMode) return;
+    const reduced = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ||
+        document.documentElement.classList.contains('lyrics-no-motion');
+    if (reduced) return;
+
+    const area = lyricsScrollArea.getBoundingClientRect();
+    if (area.height <= 0) return;
+    const visible = Array.from(lyricsContent.querySelectorAll('.lyric-line, .lyrics-loading, .lyrics-unsynced-note'))
+        .filter(el => {
+            const r = el.getBoundingClientRect();
+            return r.height > 0 && r.bottom > area.top - 24 && r.top < area.bottom + 24;
+        });
+    if (!visible.length) return;
+
+    visible.forEach(el => el.classList.add('lyric-pre-enter'));
+    void lyricsContent.offsetHeight; // commit the hidden state before revealing
+    visible.forEach((el, i) => {
+        lyricsEntranceTimers.push(setTimeout(() => el.classList.remove('lyric-pre-enter'), 60 + Math.min(i * 45, 420)));
+    });
 }
 
 if (lyricsScrollArea) {
@@ -1957,8 +2085,10 @@ if (btnLyrics) {
         const contentArea = document.querySelector('.dedicated-player-content');
         if (contentArea) contentArea.classList.add('lyrics-active-view');
         document.body.classList.add('lyrics-view-active');
+        if (lyricsScrollArea) lyricsScrollArea.classList.remove('is-user-scrolling');
         updateActiveLyric(true);
         startDesktopLyricsSync();
+        playLyricsEntrance();
         _acquireWakeLock(); // Keep screen on while reading lyrics
     });
 }
@@ -1970,6 +2100,8 @@ function deactivateLyricsView({ resetLineDepth = true } = {}) {
     }
     isLyricsActive = false;
     activeLyricIndex = -1;
+    clearLyricsEntrance();
+    if (lyricsScrollArea) lyricsScrollArea.classList.remove('is-user-scrolling');
     stopDesktopLyricsSync();
     resetDesktopLyricsPresentation({ resetLineDepth });
     isUserScrollingLyrics = false;
@@ -2067,7 +2199,7 @@ if (btnCloseLyrics) {
                 const prevSec = previousSectionId ? document.getElementById(previousSectionId) : document.getElementById('trending-section');
                 if (prevSec) {
                     prevSec.classList.remove('hidden', 'fade-in-animate');
-                    prevSec.style.animation = 'none';
+                    freezeSectionEntrance(prevSec);
                 }
 
                 document.body.classList.add('player-is-dismissing');
@@ -2199,15 +2331,11 @@ function updateActiveLyric(immediate = false) {
                 startDesktopLyricsSync();
             }
         } else if (activeLyricIndex !== activeIndex || currentActiveEl !== newActiveEl) {
-            activeLyricIndex = activeIndex;
-            lineElements.forEach(lineEl => {
-                lineEl.removeAttribute('data-distance');
-                lineEl.removeAttribute('aria-current');
-            });
-            if (currentActiveEl) currentActiveEl.classList.remove('active');
-            newActiveEl.classList.add('active');
-            newActiveEl.setAttribute('aria-current', 'true');
-            scrollToActiveLyric(newActiveEl);
+            // Phones get the same depth model as desktop (data-distance drives
+            // opacity / scale / blur in mobile_app.css) but keep native
+            // scrolling so the lyrics can still be browsed with a finger.
+            setDesktopLyricDepth(lineElements, activeIndex);
+            scrollToActiveLyric(newActiveEl, immediate || !currentActiveEl);
         }
     }
 }
@@ -2245,7 +2373,18 @@ function scrollToActiveLyric(activeEl = null, immediate = false) {
         // When the song is near the beginning, start cleanly at top (scrollTop: 0)
         const rawTarget = relativeTop - (containerHeight / 2) + (activeRect.height / 2);
         const target = Math.max(0, Math.round(rawTarget));
-        lyricsScrollArea.scrollTo({ top: target, behavior: immediate ? 'auto' : 'smooth' });
+        if (immediate) {
+            // The scroller has `scroll-behavior: smooth` in CSS, which also
+            // applies to behavior:'auto'. Opening lyrics mid-song therefore
+            // glided down from the top, and the entrance animation ran on
+            // lines that were then scrolled away. Jump for real instead.
+            const previous = lyricsScrollArea.style.scrollBehavior;
+            lyricsScrollArea.style.scrollBehavior = 'auto';
+            lyricsScrollArea.scrollTop = target;
+            lyricsScrollArea.style.scrollBehavior = previous;
+        } else {
+            lyricsScrollArea.scrollTo({ top: target, behavior: 'smooth' });
+        }
     }
 }
 
@@ -2263,8 +2402,13 @@ window.addEventListener('resize', () => {
             }
         } else {
             stopDesktopLyricsSync();
-            resetDesktopLyricsPresentation();
-            scrollToActiveLyric();
+            resetDesktopLyricsPresentation({ resetLineDepth: false });
+            const activeEl = lyricsContent?.querySelector('.lyric-line.active');
+            const activeIndex = Number(activeEl?.dataset.index);
+            if (Number.isFinite(activeIndex)) {
+                setDesktopLyricDepth(Array.from(lyricsContent.querySelectorAll('.lyric-line')), activeIndex);
+            }
+            scrollToActiveLyric(activeEl, true);
         }
     }
 });

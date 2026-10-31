@@ -327,6 +327,34 @@
     });
     $('artist-photo-remove')?.addEventListener('click', removePhoto);
 
+    /* --- Appearance: artist header style (per device) ------------------ */
+    const HEADER_KEY = 'streamify:artist-header:v1';
+
+    function readHeaderStyle() {
+        try {
+            return localStorage.getItem(HEADER_KEY) === 'card' ? 'card' : 'wide';
+        } catch (e) {
+            return 'wide';
+        }
+    }
+
+    function applyHeaderStyle(style) {
+        const section = $('artist-detail-section');
+        if (section) section.classList.toggle('artist-header-wide', style === 'wide');
+        document.querySelectorAll('input[name="artist-header"]').forEach(input => {
+            input.checked = input.value === style;
+        });
+    }
+
+    applyHeaderStyle(readHeaderStyle());
+    document.querySelectorAll('input[name="artist-header"]').forEach(input => {
+        input.addEventListener('change', () => {
+            if (!input.checked) return;
+            try { localStorage.setItem(HEADER_KEY, input.value); } catch (e) { /* this page only */ }
+            applyHeaderStyle(input.value === 'card' ? 'card' : 'wide');
+        });
+    });
+
     /* --- Settings: download artist photos (Owner) ---------------------- */
     const photoSetting = $('artist-photos-online-toggle');
 

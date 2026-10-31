@@ -2681,3 +2681,56 @@ body.offline-mode .row-download-btn.downloaded {
     opacity: 1;
     transform: translateY(0);
 }
+
+/* --- Wide artist header (Settings → Appearance → Artist pages) ------------
+   The header bleeds past the page padding to the edges of the content area
+   and up under the top bar; Back and photo buttons float over it, and the
+   backdrop fades into the page instead of ending at a border. */
+.artist-detail-section.artist-header-wide {
+    position: relative;
+}
+
+.artist-detail-section.artist-header-wide > .playlist-detail-header {
+    position: absolute;
+    top: 0;
+    left: 20px;
+    right: 20px;
+    z-index: 2;
+    margin: 0;
+}
+
+.artist-header-wide .artist-hero {
+    margin: -52px -52px 32px;
+    padding: 96px 52px 40px;
+    min-height: 380px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    align-items: flex-end;
+    /* Let the backdrop run past the header and fade out over the page. */
+    overflow: visible;
+}
+
+.artist-header-wide .artist-hero::before {
+    inset: -60px -60px -140px -60px;
+    transform: none;
+    filter: blur(48px) saturate(1.25) brightness(0.55);
+}
+
+/* Fade the backdrop out toward the bottom so it melts into whatever page
+   background (or theme gradient) is behind it, with no visible seam. */
+.artist-header-wide .artist-hero::before {
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 40%, transparent 85%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 40%, transparent 85%);
+}
+
+.artist-header-wide .artist-hero-image {
+    width: 232px;
+}
+
+.artist-header-wide .playlist-back-btn,
+.artist-header-wide #artist-photo-actions .btn {
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}

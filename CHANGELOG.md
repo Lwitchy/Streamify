@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Artist header & player links - 2026-10-31
+
+### Added
+
+- **Settings → Appearance → Artist pages → Header style**: *Wide* (default)
+  stretches the artist photo backdrop edge to edge under the top bar and
+  fades it into the page, with Back and photo buttons floating over it.
+  *Card* keeps the previous boxed header. Saved per device.
+- The now-playing title opens its album and the artist name opens the artist
+  page, in both the mini player and the full-screen player.
+
+### Fixed
+
+- Back on a playlist page now returns to where you opened it from (Home,
+  search, an album, an artist, ...) instead of always going to Your Library.
+
 ## [Unreleased] - Home - 2026-10-31
 
 Final phase of the Albums, Artists and Home update. See

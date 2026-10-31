@@ -202,12 +202,42 @@ window.downloadAllSongs = async function (songs, btnElement) {
 
 const songListRenderTokens = new WeakMap();
 
+// Album cell for song rows: a link to the album page when the song belongs to
+// one. Navigation is handled by a delegated listener in albums.js; row click
+// handlers ignore clicks on the link so it does not also start playback.
+function albumCellHTML(albumName, albumUid) {
+    const label = escapeHTML(albumName || '');
+    if (!albumUid || !/^[a-f0-9]{20}$/.test(String(albumUid))) return `<span>${label}</span>`;
+    return `<span class="song-album-cell"><a href="#album-${albumUid}" class="song-album-link" data-album-uid="${albumUid}">${label}</a></span>`;
+}
+
+// Artist line under a song title: a link to the artist page when known.
+function artistLineHTML(artistName, artistUid, compact = false) {
+    const style = compact ? 'font-size:12px;' : 'font-size: 12px;';
+    const label = escapeHTML(artistName || '');
+    if (!artistUid || !/^[a-f0-9]{20}$/.test(String(artistUid))) return `<div style="${style}">${label}</div>`;
+    return `<div style="${style}"><a href="#artist-${artistUid}" class="song-artist-link" data-artist-uid="${artistUid}">${label}</a></div>`;
+}
+
+function likeButtonHTML(songId) {
+    return window.StreamifyLikes ? window.StreamifyLikes.rowButtonHTML(songId) : '';
+}
+
+// True when a click/key landed on a control inside a row (album or artist
+// link, heart) that has its own handler and must not also start playback.
+function isAlbumLinkEvent(event) {
+    return Boolean(event && event.target && event.target.closest &&
+        event.target.closest('.song-album-link, .song-artist-link, .row-like-btn'));
+}
+
 function renderSongList(songs, listContainer, options = {}) {
     if (!listContainer) return;
     const {
         allowHiddenInitialBatch = false,
         deferSecondaryWork = false,
-        deferRemainingBatches = false
+        deferRemainingBatches = false,
+        // Optional (song, index) => string for the first column, e.g. track numbers.
+        indexLabel = null
     } = options;
 
     const header = listContainer.querySelector('.header-row');
@@ -221,6 +251,10 @@ function renderSongList(songs, listContainer, options = {}) {
         title: s.name || s.title || s,
         artist: s.artist || 'Unknown Artist',
         album: s.album || 'Single',
+        album_uid: s.album_uid || null,
+        artist_uid: s.artist_uid || null,
+        track_number: s.track_number || null,
+        disc_number: s.disc_number || null,
         cover: s.cover,
         uploaded_by: s.uploaded_by || 'Unknown',
         duration: s.duration,
@@ -232,6 +266,10 @@ function renderSongList(songs, listContainer, options = {}) {
     }));
     currentPlaylist = renderedPlaylist;
     shuffledPlaylist = buildPlaylistOrder(currentPlaylist.length);
+    currentPlaybackContext = options.playbackContext || {
+        type: window.StreamifyOfflineMode ? 'offline' : 'library',
+        id: null
+    };
 
     let downloadedIds = null;
     const markDownloaded = row => {
@@ -267,7 +305,6 @@ function renderSongList(songs, listContainer, options = {}) {
 
         const title = escapeHTML(song.title);
         const artist = escapeHTML(song.artist);
-        const album = escapeHTML(song.album);
         const uploadedBy = escapeHTML(song.uploaded_by || 'Unknown');
         const safeDuration = escapeHTML(duration);
 
@@ -292,7 +329,9 @@ function renderSongList(songs, listContainer, options = {}) {
             ? `<i class='bx bx-lock-alt' style="font-size:14px;color:var(--text-secondary);margin-left:6px;" title="Private"></i>`
             : `<i class='bx bx-globe' style="font-size:14px;color:var(--text-secondary);margin-left:6px;opacity:0.5;" title="Public"></i>`;
 
-        row.innerHTML = `<div class="index-cell"><div class="select-indicator"></div><span class="row-index-number">${index + 1}</span></div><div class="song-info"><img alt="cover" class="song-cover-img" loading="lazy" decoding="async"><div><div class="song-title-row">${title}</div><div style="font-size: 12px;">${artist}</div></div></div><span>${album}</span><span>${uploadedBy}</span><span>${safeDuration}${visibilityIcon}</span><div class="edit-btn-container">
+        const indexText = escapeHTML(typeof indexLabel === 'function' ? indexLabel(song, index) : String(index + 1));
+        row.innerHTML = `<div class="index-cell"><div class="select-indicator"></div><span class="row-index-number">${indexText}</span></div><div class="song-info"><img alt="cover" class="song-cover-img" loading="lazy" decoding="async"><div><div class="song-title-row">${title}</div>${artistLineHTML(song.artist, song.artist_uid)}</div></div>${albumCellHTML(song.album, song.album_uid)}<span>${uploadedBy}</span><span>${safeDuration}${visibilityIcon}</span><div class="edit-btn-container">
+            ${likeButtonHTML(song.id)}
             <button type="button" class="row-download-btn" aria-label="Download ${title}"><i class='bx bx-download'></i></button>
             ${canEdit ? `<button type="button" class="row-edit-btn" title="Edit song metadata" aria-label="Edit ${title}"><i class='bx bx-edit-alt'></i></button>` : ''}
         </div>`;
@@ -329,6 +368,7 @@ function renderSongList(songs, listContainer, options = {}) {
                 Math.abs(e.touches[0].clientY - startY) > 10) isScrolling = true;
         }, { passive: true });
         row.addEventListener('touchend', e => {
+            if (isAlbumLinkEvent(e)) return;
             if (e.target.closest('.row-edit-btn') || e.target.closest('.edit-btn-container') || e.target.closest('.row-menu-btn') || e.target.closest('.song-context-menu')) return;
             if (!isScrolling) {
                 touchHandled = true;
@@ -343,6 +383,7 @@ function renderSongList(songs, listContainer, options = {}) {
 
         row.addEventListener('click', e => {
             if (touchHandled) { touchHandled = false; return; }
+            if (isAlbumLinkEvent(e)) return;
             if (e.target.closest('.row-edit-btn') || e.target.closest('.edit-btn-container') || e.target.closest('.row-menu-btn') || e.target.closest('.song-context-menu')) return;
 
             if (isLibraryEditMode) {
@@ -352,7 +393,7 @@ function renderSongList(songs, listContainer, options = {}) {
             }
         });
         row.addEventListener('keydown', e => {
-            if ((e.key !== 'Enter' && e.key !== ' ') || e.target.closest('button')) return;
+            if ((e.key !== 'Enter' && e.key !== ' ') || e.target.closest('button') || isAlbumLinkEvent(e)) return;
             e.preventDefault();
             if (isLibraryEditMode) toggleSongSelection(song.id, row);
             else playSongAtIndex(index);
@@ -3394,6 +3435,7 @@ function performSearch(query) {
         return;
     }
     songsList.innerHTML = '<p style="color:#b3b3b3;">Searching...</p>';
+    if (window.StreamifyAlbums) window.StreamifyAlbums.renderSearchAlbums([]);
 
     fetch(window.API_BASE_URL + `/api/search?q=${encodeURIComponent(query)}`, {
         credentials: 'include',
@@ -3405,6 +3447,7 @@ function performSearch(query) {
         })
         .then(data => {
             if (_searchAbort !== controller || window.currentActiveView !== 'search') return;
+            if (window.StreamifyAlbums) window.StreamifyAlbums.renderSearchAlbums(data.albums || []);
             songsList.innerHTML = `
                 <div class="song-row header-row" style="cursor:default;background:transparent;color:#b3b3b3;border-bottom:1px solid #333;margin-bottom:10px;">
                     <span>#</span><span>Title</span><span>Album</span><span>Uploaded By</span><span><i class='bx bx-time'></i></span><span></span>
@@ -3416,6 +3459,8 @@ function performSearch(query) {
                     title: s.name || s.title || s,
                     artist: s.artist || 'Unknown Artist',
                     album: s.album || 'Single',
+                    album_uid: s.album_uid || null,
+                    artist_uid: s.artist_uid || null,
                     cover: s.cover,
                     uploaded_by: s.uploaded_by || 'Unknown',
                     duration: s.duration,
@@ -3425,6 +3470,7 @@ function performSearch(query) {
                 }));
                 currentPlaylist = renderedPlaylist;
                 shuffledPlaylist = buildPlaylistOrder(currentPlaylist.length);
+                currentPlaybackContext = { type: 'search', id: null };
                 currentPlaylist.forEach((song, index) => {
                     const cover = safeImageURL(song.cover, COVER_PLACEHOLDER);
                     const title = escapeHTML(song.title);
@@ -3438,11 +3484,14 @@ function performSearch(query) {
                     row.tabIndex = 0;
                     row.setAttribute('role', 'button');
                     row.setAttribute('aria-label', `Play ${song.title} by ${song.artist}`);
-                    row.innerHTML = `<div class="index-cell"><div class="select-indicator"></div><span class="row-index-number">${index + 1}</span></div><div class="song-info"><img alt="cover" loading="lazy" decoding="async"><div><div class="song-title-row">${title}</div><div style="font-size:12px;">${artist}</div></div></div><span>${album}</span><span>${uploadedBy}</span><span>${duration}</span><div class="edit-btn-container"></div>`;
+                    row.innerHTML = `<div class="index-cell"><div class="select-indicator"></div><span class="row-index-number">${index + 1}</span></div><div class="song-info"><img alt="cover" loading="lazy" decoding="async"><div><div class="song-title-row">${title}</div>${artistLineHTML(song.artist, song.artist_uid, true)}</div></div>${albumCellHTML(song.album, song.album_uid)}<span>${uploadedBy}</span><span>${duration}</span><div class="edit-btn-container">${likeButtonHTML(song.id)}</div>`;
                     row.querySelector('img').src = cover;
-                    row.onclick = () => playSongAtIndex(index);
+                    row.onclick = event => {
+                        if (isAlbumLinkEvent(event)) return;
+                        playSongAtIndex(index);
+                    };
                     row.addEventListener('keydown', event => {
-                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        if ((event.key !== 'Enter' && event.key !== ' ') || isAlbumLinkEvent(event)) return;
                         event.preventDefault();
                         playSongAtIndex(index);
                     });
@@ -4269,6 +4318,7 @@ async function renderPlaylistDetail(playlistId) {
         }
         window.currentPlaylistId = canonicalPlaylistId;
         window.currentPlaylistShareId = playlist.share_id || null;
+        currentPlaybackContext = { type: 'playlist', id: canonicalPlaylistId };
 
         // Update URL hash to use share_id for privacy if we're currently showing a numeric ID
         if (playlist.share_id && window.location.hash === `#playlist-${playlist.id}`) {
@@ -4400,6 +4450,8 @@ async function renderPlaylistDetail(playlistId) {
             title: s.name || s.songname || s.title || s,
             artist: s.artist || 'Unknown Artist',
             album: s.album || 'Single',
+            album_uid: s.album_uid || null,
+            artist_uid: s.artist_uid || null,
             cover: s.cover,
             uploaded_by: s.uploaded_by || 'Unknown',
             duration: s.duration,
@@ -4436,13 +4488,14 @@ async function renderPlaylistDetail(playlistId) {
                     <img alt="cover" class="song-cover-img" loading="lazy" decoding="async">
                     <div>
                         <div class="song-title-row">${title}</div>
-                        <div style="font-size: 12px;">${artist}</div>
+                        ${artistLineHTML(song.artist, song.artist_uid)}
                     </div>
                 </div>
-                <span>${album}</span>
+                ${albumCellHTML(song.album, song.album_uid)}
                 <span>${uploadedBy}</span>
                 <span>${duration}</span>
                 <div class="edit-btn-container song-row-actions">
+                    ${likeButtonHTML(song.id)}
                     <button type="button" class="row-download-btn" aria-label="Download ${title}"><i class='bx bx-download'></i></button>
                     <button type="button" class="playlist-remove-song-btn row-edit-btn" title="Remove from playlist" aria-label="Remove ${title} from playlist">
                         <i class='bx bx-x'></i>
@@ -4491,7 +4544,7 @@ async function renderPlaylistDetail(playlistId) {
             });
 
             row.addEventListener('click', (e) => {
-                if (e.target.closest('.playlist-remove-song-btn')) return;
+                if (e.target.closest('.playlist-remove-song-btn') || isAlbumLinkEvent(e)) return;
                 if (isPlaylistEditMode) {
                     togglePlaylistSongSelection(song.id, row);
                 } else {
@@ -4499,7 +4552,7 @@ async function renderPlaylistDetail(playlistId) {
                 }
             });
             row.addEventListener('keydown', event => {
-                if ((event.key !== 'Enter' && event.key !== ' ') || event.target.closest('button')) return;
+                if ((event.key !== 'Enter' && event.key !== ' ') || event.target.closest('button') || isAlbumLinkEvent(event)) return;
                 event.preventDefault();
                 if (isPlaylistEditMode) togglePlaylistSongSelection(song.id, row);
                 else playSongAtIndex(index);
@@ -5583,24 +5636,18 @@ window.fetchDmRequests = fetchDmRequests;
 window.respondDmRequest = respondDmRequest;
 window.initDmSocketListeners = initDmSocketListeners;
 
-// Telemetry
-async function reportTelemetry(songId, listenDuration, isPlay) {
-    if (!songId || listenDuration <= 0) return;
-    try {
-        await fetch(window.API_BASE_URL + '/api/telemetry/listen', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                song_id: songId,
-                listen_duration: listenDuration,
-                play_count_delta: isPlay ? 1 : 0
-            })
-        });
-    } catch (e) {
-        console.error("Telemetry report failed:", e);
-    }
+// Listening history is reported by telemetry.js (window.StreamifyListening).
+
+async function clearListeningHistory() {
+    const res = await fetch(window.API_BASE_URL + '/api/settings/privacy/history', {
+        method: 'DELETE',
+        credentials: 'include'
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to clear listening history');
+    return data;
 }
-window.reportTelemetry = reportTelemetry;
+window.clearListeningHistory = clearListeningHistory;
 
 async function setAnalyticsEnabled(enabled) {
     try {

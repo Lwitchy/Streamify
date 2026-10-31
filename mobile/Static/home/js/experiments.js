@@ -6,6 +6,14 @@
         themes: Object.freeze({
             name: 'Themes',
             stage: 'Beta'
+        }),
+        lyricsEstimatedWords: Object.freeze({
+            name: 'Estimated word-by-word lyrics',
+            stage: 'Experimental'
+        }),
+        lyricsWordTapping: Object.freeze({
+            name: 'Word timing editor',
+            stage: 'Experimental'
         })
     });
 

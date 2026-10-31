@@ -7,18 +7,19 @@
     <title>Streamify | Home</title>
     <!-- Main CSS Split Modules -->
     <link rel="stylesheet" href="/Static/home/css/base.css?v=4.22">
-    <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.45">
+    <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.46">
     <link rel="stylesheet" href="/Static/home/css/components.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.10">
-    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.49">
+    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.52">
     <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.52">
-    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.42">
+    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.43">
     <link rel="stylesheet" href="/Static/home/css/downloads.css?v=4.34">
     <link rel="stylesheet" href="/Static/home/css/profile.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/toasts.css?v=4.8">
 
     <!-- Mobile Overrides (Must be last) -->
-<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.29" media="(max-width: 768px)">
+<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.31" media="(max-width: 768px)">
+    <link rel="stylesheet" href="/Static/home/css/mobile_app.css?v=1.1">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -40,6 +41,7 @@
     <link href="/Static/vendor/fonts/outfit.css?v=4.8" rel="stylesheet">
     <link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
     <link rel="stylesheet" href="/Static/vendor/cropperjs/cropper.min.css?v=4.8">
+<script src="/Static/home/js/safe-area.js?v=1.0"></script>
 <script src="/Static/home/js/experiments.js?v=4.36"></script>
     <script src="/Static/home/js/theme.js?v=4.36"></script>
 </head>
@@ -706,9 +708,9 @@
             <div class="dedicated-player-backdrop" id="dedicated-player-backdrop"></div>
 
             <div class="dedicated-header">
-                <button class="btn btn-outline btn-sm" id="close-dedicated-player"
+                <button class="btn btn-outline btn-sm" id="close-dedicated-player" aria-label="Close player"
                     style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 8px 16px; margin-right: auto; z-index: 10;">
-                    <i class='bx bx-arrow-back'></i> Back
+                    <i class='bx bx-arrow-back dedicated-back-icon'></i><i class='bx bx-chevron-down dedicated-down-icon' aria-hidden="true"></i><span class="dedicated-back-label"> Back</span>
                 </button>
                 <div class="dedicated-header-text">Now Playing</div>
                 <div style="width: 80px;"></div> <!-- spacer -->
@@ -1274,6 +1276,27 @@
                                         <input type="checkbox" id="lyrics-motion-toggle" data-lyrics-pref="motion">
                                         <span class="slider"></span>
                                     </label>
+                                </div>
+                            </fieldset>
+                        </section>
+
+                        <section class="artist-appearance" aria-labelledby="artist-appearance-title">
+                            <div class="appearance-heading">
+                                <h4 id="artist-appearance-title">Artist pages</h4>
+                                <p>How artist pages look. Saved on this device.</p>
+                            </div>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Header</legend>
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="artist-header-label">Header style</span>
+                                        <p>Wide stretches the artist photo backdrop edge to edge, right under the top bar.</p>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="artist-header-label">
+                                        <label><input type="radio" name="artist-header" value="wide"><span>Wide</span></label>
+                                        <label><input type="radio" name="artist-header" value="card"><span>Card</span></label>
+                                    </div>
                                 </div>
                             </fieldset>
                         </section>
@@ -2478,15 +2501,16 @@
     <!-- Must load before ui.js: activateSettingsTab() calls into
          window.StreamifyUpdates when the Updates pane is opened. -->
     <script src="/Static/home/js/updates.js?v=4.46"></script>
-    <script src="/Static/home/js/player.js?v=4.46"></script>
+    <script src="/Static/home/js/player.js?v=4.48"></script>
     <script src="/Static/home/js/lyrics.js?v=1.5"></script>
     <script src="/Static/home/js/api_v2.js?v=4.45"></script>
-    <script src="/Static/home/js/albums.js?v=1.2"></script>
+    <script src="/Static/home/js/albums.js?v=1.4"></script>
     <script src="/Static/home/js/likes.js?v=1.0"></script>
-    <script src="/Static/home/js/artists.js?v=1.1"></script>
+    <script src="/Static/home/js/artists.js?v=1.2"></script>
     <script src="/Static/home/js/homepage.js?v=1.0"></script>
     <script src="/Static/home/js/downloads.js?v=4.44"></script>
-    <script src="/Static/home/js/ui.js?v=4.55"></script>
+    <script src="/Static/home/js/ui.js?v=4.56"></script>
+    <script src="/Static/home/js/mobile_app.js?v=1.0"></script>
 </body>
 
 </html>

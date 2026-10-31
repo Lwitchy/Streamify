@@ -68,6 +68,7 @@
             artist: s.artist || 'Unknown Artist',
             album: s.album || 'Single',
             album_uid: s.album_uid || null,
+            artist_uid: s.artist_uid || null,
             track_number: s.track_number || null,
             disc_number: s.disc_number || null,
             cover: s.cover,
@@ -435,7 +436,7 @@
             }
         }
         if (target.view === 'playlist' && target.id && typeof window.navigateToPlaylist === 'function') {
-            window.navigateToPlaylist(target.id);
+            window.navigateToPlaylist(target.id, { fromBack: true });
             return;
         }
         const libraryLink = $('library-link');

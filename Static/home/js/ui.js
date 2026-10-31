@@ -2830,8 +2830,15 @@ themeInputs.forEach(input => {
     /* ===================================================
      * PLAYLIST NAVIGATION & HANDLERS
      * =================================================== */
-    window.navigateToPlaylist = function (playlistId) {
+    window.navigateToPlaylist = function (playlistId, { fromHistory = false, fromBack = false } = {}) {
         if (!playlistId) return;
+
+        // Remember where we came from so Back returns there (shared with the
+        // album, artist, Liked Songs and Home pages via StreamifyNav).
+        const alreadyHere = window.currentActiveView === 'playlist' &&
+            [window.requestedPlaylistId, window.currentPlaylistId, window.currentPlaylistShareId]
+                .some(id => id !== null && id !== undefined && String(id) === String(playlistId));
+        if (!fromBack && !alreadyHere && window.StreamifyNav) window.StreamifyNav.rememberOrigin();
 
         if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
         window.lastViewBeforePlaylist = window.currentActiveView;
@@ -2839,7 +2846,7 @@ themeInputs.forEach(input => {
         window.requestedPlaylistId = playlistId;
         window.currentPlaylistId = null;
 
-        if (window.location.hash !== `#playlist-${playlistId}`) {
+        if (!fromHistory && window.location.hash !== `#playlist-${playlistId}`) {
             history.pushState({ view: 'playlist', id: playlistId }, '', `/home#playlist-${playlistId}`);
         }
 
@@ -2858,14 +2865,8 @@ themeInputs.forEach(input => {
     const backFromPlaylistBtn = document.getElementById('back-from-playlist-btn');
     if (backFromPlaylistBtn) {
         backFromPlaylistBtn.addEventListener('click', () => {
-            const lastView = window.lastViewBeforePlaylist || 'home';
-            if (lastView === 'library') {
-                libraryLink && libraryLink.click();
-            } else if (lastView === 'people') {
-                libraryLink && libraryLink.click();
-            } else {
-                libraryLink && libraryLink.click();
-            }
+            if (window.StreamifyNav) window.StreamifyNav.goBack();
+            else if (libraryLink) libraryLink.click();
         });
     }
 
@@ -3199,7 +3200,7 @@ themeInputs.forEach(input => {
             } else if (hash.startsWith('#playlist-')) {
                 const pid = hash.replace('#playlist-', '');
                 if (typeof window.navigateToPlaylist === 'function') {
-                    window.navigateToPlaylist(pid);
+                    window.navigateToPlaylist(pid, { fromHistory: true });
                 }
                 return;
             } else if (hash.startsWith('#post-')) {

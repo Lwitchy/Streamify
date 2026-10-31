@@ -289,7 +289,99 @@
         .hidden {
             display: none !important;
         }
+
+        /* --- Native screen layout (no floating card) ----------------------
+           Matches the in-app login: brand gradient, full-width controls,
+           safe areas with a floor because WKWebView can report them as 0. */
+        :root {
+            --brand-1: #4169e1;
+            --brand-2: #8164d7;
+            --brand-glow: rgba(129, 100, 215, 0.28);
+            --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-top-min, 0px));
+            --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-bottom-min, 0px));
+        }
+
+        html, body { overscroll-behavior: none; }
+
+        body {
+            justify-content: flex-start;
+            padding: calc(var(--safe-top) + 56px) 24px calc(var(--safe-bottom) + 24px);
+            background-image:
+                radial-gradient(circle at 0% 0%, rgba(65, 105, 225, 0.22), transparent 55%),
+                radial-gradient(circle at 100% 20%, rgba(129, 100, 215, 0.16), transparent 50%);
+        }
+
+        .ambient-glow { display: none; }
+
+        .container { margin: 0 auto; flex: 1 0 auto; justify-content: center; }
+
+        .logo-wrap { margin-bottom: 36px; gap: 14px; }
+
+        .logo-icon {
+            width: 76px;
+            height: 76px;
+            border-radius: 22px;
+            background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
+            box-shadow: 0 14px 36px var(--brand-glow);
+        }
+
+        h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
+        p.subtitle { font-size: 16px; }
+
+        .card {
+            background: none;
+            border: 0;
+            border-radius: 0;
+            padding: 0;
+            box-shadow: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+
+        .btn {
+            min-height: 56px;
+            border-radius: 16px;
+            font-size: 16px;
+            background: linear-gradient(90deg, var(--brand-1), var(--brand-2));
+            color: #fff;
+        }
+
+        .btn.secondary {
+            background: rgba(255, 255, 255, 0.08);
+            margin-top: 12px;
+        }
+
+        input[type="text"], input[type="url"] {
+            min-height: 56px;
+            font-size: 16px; /* no iOS focus zoom */
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        input[type="text"]:focus, input[type="url"]:focus {
+            border-color: var(--brand-2);
+            box-shadow: 0 0 0 4px var(--brand-glow);
+        }
+
+        .divider { margin: 24px 0; }
+        .scanner-wrap { border-radius: 24px; }
+        .reticle { border-color: rgba(129, 100, 215, 0.85); animation: none; }
+        .spinner { border-top-color: var(--brand-2); }
+        #offline-anyway-btn { background: rgba(129, 100, 215, 0.18) !important; color: #b8a6ff !important; }
     </style>
+    <script>
+        /* Safe-area floor for the launch where WKWebView reports 0px insets. */
+        (function () {
+            if (!/iPhone|iPod/.test(navigator.userAgent || '')) return;
+            var r = document.documentElement, h = Math.max(screen.width, screen.height);
+            var top = 20, bottom = 0;
+            try { top = parseFloat(localStorage.getItem('streamify_safe_top_portrait')) || 0; bottom = parseFloat(localStorage.getItem('streamify_safe_bottom_portrait')) || 0; } catch (e) {}
+            if (!top) top = h >= 874 ? 62 : h >= 852 ? 59 : h >= 812 ? 47 : 20;
+            if (!bottom) bottom = h >= 812 ? 34 : 0;
+            r.style.setProperty('--safe-top-min', top + 'px');
+            r.style.setProperty('--safe-bottom-min', bottom + 'px');
+        })();
+    </script>
 </head>
 <body>
     <div class="ambient-glow"></div>

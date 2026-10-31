@@ -361,6 +361,13 @@ body {
     animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
+/* Set by player.js once the entrance has played. Without it, anything that
+   briefly overrides the animation (the mobile player does) restarts it and
+   the whole page fades in again, which looked like a refresh. */
+.content-container.entrance-done {
+    animation: none;
+}
+
 /* Cold-start paint gate. The app's existing animations are paused at frame
    zero while data, first-viewport covers, fonts, and retained player layers are
    prepared behind a static surface. Removing .app-booting resumes every

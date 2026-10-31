@@ -376,3 +376,184 @@
     border-radius: 8px;
     border: 1px solid rgba(255, 77, 77, 0.2);
   }
+
+  /* ===========================================================================
+     Phones / iOS app: no floating glass card. The form is the screen - large
+     left-aligned title, thumb-sized fields, full-width primary button - and
+     everything clears the notch / Dynamic Island and the home indicator.
+     --safe-top/--safe-bottom: env() with a measured floor (safe-area.js),
+     because WKWebView often reports the insets as 0px on launch.
+     ========================================================================= */
+  :root {
+    --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-top-min, 0px));
+    --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-bottom-min, 0px));
+  }
+
+  @media (max-width: 600px) {
+    html,
+    body {
+      overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding:
+        calc(var(--safe-top) + 72px)
+        max(24px, env(safe-area-inset-right, 0px))
+        calc(var(--safe-bottom) + 24px)
+        max(24px, env(safe-area-inset-left, 0px));
+      background-image:
+        radial-gradient(circle at 0% 0%, rgba(var(--gradient-1-rgb), 0.22), transparent 55%),
+        radial-gradient(circle at 100% 18%, rgba(var(--gradient-2-rgb), 0.16), transparent 50%);
+    }
+
+    .header {
+      top: calc(var(--safe-top) + 14px);
+      left: max(24px, env(safe-area-inset-left, 0px));
+    }
+
+    .header .brand h2 {
+      font-size: 26px;
+    }
+
+    .intro-text {
+      font-size: 54px;
+    }
+
+    /* Both forms share one grid cell, so the swap animation still works
+       but the page has a real height (it can scroll above the keyboard). */
+    .container {
+      width: 100%;
+      min-height: 0;
+      flex: 1 0 auto;
+      display: grid;
+      align-items: center;
+      justify-content: stretch;
+    }
+
+    body.loaded .container {
+      display: grid;
+    }
+
+    .form-wrapper {
+      position: relative;
+      grid-area: 1 / 1;
+      width: 100%;
+      padding: 0;
+      background: none;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.32, 0.72, 0, 1), filter 0.35s ease;
+    }
+
+    .form-wrapper.hidden {
+      transform: translateY(14px);
+      filter: blur(6px);
+    }
+
+    .wrapper-header {
+      text-align: left;
+      margin-bottom: 26px;
+    }
+
+    .wrapper-header h2 {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 8px;
+    }
+
+    .wrapper-header p {
+      font-size: 16px;
+      line-height: 1.4;
+    }
+
+    .input-box {
+      margin: 12px 0;
+    }
+
+    /* 16px stops iOS zooming into the field on focus */
+    .input-box input {
+      height: 56px;
+      font-size: 16px;
+      border-radius: 14px;
+      padding: 0 48px 0 18px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .input-box input:focus {
+      border-color: rgba(var(--gradient-2-rgb), 0.7);
+      box-shadow: 0 0 0 4px rgba(var(--gradient-2-rgb), 0.18);
+    }
+
+    .input-box i {
+      right: 18px;
+      font-size: 20px;
+    }
+
+    #loginForm > br {
+      display: none;
+    }
+
+    button.btn {
+      height: 56px;
+      margin-top: 18px;
+      border-radius: 16px;
+      font-size: 17px;
+      font-weight: 700;
+      -webkit-appearance: none;
+    }
+
+    button.btn:hover {
+      transform: none;
+    }
+
+    button.btn:active {
+      transform: scale(0.97);
+      opacity: 0.9;
+    }
+
+    .toggle-link {
+      margin-top: 22px;
+      font-size: 15px;
+    }
+
+    .toggle-link a {
+      display: inline-block;
+      padding: 8px 4px;
+    }
+
+    .security-badges {
+      margin: 16px 0 4px;
+      border-radius: 14px;
+    }
+
+    .failedText {
+      text-align: left;
+      font-size: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+    }
+
+    .loading-spinner {
+      left: 50%;
+      bottom: calc(var(--safe-bottom) + 40px);
+      margin-left: -20px;
+    }
+  }

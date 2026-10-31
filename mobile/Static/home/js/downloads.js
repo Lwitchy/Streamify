@@ -385,6 +385,15 @@
         return 'bx-time-five';
     }
 
+    /** "Connecting to a peer" is Soulseek wording; YouTube goes straight
+     * from searching to downloading, so stage text must follow the source. */
+    function stageLabel(item) {
+        const isYoutube = item.resolvedSource === 'youtube' || item.requestedSource === 'youtube';
+        if (item.stage === 'connecting') return isYoutube ? 'Starting download' : 'Connecting to peer';
+        if (item.stage === 'searching') return isYoutube ? 'Searching YouTube' : 'Looking for a source';
+        return STAGE_LABELS[item.stage] || 'Working';
+    }
+
     function queueItemMeta(item) {
         if (item.status === 'completed') {
             let sourceLabel = 'Soulseek';
@@ -395,7 +404,7 @@
         if (item.status === 'cancelled') return 'Cancelled.';
         if (item.status === 'queued') return 'Waiting in queue';
 
-        const parts = [STAGE_LABELS[item.stage] || 'Working'];
+        const parts = [stageLabel(item)];
         if (item.stage === 'downloading') {
             if (item.resolvedSource) {
                 let currentSource = 'Soulseek';

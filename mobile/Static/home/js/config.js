@@ -344,6 +344,10 @@ let shuffledPlaylist = [];      // Shuffled index order
 let currentIndex = -1;      // Current position in the playlist
 let activePlaylist = [];       // Frozen snapshot of the playlist being actively played (survives view changes)
 let activeShuffledPlaylist = []; // Shuffled order for the active playlist snapshot
+// Where the songs in currentPlaylist come from, for listening history:
+// { type: library | search | playlist | album | artist | home | liked | offline, id }
+let currentPlaybackContext = { type: 'library', id: null };
+let activePlaybackContext = { type: 'unknown', id: null }; // Snapshot taken when playback starts
 let isShuffle = false;   // Shuffle mode toggle
 let repeatMode = 0;       // 0: Off | 1: Repeat All | 2: Repeat One
 let currentActiveView = 'library'; // Active view (library | upload)

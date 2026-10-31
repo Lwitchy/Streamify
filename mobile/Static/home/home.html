@@ -7,18 +7,19 @@
     <title>Streamify | Home</title>
     <!-- Main CSS Split Modules -->
     <link rel="stylesheet" href="/Static/home/css/base.css?v=4.22">
-    <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.45">
+    <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.46">
     <link rel="stylesheet" href="/Static/home/css/components.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.10">
-    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.42">
+    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.52">
     <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.52">
-    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.38">
+    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.43">
     <link rel="stylesheet" href="/Static/home/css/downloads.css?v=4.34">
     <link rel="stylesheet" href="/Static/home/css/profile.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/toasts.css?v=4.8">
 
     <!-- Mobile Overrides (Must be last) -->
-<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.26" media="(max-width: 768px)">
+<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.31" media="(max-width: 768px)">
+    <link rel="stylesheet" href="/Static/home/css/mobile_app.css?v=1.1">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -40,7 +41,8 @@
     <link href="/Static/vendor/fonts/outfit.css?v=4.8" rel="stylesheet">
     <link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
     <link rel="stylesheet" href="/Static/vendor/cropperjs/cropper.min.css?v=4.8">
-<script src="/Static/home/js/experiments.js?v=4.35"></script>
+<script src="/Static/home/js/safe-area.js?v=1.0"></script>
+<script src="/Static/home/js/experiments.js?v=4.36"></script>
     <script src="/Static/home/js/theme.js?v=4.36"></script>
 </head>
 
@@ -64,9 +66,21 @@
             <nav class="sidebar-nav">
                 <ul>
                     <li>
+                        <a href="#" id="home-link">
+                            <i class='bx bx-home-alt-2'></i>
+                            <span>Home</span>
+                        </a>
+                    </li>
+                    <li>
                         <a href="#" id="library-link">
                             <i class='bx bx-library'></i>
                             <span>Your Library</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" id="liked-songs-link">
+                            <i class='bx bxs-heart'></i>
+                            <span>Liked Songs</span>
                         </a>
                     </li>
                     <li class="owner-only-nav hidden">
@@ -148,6 +162,12 @@
         <!-- Content Container -->
         <div class="content-container">
 
+            <!-- Home Section (personal landing page, hidden until routed) -->
+            <section class="home-section hidden" id="home-section" aria-labelledby="home-greeting">
+                <h2 class="home-greeting" id="home-greeting">Welcome</h2>
+                <div class="home-sections" id="home-sections"></div>
+            </section>
+
             <!-- Search Section (Hidden by default) -->
             <section class="search-section hidden" id="search-section">
                 <h2 class="section-title">Search Results</h2>
@@ -166,12 +186,27 @@
                     <!-- Songs injected here -->
                     <p style="padding:10px; color:#b3b3b3;">No songs found.</p>
                 </div>
+
+                <div class="search-albums-block hidden" id="search-albums-block">
+                    <h3 style="margin-top:30px; margin-bottom:10px; font-size: 1.2rem; color: #fff;">Albums</h3>
+                    <div class="album-grid album-grid--compact" id="search-albums-grid"></div>
+                </div>
             </section>
 
             <!-- Library Section (song list, hidden by default) -->
             <section class="trending hidden" id="trending-section">
                 <div class="library-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                    <h2 class="section-title" style="margin-bottom: 0;">Your Library</h2>
+                    <div class="library-heading">
+                        <h2 class="section-title" style="margin-bottom: 0;">Your Library</h2>
+                        <div class="library-tabs" role="tablist" aria-label="Library view">
+                            <button type="button" class="library-tab active" role="tab" id="library-tab-songs"
+                                data-library-tab="songs" aria-selected="true" aria-controls="trending-list">Songs</button>
+                            <button type="button" class="library-tab" role="tab" id="library-tab-albums"
+                                data-library-tab="albums" aria-selected="false" aria-controls="library-albums-grid" tabindex="-1">Albums</button>
+                            <button type="button" class="library-tab" role="tab" id="library-tab-artists"
+                                data-library-tab="artists" aria-selected="false" aria-controls="library-artists-grid" tabindex="-1">Artists</button>
+                        </div>
+                    </div>
                     <div class="library-section-actions" style="display: flex; gap: 8px;">
                         <button type="button" id="batch-ai-enrich-btn" class="manage-btn hidden" title="Review library metadata" aria-label="Open Smart Metadata Review">
                             <i class='bx bxs-magic-wand'></i>
@@ -214,6 +249,12 @@
                         <span></span>
                     </div>
                     <!-- Loaded via API -->
+                </div>
+                <div class="album-grid hidden" id="library-albums-grid" role="tabpanel" aria-labelledby="library-tab-albums">
+                    <!-- Album cards rendered by albums.js -->
+                </div>
+                <div class="artist-grid hidden" id="library-artists-grid" role="tabpanel" aria-labelledby="library-tab-artists">
+                    <!-- Artist cards rendered by artists.js -->
                 </div>
             </section>
 
@@ -446,6 +487,147 @@
             </section>
 
             <!-- Playlist Detail Section (hidden by default) -->
+            <section class="artist-detail-section hidden" id="artist-detail-section" aria-labelledby="artist-detail-name">
+                <div class="playlist-detail-header">
+                    <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-artist-btn">
+                        <i class='bx bx-arrow-back'></i> Back
+                    </button>
+                    <div class="playlist-detail-actions hidden" id="artist-photo-actions">
+                        <input type="file" id="artist-photo-input" accept="image/jpeg,image/png" hidden>
+                        <button class="btn btn-outline btn-sm" id="artist-photo-change" title="Upload a photo for this artist">
+                            <i class='bx bx-camera'></i> Change photo
+                        </button>
+                        <button class="btn btn-outline btn-sm btn-danger-outline hidden" id="artist-photo-remove" title="Remove this artist's photo">
+                            <i class='bx bx-trash'></i> Remove photo
+                        </button>
+                    </div>
+                </div>
+                <div class="artist-hero" id="artist-hero">
+                    <div class="artist-image artist-hero-image" id="artist-detail-image"></div>
+                    <div class="artist-hero-meta">
+                        <span class="album-hero-kind">Artist</span>
+                        <h2 class="artist-hero-name" id="artist-detail-name">Artist</h2>
+                        <p class="playlist-detail-count" id="artist-detail-meta"></p>
+                        <div class="album-hero-actions">
+                            <button type="button" class="album-play-btn" id="artist-play-btn" aria-label="Play artist">
+                                <i class='bx bx-play'></i> Play
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm album-shuffle-btn" id="artist-shuffle-btn" aria-label="Shuffle artist">
+                                <i class='bx bx-shuffle'></i> Shuffle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="artist-block hidden" id="artist-popular-block">
+                    <h3 class="artist-block-title" id="artist-popular-title">Popular</h3>
+                    <div class="song-list" id="artist-tracks-list">
+                        <div class="song-row header-row"
+                            style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                            <span>#</span>
+                            <span>Title</span>
+                            <span>Album</span>
+                            <span>Uploaded By</span>
+                            <span><i class='bx bx-time'></i></span>
+                            <span></span>
+                        </div>
+                    </div>
+                    <button type="button" class="artist-tracks-toggle hidden" id="artist-tracks-toggle">Show all</button>
+                </div>
+                <div class="artist-block hidden" id="artist-albums-block">
+                    <h3 class="artist-block-title">Albums</h3>
+                    <div class="album-grid album-grid--compact" id="artist-albums-grid"></div>
+                </div>
+                <div class="artist-block hidden" id="artist-appears-block">
+                    <h3 class="artist-block-title">Appears On</h3>
+                    <div class="album-grid album-grid--compact" id="artist-appears-grid"></div>
+                </div>
+            </section>
+
+            <section class="playlist-detail-section album-detail-section liked-songs-section hidden" id="liked-songs-section" aria-labelledby="liked-detail-title">
+                <div class="playlist-detail-header">
+                    <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-liked-btn">
+                        <i class='bx bx-arrow-back'></i> Back
+                    </button>
+                    <div class="playlist-detail-actions">
+                        <button class="btn btn-outline btn-sm" id="download-liked-btn" title="Download Liked Songs Offline">
+                            <i class='bx bx-cloud-download'></i> Download
+                        </button>
+                    </div>
+                </div>
+                <div class="playlist-detail-info album-hero">
+                    <div class="playlist-detail-cover album-hero-cover liked-cover" aria-hidden="true">
+                        <i class='bx bxs-heart'></i>
+                    </div>
+                    <div class="playlist-detail-meta album-hero-meta">
+                        <span class="album-hero-kind">Playlist</span>
+                        <h2 class="playlist-detail-name" id="liked-detail-title">Liked Songs</h2>
+                        <p class="playlist-detail-count" id="liked-detail-meta"></p>
+                        <div class="album-hero-actions">
+                            <button type="button" class="album-play-btn" id="liked-play-btn" aria-label="Play Liked Songs">
+                                <i class='bx bx-play'></i> Play
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm album-shuffle-btn" id="liked-shuffle-btn" aria-label="Shuffle Liked Songs">
+                                <i class='bx bx-shuffle'></i> Shuffle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="song-list" id="liked-tracks-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                        <span></span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="playlist-detail-section album-detail-section hidden" id="album-detail-section" aria-labelledby="album-detail-title">
+                <div class="playlist-detail-header">
+                    <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-album-btn">
+                        <i class='bx bx-arrow-back'></i> Back
+                    </button>
+                    <div class="playlist-detail-actions">
+                        <button class="btn btn-outline btn-sm" id="download-album-btn" title="Download Album Offline">
+                            <i class='bx bx-cloud-download'></i> Download
+                        </button>
+                    </div>
+                </div>
+                <div class="playlist-detail-info album-hero">
+                    <div class="playlist-detail-cover album-hero-cover">
+                        <img id="album-detail-cover" alt="" decoding="async">
+                    </div>
+                    <div class="playlist-detail-meta album-hero-meta">
+                        <span class="album-hero-kind" id="album-detail-kind">Album</span>
+                        <h2 class="playlist-detail-name" id="album-detail-title">Album</h2>
+                        <p class="album-hero-artist" id="album-detail-artist"></p>
+                        <p class="playlist-detail-count" id="album-detail-meta"></p>
+                        <div class="album-hero-actions">
+                            <button type="button" class="album-play-btn" id="album-play-btn" aria-label="Play album">
+                                <i class='bx bx-play'></i> Play
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm album-shuffle-btn" id="album-shuffle-btn" aria-label="Shuffle album">
+                                <i class='bx bx-shuffle'></i> Shuffle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="song-list" id="album-tracks-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                        <span></span>
+                    </div>
+                </div>
+            </section>
+
             <section class="playlist-detail-section hidden" id="playlist-detail-section">
                 <div class="playlist-detail-header">
                     <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-playlist-btn">
@@ -526,9 +708,9 @@
             <div class="dedicated-player-backdrop" id="dedicated-player-backdrop"></div>
 
             <div class="dedicated-header">
-                <button class="btn btn-outline btn-sm" id="close-dedicated-player"
+                <button class="btn btn-outline btn-sm" id="close-dedicated-player" aria-label="Close player"
                     style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 8px 16px; margin-right: auto; z-index: 10;">
-                    <i class='bx bx-arrow-back'></i> Back
+                    <i class='bx bx-arrow-back dedicated-back-icon'></i><i class='bx bx-chevron-down dedicated-down-icon' aria-hidden="true"></i><span class="dedicated-back-label"> Back</span>
                 </button>
                 <div class="dedicated-header-text">Now Playing</div>
                 <div style="width: 80px;"></div> <!-- spacer -->
@@ -549,6 +731,8 @@
                                 <h2 id="dedicated-player-title">Select a Song</h2>
                                 <h3 id="dedicated-player-artist">...</h3>
                             </div>
+                            <button type="button" class="player-like-btn dedicated-like-btn" id="dedicated-like-btn" data-like-current
+                                aria-label="Save to Liked Songs" aria-pressed="false" disabled><i class='bx bx-heart'></i></button>
                         </div>
 
                         <div class="dedicated-progress-container">
@@ -596,45 +780,96 @@
                     </div>
 
                     <div id="dedicated-lyrics-container" class="hidden">
-                        <div class="lyrics-header"
-                            style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 20px;">
-                            <button class="btn btn-outline btn-sm" id="close-lyrics-btn"
-                                style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                <i class='bx bx-x'></i> Close
+                        <div class="lyrics-header" id="lyrics-view-header">
+                            <button type="button" class="lyrics-pill" id="close-lyrics-btn" aria-label="Close lyrics">
+                                <i class='bx bx-x'></i><span>Close</span>
                             </button>
-
-                            <div id="lyric-editor-controls" class="hidden" style="display: flex; gap: 8px;">
-                                <button class="btn btn-sm" id="save-lyrics-btn"
-                                    style="background: var(--accent); color: var(--on-accent); border-radius: 30px; padding: 4px 16px; font-weight: 600;">
-                                    <i class='bx bx-check'></i> Save
+                            <div class="lyrics-header-actions">
+                                <button type="button" class="lyrics-pill" id="re-request-lyrics-btn" title="Search for different lyrics">
+                                    <i class='bx bx-search'></i><span>Find</span>
                                 </button>
-                                <button class="btn btn-outline btn-sm" id="clear-lyrics-btn"
-                                    style="border-radius: 30px; padding: 4px 12px; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
-                                    <i class='bx bx-trash'></i> Clear
-                                </button>
-                                <button class="btn btn-outline btn-sm" id="cancel-lyric-edit-btn"
-                                    style="border-radius: 30px; padding: 4px 12px;">
-                                    Cancel
-                                </button>
-                            </div>
-
-                            <div style="display: flex; gap: 8px; margin-left: auto;">
-                                <button class="btn btn-outline btn-sm" id="re-request-lyrics-btn"
-                                    style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                    <i class='bx bx-search'></i> Find Lyrics
-                                </button>
-                                <button class="btn btn-outline btn-sm" id="edit-lyrics-btn"
-                                    style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                    <i class='bx bx-edit-alt'></i> Edit Lyrics
+                                <button type="button" class="lyrics-pill" id="edit-lyrics-btn" title="Edit text or fix timing">
+                                    <i class='bx bx-edit-alt'></i><span>Edit</span>
                                 </button>
                             </div>
                         </div>
+
+                        <div class="lyric-editor hidden" id="lyric-editor" role="region" aria-label="Lyrics editor">
+                            <div class="lyric-editor-top">
+                                <button type="button" class="lyrics-pill" id="cancel-lyric-edit-btn">
+                                    <i class='bx bx-arrow-back'></i><span>Cancel</span>
+                                </button>
+                                <div class="lyric-editor-heading">
+                                    <strong>Edit lyrics</strong>
+                                    <span id="lyric-editor-status" aria-live="polite"></span>
+                                </div>
+                                <button type="button" class="lyrics-pill lyrics-pill-primary" id="save-lyrics-btn" title="Save (Ctrl+S)">
+                                    <i class='bx bx-check'></i><span>Save</span>
+                                </button>
+                            </div>
+                            <div class="lyric-editor-toolbar">
+                                <div class="lyric-editor-tabs" role="tablist" aria-label="Editor mode">
+                                    <button type="button" role="tab" data-lyric-tab="sync" aria-selected="true"><i class='bx bx-time-five'></i>Sync</button>
+                                    <button type="button" role="tab" data-lyric-tab="words" aria-selected="false" class="hidden" id="lyric-editor-words-tab"><i class='bx bx-font-size'></i>Words</button>
+                                    <button type="button" role="tab" data-lyric-tab="text" aria-selected="false"><i class='bx bx-text'></i>Text</button>
+                                </div>
+                                <div class="lyric-editor-transport">
+                                    <button type="button" data-lyric-seek="-2" title="Back 2s (&larr;)" aria-label="Back 2 seconds"><i class='bx bx-rewind'></i></button>
+                                    <button type="button" id="lyric-editor-play" class="is-play" title="Play / pause (Space)" aria-label="Play"><i class='bx bx-play'></i></button>
+                                    <button type="button" data-lyric-seek="2" title="Forward 2s (&rarr;)" aria-label="Forward 2 seconds"><i class='bx bx-fast-forward'></i></button>
+                                    <span class="lyric-editor-clock" id="lyric-editor-clock">0:00.00</span>
+                                </div>
+                            </div>
+                            <div class="lyric-editor-shift">
+                                <span class="lyric-editor-shift-label">Shift all</span>
+                                <button type="button" data-lyric-shift="-500">&minus;0.5s</button>
+                                <button type="button" data-lyric-shift="-100">&minus;0.1s</button>
+                                <button type="button" data-lyric-shift="100">+0.1s</button>
+                                <button type="button" data-lyric-shift="500">+0.5s</button>
+                                <button type="button" class="lyric-editor-remove" id="clear-lyrics-btn" title="Delete your saved lyrics and search again">
+                                    <i class='bx bx-trash'></i><span>Remove saved lyrics</span>
+                                </button>
+                            </div>
+                            <p class="lyric-editor-text-help">Paste plain lyrics or LRC lines like <code>[01:23.45] text</code>. Switch to <b>Sync</b> to time each line while the song plays.</p>
+                        </div>
+
                         <section class="lyrics-scroll-area" id="lyrics-scroll-area"
                             aria-label="Synchronized lyrics">
                             <div class="lyrics-content" id="lyrics-content">
                                 <!-- Lyrics lines injected here -->
                             </div>
                         </section>
+                        <textarea id="lyric-editor-text" class="lyric-editor-textarea hidden" spellcheck="false"
+                            aria-label="Lyrics text" placeholder="Paste or type lyrics here&#10;One line per row"></textarea>
+
+                        <div class="lyric-editor-footer hidden" id="lyric-editor-footer">
+                            <button type="button" class="lyric-tap-sync" id="lyric-tap-sync">
+                                <span class="lyric-tap-icon"><i class='bx bx-stopwatch'></i></span>
+                                <span class="lyric-tap-body">
+                                    <span class="lyric-tap-label">Sync line 1</span>
+                                    <span class="lyric-tap-text"></span>
+                                </span>
+                                <kbd>Enter</kbd>
+                            </button>
+                            <div class="lyric-word-tools">
+                                <button type="button" data-word-tool="undo"><i class='bx bx-undo'></i>Undo tap</button>
+                                <button type="button" data-word-tool="replay"><i class='bx bx-revision'></i>Replay line</button>
+                            </div>
+                            <div class="lyric-editor-hints lyric-editor-hints-words">
+                                <span><kbd>Space</kbd> play/pause</span>
+                                <span><kbd>Enter</kbd> tap word</span>
+                                <span><kbd>Backspace</kbd> undo</span>
+                                <span><kbd>R</kbd> replay line</span>
+                                <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> pick line</span>
+                            </div>
+                            <div class="lyric-editor-hints lyric-editor-hints-sync">
+                                <span><kbd>Space</kbd> play/pause</span>
+                                <span><kbd>Enter</kbd> sync line</span>
+                                <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> pick line</span>
+                                <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> seek</span>
+                                <span>Tap a time to replay it</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -651,6 +886,8 @@
                 <div class="track-name" id="player-title">Select a Song</div>
                 <div class="track-artist" id="player-artist">...</div>
             </div>
+            <button type="button" class="player-like-btn" id="player-like-btn" data-like-current
+                aria-label="Save to Liked Songs" aria-pressed="false" disabled><i class='bx bx-heart'></i></button>
         </div>
         <div class="player-center">
             <div class="player-controls">
@@ -719,31 +956,38 @@
 
     <!-- LYRICS SELECTION MODAL -->
     <div id="lyrics-selection-modal" class="modal-overlay hidden" style="z-index: 3000;">
-        <div class="modal-box" style="max-width: 600px;">
+        <div class="modal-box lyrics-picker" role="dialog" aria-modal="true" aria-labelledby="lyrics-picker-title">
             <div class="modal-header">
-                <h3>Select Lyrics</h3>
-                <i class='bx bx-x' id="close-lyrics-selection-modal"></i>
+                <h3 id="lyrics-picker-title">Find lyrics</h3>
+                <i class='bx bx-x' id="close-lyrics-selection-modal" role="button" tabindex="0" aria-label="Close"></i>
             </div>
             <div class="modal-body">
-                <div style="margin-bottom: 15px; display: flex; gap: 10px;">
-                    <input type="text" id="lyrics-search-title" class="form-control" placeholder="Song Title"
-                        style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
-                    <input type="text" id="lyrics-search-artist" class="form-control" placeholder="Artist"
-                        style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
-                    <button class="btn" id="lyrics-search-btn"
-                        style="background: var(--accent); color: var(--on-accent); border-radius: 4px; padding: 8px 16px; font-weight: bold;">Search</button>
+                <p class="lyrics-picker-track" id="lyrics-selection-track"></p>
+                <form class="lyrics-picker-search" id="lyrics-search-form" autocomplete="off">
+                    <label>
+                        <span>Title</span>
+                        <input type="text" id="lyrics-search-title" placeholder="Song title" required>
+                    </label>
+                    <label>
+                        <span>Artist</span>
+                        <input type="text" id="lyrics-search-artist" placeholder="Artist (optional)">
+                    </label>
+                    <button type="submit" class="lyrics-picker-go" id="lyrics-search-btn"><i class='bx bx-search'></i><span>Search</span></button>
+                </form>
+                <div id="lyrics-selection-loading" class="lyrics-picker-state hidden">
+                    <i class='bx bx-loader-alt bx-spin'></i>
+                    <p>Searching LRCLIB&hellip;</p>
                 </div>
-                <div id="lyrics-selection-loading" class="hidden" style="text-align: center; padding: 20px;">
-                    <i class='bx bx-loader-alt bx-spin' style="font-size: 24px;"></i>
-                    <p>Searching for lyrics...</p>
-                </div>
-                <div id="lyrics-selection-results"
-                    style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
+                <div id="lyrics-selection-results" class="lyrics-picker-results">
                     <!-- Results will be injected here -->
                 </div>
-                <div id="lyrics-selection-empty" class="hidden"
-                    style="text-align: center; padding: 20px; color: #b3b3b3;">
-                    No lyrics found. Try searching with different terms.
+                <div id="lyrics-selection-empty" class="lyrics-picker-state hidden">
+                    <i class='bx bx-music'></i>
+                    <p>No lyrics found. Try a shorter title or remove the artist.</p>
+                </div>
+                <div class="lyrics-picker-footer">
+                    <span>Can't find the right ones?</span>
+                    <button type="button" class="lyrics-pill" data-lyrics-write-own><i class='bx bx-edit-alt'></i><span>Paste or write your own</span></button>
                 </div>
             </div>
         </div>
@@ -956,6 +1200,106 @@
                                 </label>
                             </div>
                         </div>
+                                            <section class="lyrics-appearance" aria-labelledby="lyrics-appearance-title">
+                            <div class="appearance-heading">
+                                <h4 id="lyrics-appearance-title">Lyrics</h4>
+                                <p>How lyrics look in the player. Saved on this device.</p>
+                            </div>
+
+                            <div class="lyrics-preview" aria-hidden="true">
+                                <div class="lyrics-preview-line">
+                                    <span class="lp-word is-sung">I</span>
+                                    <span class="lp-word is-sung">just</span>
+                                    <span class="lp-word is-sung">wanna</span>
+                                    <span class="lp-word is-singing">stay</span>
+                                    <span class="lp-word">in</span>
+                                    <span class="lp-word">that</span>
+                                    <span class="lp-word is-held">haze</span>
+                                </div>
+                                <div class="lyrics-preview-next">That lavender haze</div>
+                            </div>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Enhanced lyrics</legend>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-size-label">Text size</span>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-size-label">
+                                        <label><input type="radio" name="lyrics-size" value="small"><span>Small</span></label>
+                                        <label><input type="radio" name="lyrics-size" value="default"><span>Default</span></label>
+                                        <label><input type="radio" name="lyrics-size" value="large"><span>Large</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-glow-label">Glow</span>
+                                        <p>Soft light around the line being sung.</p>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-glow-label">
+                                        <label><input type="radio" name="lyrics-glow" value="off"><span>Off</span></label>
+                                        <label><input type="radio" name="lyrics-glow" value="soft"><span>Soft</span></label>
+                                        <label><input type="radio" name="lyrics-glow" value="strong"><span>Strong</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="lyrics-bold-toggle">Bold lyrics</label>
+                                        <p>Heavier lettering for every line.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="lyrics-bold-toggle" data-lyrics-pref="bold">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="lyrics-held-glow-toggle">Glowing held notes</label>
+                                        <p>Long, held words light up as they're sung, brightest at the end of a line. Needs word-by-word lyrics.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="lyrics-held-glow-toggle" data-lyrics-pref="heldGlow">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="lyrics-motion-toggle">Word animations</label>
+                                        <p>Words gently rise as they're sung and letters wave on held notes.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="lyrics-motion-toggle" data-lyrics-pref="motion">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </fieldset>
+                        </section>
+
+                        <section class="artist-appearance" aria-labelledby="artist-appearance-title">
+                            <div class="appearance-heading">
+                                <h4 id="artist-appearance-title">Artist pages</h4>
+                                <p>How artist pages look. Saved on this device.</p>
+                            </div>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Header</legend>
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="artist-header-label">Header style</span>
+                                        <p>Wide stretches the artist photo backdrop edge to edge, right under the top bar.</p>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="artist-header-label">
+                                        <label><input type="radio" name="artist-header" value="wide"><span>Wide</span></label>
+                                        <label><input type="radio" name="artist-header" value="card"><span>Card</span></label>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </section>
                     </div>
 
                     <!-- Experimental Features Tab -->
@@ -979,6 +1323,42 @@
                                 <input type="checkbox" id="experimental-themes-toggle"
                                     aria-label="Enable experimental Themes"
                                     aria-describedby="experimental-themes-description">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="settings-toggle-row experimental-feature-row">
+                            <div>
+                                <div class="experimental-feature-title">
+                                    <strong>Estimated word-by-word lyrics</strong>
+                                </div>
+                                <span class="experimental-feature-description" id="experimental-estimated-words-description">
+                                    Gives line-synced lyrics the word-by-word fill by spreading each line's time across its words.
+                                    Timing is approximate. Songs with real word timing always use it instead.
+                                </span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="experimental-estimated-words-toggle" data-experiment="lyricsEstimatedWords"
+                                    aria-label="Enable estimated word-by-word lyrics"
+                                    aria-describedby="experimental-estimated-words-description">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="settings-toggle-row experimental-feature-row">
+                            <div>
+                                <div class="experimental-feature-title">
+                                    <strong>Word timing editor</strong>
+                                </div>
+                                <span class="experimental-feature-description" id="experimental-word-tapping-description">
+                                    Adds a Words tab to the lyrics editor so you can tap along to each word and record exact
+                                    word-by-word timing for a song.
+                                </span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="experimental-word-tapping-toggle" data-experiment="lyricsWordTapping"
+                                    aria-label="Enable the word timing editor"
+                                    aria-describedby="experimental-word-tapping-description">
                                 <span class="slider"></span>
                             </label>
                         </div>
@@ -1147,6 +1527,19 @@
                                 <button type="submit" class="btn" data-save-metadata>Save changes</button>
                             </div>
                         </form>
+
+                        <div class="artist-photo-setting">
+                            <div>
+                                <strong style="display: block; font-size: 14px; margin-bottom: 4px;">Download artist photos</strong>
+                                <span style="font-size: 12px; color: #888;">Look up a photo for each artist on Deezer. Only the
+                                    artist's name is sent, and photos are saved on this server. Photos you upload on an artist
+                                    page are always kept.</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="artist-photos-online-toggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
                     </div>
 
                     <!-- Downloads Tab (Owner only) -->
@@ -1256,6 +1649,19 @@
                             <button id="download-data-btn" class="btn btn-outline"
                                 style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
                                 <i class='bx bx-cloud-download'></i> Request Data Export
+                            </button>
+
+                            <h4 style="margin: 25px 0 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <i class='bx bx-history' style="color: var(--accent);"></i>
+                                Listening History
+                            </h4>
+                            <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">
+                                Your history powers Home, your top artists and your stats. Clearing it removes every
+                                recorded play and listening total for your account. This cannot be undone.
+                            </p>
+                            <button id="clear-history-btn" class="btn btn-outline"
+                                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <i class='bx bx-trash'></i> Clear Listening History
                             </button>
                         </div>
                     </div>
@@ -2085,19 +2491,26 @@
          It powers live download progress. Loaded before the page scripts so
          window.io exists by the time downloads.js connects. -->
     <script src="/socket.io/socket.io.js"></script>
-    <script src="/Static/home/js/config.js?v=4.22"></script>
+    <script src="/Static/home/js/config.js?v=4.23"></script>
     <script src="/Static/vendor/cropperjs/cropper.min.js?v=4.8"></script>
     <script src="/Static/home/js/offline.js?v=4.38"></script>
+    <script src="/Static/home/js/telemetry.js?v=1.0"></script>
     <!-- Must load before player.js: loadSong() and syncPlaybackUI() call into
          window.StreamifyDiscord as soon as playback starts. -->
     <script src="/Static/home/js/discord.js?v=4.33"></script>
     <!-- Must load before ui.js: activateSettingsTab() calls into
          window.StreamifyUpdates when the Updates pane is opened. -->
     <script src="/Static/home/js/updates.js?v=4.46"></script>
-    <script src="/Static/home/js/player.js?v=4.43"></script>
-    <script src="/Static/home/js/api_v2.js?v=4.42"></script>
+    <script src="/Static/home/js/player.js?v=4.48"></script>
+    <script src="/Static/home/js/lyrics.js?v=1.5"></script>
+    <script src="/Static/home/js/api_v2.js?v=4.45"></script>
+    <script src="/Static/home/js/albums.js?v=1.4"></script>
+    <script src="/Static/home/js/likes.js?v=1.0"></script>
+    <script src="/Static/home/js/artists.js?v=1.2"></script>
+    <script src="/Static/home/js/homepage.js?v=1.0"></script>
     <script src="/Static/home/js/downloads.js?v=4.44"></script>
-    <script src="/Static/home/js/ui.js?v=4.51"></script>
+    <script src="/Static/home/js/ui.js?v=4.56"></script>
+    <script src="/Static/home/js/mobile_app.js?v=1.0"></script>
 </body>
 
 </html>
