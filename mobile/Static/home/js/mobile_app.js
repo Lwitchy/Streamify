@@ -265,3 +265,70 @@
     document.addEventListener('touchend', finish, { passive: true });
     document.addEventListener('touchcancel', finish, { passive: true });
 })();
+
+/*
+ * No sticky hover on touch screens.
+ *
+ * iOS applies :hover to whatever was last touched and keeps it there, so
+ * after scrolling a song row (or a card, button...) stayed highlighted as if
+ * the mouse were on it. On devices with no hover-capable pointer, the
+ * :hover parts of every stylesheet rule are removed once at startup:
+ *   ".row:hover"                       -> rule removed
+ *   ".btn:hover, .btn:focus-visible"   -> ".btn:focus-visible"
+ * Desktop (and iPad with a trackpad/mouse) keeps hover untouched.
+ */
+(function () {
+    'use strict';
+    var touchOnly = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    if (!touchOnly) return;
+
+    // Lets iOS show :active (tap feedback) on any element.
+    document.addEventListener('touchstart', function () {}, { passive: true });
+
+    function splitSelectors(text) {
+        // Split on top-level commas only (not inside :is()/:not()/[attr]).
+        var out = [], depth = 0, cur = '';
+        for (var i = 0; i < text.length; i++) {
+            var c = text[i];
+            if (c === '(' || c === '[') depth++;
+            else if (c === ')' || c === ']') depth--;
+            if (c === ',' && depth === 0) { out.push(cur.trim()); cur = ''; } else cur += c;
+        }
+        if (cur.trim()) out.push(cur.trim());
+        return out;
+    }
+
+    function prune(list) {
+        for (var i = list.length - 1; i >= 0; i--) {
+            var rule = list[i];
+            if (rule.cssRules && rule.type !== 1) {      // @media, @supports, @layer...
+                prune(rule.cssRules);
+                continue;
+            }
+            if (rule.type !== 1 || !rule.selectorText || rule.selectorText.indexOf(':hover') === -1) continue;
+            var keep = splitSelectors(rule.selectorText).filter(function (sel) { return sel.indexOf(':hover') === -1; });
+            try {
+                if (keep.length) rule.selectorText = keep.join(', ');
+                else if (rule.parentRule) rule.parentRule.deleteRule(i);
+                else rule.parentStyleSheet.deleteRule(i);
+            } catch (e) { /* leave rule as is */ }
+        }
+    }
+
+    var done = typeof WeakSet === 'function' ? new WeakSet() : null;
+    function run() {
+        var sheets = document.styleSheets;
+        for (var i = 0; i < sheets.length; i++) {
+            var sheet = sheets[i];
+            if (done && done.has(sheet)) continue;
+            var rules;
+            try { rules = sheet.cssRules; } catch (e) { continue; } // cross-origin sheet
+            if (!rules) continue;
+            prune(rules);
+            if (done) done.add(sheet);
+        }
+    }
+
+    run();
+    window.addEventListener('load', run);
+})();

@@ -1,6 +1,6 @@
 // Bump this whenever cached app-shell assets change. Old shell caches are
 // removed during activation so clients cannot retain stale CSS or JavaScript.
-const CACHE_NAME = 'streamify-app-shell-v114';
+const CACHE_NAME = 'streamify-app-shell-v115';
 const MEDIA_CACHE_PREFIX = 'streamify-media-cache-';
 const OFFLINE_STATE_CACHE_NAME = 'streamify-offline-state-v1';
 const ACTIVE_USER_STATE_URL = '/__streamify_offline_state__/active-user';
@@ -53,7 +53,7 @@ const APP_SHELL = [
   '/Static/home/js/homepage.js?v=1.0',
   '/Static/home/js/downloads.js?v=4.44',
   '/Static/home/js/ui.js?v=4.56',
-  '/Static/home/js/mobile_app.js?v=1.1'
+  '/Static/home/js/mobile_app.js?v=1.2'
 ];
 
 let activeUserKey;

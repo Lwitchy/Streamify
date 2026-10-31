@@ -1265,11 +1265,42 @@ app.use('/api/', (req, res, next) => {
 // is checked first and falls through to the bundled assets.
 // When DATA_ROOT === REPO_ROOT (a normal git clone) both point at the same
 // place and this behaves exactly as it did before.
-if (RT.DATA_ROOT !== RT.REPO_ROOT) {
-    app.use('/Static', express.static(path.join(RT.DATA_ROOT, 'Static')));
+//
+// Cache policy for user media. express.static defaults to max-age=0, so every
+// cover / artist photo was re-validated with the server on each view - on a
+// phone over Wi-Fi (or with the server asleep) images visibly reloaded or
+// went blank. Now:
+//   - URLs that change whenever the image changes are cached for a year:
+//     versioned covers (?v=<mtime>), artist photos (<uid>-<hash>.jpg) and
+//     generated album covers (smart_cover_<id>_<uuid>.jpg).
+//   - Media whose filename is reused after an edit (avatars/<user>.jpg,
+//     covers/playlist_<id>.jpg, banners) is fresh for an hour, then
+//     re-validated cheaply via ETag (304).
+// App HTML/CSS/JS is unaffected (it is versioned with ?v= in home.html).
+const MEDIA_IMMUTABLE = 'public, max-age=31536000, immutable';
+const MEDIA_SHORT = 'public, max-age=3600';
+function setMediaCacheHeaders(res, filePath) {
+    const rel = path.relative(RT.paths.static, filePath).split(path.sep).join('/');
+    const dataRel = RT.DATA_ROOT !== RT.REPO_ROOT
+        ? path.relative(path.join(RT.DATA_ROOT, 'Static'), filePath).split(path.sep).join('/')
+        : rel;
+    const media = [rel, dataRel].find(r => /^(covers|avatars|banners|artists)\//.test(r))
+        || (filePath.startsWith(RT.paths.covers) ? 'covers/' + path.basename(filePath) : null)
+        || (filePath.startsWith(RT.paths.artists) ? 'artists/' + path.basename(filePath) : null);
+    if (!media) return;
+    const req = res.req;
+    const versioned = Boolean(req && req.query && req.query.v);
+    const contentNamed = /^artists\/[a-f0-9]{20}-[a-f0-9]{8}\.jpg$/.test(media)
+        || /^covers\/smart_cover_[A-Za-z0-9-]+_[0-9a-f-]{36}\.(?:jpe?g|png|webp)$/.test(media);
+    res.setHeader('Cache-Control', versioned || contentNamed ? MEDIA_IMMUTABLE : MEDIA_SHORT);
 }
-app.use('/Static', express.static(RT.paths.static));
-app.use('/banners', express.static(RT.paths.banners)); // Quick access to banners
+const staticOptions = { setHeaders: setMediaCacheHeaders };
+
+if (RT.DATA_ROOT !== RT.REPO_ROOT) {
+    app.use('/Static', express.static(path.join(RT.DATA_ROOT, 'Static'), staticOptions));
+}
+app.use('/Static', express.static(RT.paths.static, staticOptions));
+app.use('/banners', express.static(RT.paths.banners, { setHeaders: res => res.setHeader('Cache-Control', MEDIA_SHORT) })); // Quick access to banners
 app.use('/special/', express.static(path.join(RT.paths.static, 'home', 'special'))); // Special assets for 404 page
 
 // --- Multer Configuration ---
