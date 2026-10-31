@@ -117,3 +117,151 @@
     document.addEventListener('touchend', endDrag, { passive: true });
     document.addEventListener('touchcancel', endDrag, { passive: true });
 })();
+
+/*
+ * Edge swipe back (iOS "interactive pop").
+ *
+ * Drag from the left edge of the screen to the right: the current page
+ * follows the finger and, if released past ~35% of the width (or flicked),
+ * slides off and the page's own Back button is pressed. That reuses each
+ * page's existing back logic (StreamifyNav.goBack, the profile handler...),
+ * so history and highlights behave exactly as if Back had been tapped.
+ *
+ * On top-level pages (Home, Library, ...) there is nothing to go back to, so
+ * the same gesture opens the side menu instead.
+ */
+(function () {
+    'use strict';
+
+    var PHONE = window.matchMedia ? window.matchMedia('(max-width: 768px)') : { matches: false };
+    var EDGE = 28;               // px from the left edge where the gesture may start
+    var BACK_SELECTOR = '.playlist-back-btn, #back-from-profile-btn';
+
+    function activeSection() {
+        return document.querySelector('.content-container > section:not(.hidden):not(#player-section)');
+    }
+
+    function visibleBackButton(section) {
+        if (!section) return null;
+        var buttons = section.querySelectorAll(BACK_SELECTOR);
+        for (var i = 0; i < buttons.length; i++) {
+            var b = buttons[i];
+            if (!b.disabled && b.getClientRects().length && getComputedStyle(b).visibility !== 'hidden') return b;
+        }
+        return null;
+    }
+
+    function blocked() {
+        var body = document.body;
+        if (!body) return true;
+        if (body.classList.contains('player-section-active') || body.classList.contains('player-is-dismissing')) return true;
+        if (document.querySelector('.modal-overlay:not(.hidden)')) return true;
+        var sidebar = document.querySelector('.sidebar');
+        if (sidebar && sidebar.classList.contains('mobile-active')) return true;
+        return false;
+    }
+
+    /* A finished `forwards` entrance animation would override the inline
+       drag transform. Turning it off and back on later would replay it (the
+       old "page refreshes" bug), so it stays off until the page is next
+       hidden or re-animated by real navigation. */
+    function freezeEntrance(section) {
+        section.style.animation = 'none';
+        if (section._edgeFreeze) return;
+        var obs = new MutationObserver(function () {
+            if (section.classList.contains('hidden') || section.classList.contains('fade-in-animate')) {
+                obs.disconnect();
+                section._edgeFreeze = null;
+                section.style.animation = '';
+            }
+        });
+        section._edgeFreeze = obs;
+        obs.observe(section, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    var g = null;
+
+    document.addEventListener('touchstart', function (e) {
+        if (!PHONE.matches || e.touches.length !== 1) return;
+        var t = e.touches[0];
+        var inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-left')) || 0;
+        if (t.clientX > EDGE + inset || blocked()) return;
+        var section = activeSection();
+        if (!section) return;
+        var back = visibleBackButton(section);
+        g = { x0: t.clientX, y0: t.clientY, lastX: t.clientX, lastT: Date.now(), v: 0,
+              section: section, back: back, mode: back ? 'back' : 'menu', active: false };
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+        if (!g) return;
+        var t = e.touches[0];
+        var dx = t.clientX - g.x0;
+        var dy = t.clientY - g.y0;
+        if (!g.active) {
+            if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { g = null; return; } // vertical scroll
+            if (dx < 8) return;
+            g.active = true;
+            if (g.mode === 'back') {
+                freezeEntrance(g.section);
+                g.section.style.willChange = 'transform';
+                g.section.style.transition = 'none';
+                g.section.classList.add('edge-swipe-active');
+            }
+        }
+        if (e.cancelable) e.preventDefault();
+        var now = Date.now();
+        if (now > g.lastT) { g.v = (t.clientX - g.lastX) / (now - g.lastT); g.lastT = now; g.lastX = t.clientX; }
+        if (g.mode === 'back') {
+            var x = Math.max(0, dx);
+            g.section.style.transform = 'translate3d(' + x + 'px,0,0)';
+            g.section.style.opacity = String(1 - Math.min(0.35, x / window.innerWidth * 0.5));
+        }
+    }, { passive: false });
+
+    function finish() {
+        if (!g) return;
+        var s = g;
+        g = null;
+        if (!s.active) return;
+        var dx = s.lastX - s.x0;
+        var width = window.innerWidth || 1;
+        var commit = dx > width * 0.35 || (dx > 40 && s.v > 0.45);
+
+        if (s.mode === 'menu') {
+            if (commit || dx > 60) {
+                var menu = document.getElementById('menu-btn');
+                if (menu) menu.click();
+            }
+            return;
+        }
+
+        var el = s.section;
+        var clear = function () {
+            el.style.transition = '';
+            el.style.transform = '';
+            el.style.opacity = '';
+            el.style.willChange = '';
+            el.classList.remove('edge-swipe-active');
+        };
+
+        if (commit) {
+            el.style.transition = 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.22s ease';
+            el.style.transform = 'translate3d(' + width + 'px,0,0)';
+            el.style.opacity = '0.4';
+            setTimeout(function () {
+                s.back.click();
+                // The page we left is hidden by now; reset it for next time.
+                requestAnimationFrame(clear);
+            }, 200);
+        } else {
+            el.style.transition = 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.28s ease';
+            el.style.transform = 'translate3d(0,0,0)';
+            el.style.opacity = '1';
+            setTimeout(clear, 300);
+        }
+    }
+
+    document.addEventListener('touchend', finish, { passive: true });
+    document.addEventListener('touchcancel', finish, { passive: true });
+})();

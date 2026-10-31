@@ -543,42 +543,166 @@
     }
 }
 
-/* iOS WebKit: no filters on lyric lines.
-   Animating filter: blur() on text that also contains transformed / masked
-   word spans (word-sync) inside a masked scroller makes WebKit flash
-   coloured slivers at line edges - the purple bars that blinked in and out
-   as lines changed. Depth is carried by opacity + scale alone here (a touch
-   more contrast between steps to make up for the missing blur). */
+/* iOS WebKit: blur + glow without CSS filters.
+   Animating filter: blur() on lyric text (with masked / transformed word
+   spans inside a masked scroller) made WebKit flash purple slivers at line
+   edges. Both effects are rebuilt from paint-only properties that WebKit
+   animates cleanly:
+     - blur  = transparent text + a soft text-shadow in the text colour
+               (what you see is a blurred copy of the glyphs)
+     - glow  = a text-shadow halo on the sung line, plus a soft radial haze
+               behind it (a gradient, not a filter) so word-synced lines,
+               whose words are masked, glow too.
+   Every state uses two shadows so the lists interpolate smoothly.
+   Strength follows Settings > Appearance > Lyrics > Glow.
+   Settings > Experimental > "Real lyric blur on iPhone" adds
+   html.lyrics-true-blur, which switches this block off so iOS uses the
+   real filter-based blur (may show the purple slivers). */
+html.is-ios:not(.lyrics-true-blur) {
+    --ios-lyric-glow: 0.34;
+    --ios-lyric-haze: 0.10;
+}
+
+html.is-ios:not(.lyrics-true-blur)[data-lyrics-glow="off"] {
+    --ios-lyric-glow: 0;
+    --ios-lyric-haze: 0;
+}
+
+html.is-ios:not(.lyrics-true-blur)[data-lyrics-glow="strong"] {
+    --ios-lyric-glow: 0.55;
+    --ios-lyric-haze: 0.17;
+}
+
 @media (max-width: 900px) {
-    html.is-ios .lyrics-content .lyric-line,
-    html.is-ios .lyrics-content .lyric-line.word-synced.active,
-    html.is-ios .lyrics-content .lyric-pre-enter {
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content .lyric-line,
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content .lyric-line.word-synced.active,
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content .lyric-pre-enter {
         filter: none !important;
         will-change: auto;
     }
 
-    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line {
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line {
+        position: relative;
+        text-shadow:
+            0 0 0 rgba(255, 255, 255, 0),
+            0 0 0 rgba(0, 0, 0, 0);
         transition:
             opacity var(--m-lyric-dur) var(--m-lyric-ease),
             transform var(--m-lyric-dur) var(--m-lyric-ease),
             translate 560ms var(--m-lyric-ease),
-            color 0.3s ease;
+            color var(--m-lyric-dur) var(--m-lyric-ease),
+            text-shadow var(--m-lyric-dur) var(--m-lyric-ease);
     }
 
-    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-1"],
-    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="1"] {
-        opacity: 0.38;
+    /* Haze behind the sung line (fades in/out with opacity only) */
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line::before {
+        content: '';
+        position: absolute;
+        inset: -26px -18px;
+        z-index: -1;
+        /* closest-side + a 0 stop at 100% fades out fully inside the box,
+           so there is no visible edge */
+        background: radial-gradient(closest-side at 38% 50%,
+            rgba(255, 255, 255, var(--ios-lyric-haze)) 0%,
+            rgba(255, 255, 255, calc(var(--ios-lyric-haze) * 0.45)) 50%,
+            rgba(255, 255, 255, 0) 100%);
+        opacity: 0;
+        transition: opacity 0.6s var(--m-lyric-ease);
+        pointer-events: none;
     }
 
-    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-2"],
-    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="2"] {
-        opacity: 0.27;
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"]::before {
+        opacity: 1;
     }
 
-    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-3"],
-    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="3"],
-    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line.lyric-line-far {
-        opacity: 0.2;
+    /* Sung line: crisp white with a halo */
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"] {
+        color: #fff;
+        opacity: 1;
+        text-shadow:
+            0 0 18px rgba(255, 255, 255, var(--ios-lyric-glow)),
+            0 4px 18px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Depth: progressively blurrier copies of the text */
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-1"],
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="1"] {
+        color: rgba(255, 255, 255, 0.12);
+        opacity: 0.5;
+        text-shadow:
+            0 0 2.2px rgba(255, 255, 255, 0.95),
+            0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-2"],
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="2"] {
+        color: rgba(255, 255, 255, 0);
+        opacity: 0.4;
+        text-shadow:
+            0 0 3.6px rgba(255, 255, 255, 0.95),
+            0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-3"],
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="3"] {
+        color: rgba(255, 255, 255, 0);
+        opacity: 0.32;
+        text-shadow:
+            0 0 4.8px rgba(255, 255, 255, 0.95),
+            0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    /* Far lines: as blurred as the 3rd step, a little dimmer */
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line.lyric-line-far {
+        color: rgba(255, 255, 255, 0);
+        opacity: 0.26;
+        text-shadow:
+            0 0 5px rgba(255, 255, 255, 0.95),
+            0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    /* Word-synced: masked words would clip a per-word shadow, so the sung
+       line glows through the haze; inactive words inherit the blur above. */
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line.word-synced[data-distance="0"] {
+        text-shadow:
+            0 0 0 rgba(255, 255, 255, 0),
+            0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    /* Browsing with a finger: everything sharp and readable */
+    html.is-ios:not(.lyrics-true-blur) .lyrics-scroll-area.is-user-scrolling .lyrics-content:not(.lyrics-editing) .lyric-line {
+        color: #fff;
+        opacity: 0.6;
+        text-shadow:
+            0 0 0 rgba(255, 255, 255, 0),
+            0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    html.is-ios:not(.lyrics-true-blur) .lyrics-scroll-area.is-user-scrolling .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"] {
+        opacity: 1;
+    }
+
+    /* Plain (unsynced) lyrics: just text */
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content.lyrics-unsynced:not(.lyrics-editing) .lyric-line {
+        color: #fff;
+        text-shadow: none;
+    }
+
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content.lyrics-unsynced:not(.lyrics-editing) .lyric-line::before {
+        display: none;
+    }
+
+    /* Entrance: lines blur in (big soft shadow -> their depth state) */
+    html.is-ios:not(.lyrics-true-blur) .lyrics-content:not(.lyrics-editing) .lyric-line.lyric-pre-enter {
+        color: rgba(255, 255, 255, 0) !important;
+        text-shadow:
+            0 0 12px rgba(255, 255, 255, 0.9),
+            0 0 0 rgba(0, 0, 0, 0) !important;
+    }
+
+    /* Settings: "Reduce lyric motion" keeps it calm */
+    html.is-ios:not(.lyrics-true-blur).lyrics-no-motion .lyrics-content:not(.lyrics-editing) .lyric-line {
+        transition: opacity 0.2s linear, color 0.2s linear, text-shadow 0.2s linear;
     }
 }
 
@@ -603,4 +727,17 @@
 @keyframes settingsPageIn {
     from { transform: translate3d(0, 6%, 0); opacity: 0; }
     to   { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+/* "Real lyric blur on iPhone" only means something on iOS */
+html:not(.is-ios) .ios-only-setting {
+    display: none !important;
+}
+
+/* Edge swipe back: the page being dragged casts a shadow on its left edge */
+@media (max-width: 768px) {
+    .content-container > section.edge-swipe-active {
+        box-shadow: -14px 0 28px rgba(0, 0, 0, 0.45);
+        background-color: var(--bg-color, #0b0b0e);
+    }
 }

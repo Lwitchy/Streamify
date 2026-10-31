@@ -14,8 +14,26 @@
         lyricsWordTapping: Object.freeze({
             name: 'Word timing editor',
             stage: 'Experimental'
+        }),
+        lyricsTrueBlur: Object.freeze({
+            name: 'Real lyric blur on iPhone',
+            stage: 'Experimental'
         })
     });
+
+    /* Features that are pure CSS switch a class on <html>. This file loads in
+       <head>, so the class is there before the first paint. */
+    const ROOT_CLASSES = Object.freeze({
+        lyricsTrueBlur: 'lyrics-true-blur'
+    });
+
+    function applyRootClasses(state) {
+        const root = document.documentElement;
+        if (!root) return;
+        Object.keys(ROOT_CLASSES).forEach(feature => {
+            root.classList.toggle(ROOT_CLASSES[feature], Boolean(state[feature]));
+        });
+    }
 
     function normalizeState(candidate) {
         return Object.keys(DEFINITIONS).reduce((state, feature) => {
@@ -41,6 +59,7 @@
     }
 
     function announceChange(feature, enabled) {
+        applyRootClasses(currentState);
         if (typeof window.CustomEvent !== 'function') return;
         window.dispatchEvent(new window.CustomEvent('streamifyexperimentchange', {
             detail: { feature, enabled, state: { ...currentState } }
@@ -48,6 +67,7 @@
     }
 
     let currentState = readState();
+    applyRootClasses(currentState);
 
     function setEnabled(feature, enabled, options = {}) {
         if (!DEFINITIONS[feature]) throw new Error(`Unknown experimental feature: ${feature}`);

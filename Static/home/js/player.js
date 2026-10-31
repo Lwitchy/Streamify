@@ -2139,6 +2139,7 @@ if (btnCloseLyrics) {
     let currentVelocity = 0;
 
     let lastMoveX = 0;
+    let touchStartedInLyrics = false;
 
     dedicatedView.addEventListener('touchstart', e => {
         if (!document.body.classList.contains('player-section-active') || isClosingMobilePlayer) return;
@@ -2164,6 +2165,10 @@ if (btnCloseLyrics) {
         lastMoveX = touchStartX;
         lastMoveY = touchStartY;
         touchStartTime = Date.now();
+        // In the lyrics view only the lyric list scrolls. A drag that starts
+        // anywhere above it (grabber, "Now Playing", the gaps around the
+        // Close / Find / Edit pills) always pulls the sheet down.
+        touchStartedInLyrics = Boolean(isLyricsActive && lyricsScrollArea && lyricsScrollArea.contains(target));
         lastMoveTime = touchStartTime;
     }, { passive: true });
 
@@ -2190,8 +2195,10 @@ if (btnCloseLyrics) {
 
             // Check if pulling downwards predominantly
             if (deltaY > 8 && deltaY > absX * 1.1) {
-                // If lyrics view is scrolled down, let user scroll lyrics rather than dismissing sheet
-                if (isLyricsActive && lyricsScrollArea && lyricsScrollArea.scrollTop > 5) {
+                // Inside the lyric list: scroll the lyrics, unless they are
+                // already at the very top (then the pull closes the player,
+                // like Apple Music). Above the list: always close.
+                if (touchStartedInLyrics && lyricsScrollArea.scrollTop > 0) {
                     return;
                 }
                 isPullingDown = true;

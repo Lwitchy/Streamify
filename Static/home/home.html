@@ -19,7 +19,7 @@
 
     <!-- Mobile Overrides (Must be last) -->
 <link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.31" media="(max-width: 768px)">
-    <link rel="stylesheet" href="/Static/home/css/mobile_app.css?v=1.3">
+    <link rel="stylesheet" href="/Static/home/css/mobile_app.css?v=1.6">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -42,7 +42,7 @@
     <link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
     <link rel="stylesheet" href="/Static/vendor/cropperjs/cropper.min.css?v=4.8">
 <script src="/Static/home/js/safe-area.js?v=1.0"></script>
-<script src="/Static/home/js/experiments.js?v=4.36"></script>
+<script src="/Static/home/js/experiments.js?v=4.37"></script>
     <script src="/Static/home/js/theme.js?v=4.36"></script>
 </head>
 
@@ -1363,6 +1363,25 @@
                             </label>
                         </div>
 
+                        <div class="settings-toggle-row experimental-feature-row ios-only-setting">
+                            <div>
+                                <div class="experimental-feature-title">
+                                    <strong>Real lyric blur on iPhone</strong>
+                                </div>
+                                <span class="experimental-feature-description" id="experimental-true-blur-description">
+                                    Uses true blur and glow on the lyrics, like the desktop app. iOS can briefly flash
+                                    thin coloured lines while lyrics change with this on. Off uses a smooth
+                                    lookalike that never glitches.
+                                </span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="experimental-true-blur-toggle" data-experiment="lyricsTrueBlur"
+                                    aria-label="Enable real lyric blur on iPhone"
+                                    aria-describedby="experimental-true-blur-description">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
                         <div class="experimental-disclaimer">
                             <i class='bx bx-info-circle' aria-hidden="true"></i>
                             <p>Experimental features may change or be removed while they are being tested.</p>
@@ -2501,7 +2520,7 @@
     <!-- Must load before ui.js: activateSettingsTab() calls into
          window.StreamifyUpdates when the Updates pane is opened. -->
     <script src="/Static/home/js/updates.js?v=4.46"></script>
-    <script src="/Static/home/js/player.js?v=4.48"></script>
+    <script src="/Static/home/js/player.js?v=4.49"></script>
     <script src="/Static/home/js/lyrics.js?v=1.6"></script>
     <script src="/Static/home/js/api_v2.js?v=4.45"></script>
     <script src="/Static/home/js/albums.js?v=1.4"></script>
@@ -2510,7 +2529,7 @@
     <script src="/Static/home/js/homepage.js?v=1.0"></script>
     <script src="/Static/home/js/downloads.js?v=4.44"></script>
     <script src="/Static/home/js/ui.js?v=4.56"></script>
-    <script src="/Static/home/js/mobile_app.js?v=1.0"></script>
+    <script src="/Static/home/js/mobile_app.js?v=1.1"></script>
 </body>
 
 </html>
