@@ -45,10 +45,10 @@ const step = message => console.log(`\n=== ${message}`);
         const root = Downloads.resolveDownloadRoot();
         assert.strictEqual(root, path.join(musicDir, 'Streamify Downloads'));
 
-        step('Confirming YouTube acquisition is rejected');
+        step('Confirming an unknown source is still rejected');
         await assert.rejects(
             Downloads.enqueue([{
-                requestedSource: 'youtube',
+                requestedSource: 'youtube-tv',
                 title: 'legacy request',
                 sourceUrl: 'https://www.youtube.com/watch?v=abcdefghijk'
             }], 'test'),

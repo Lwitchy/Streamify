@@ -2,9 +2,10 @@
  * Streamify Downloads (client)
  * ============================
  *
- * Owner-only page for pulling music from Soulseek into the configured
- * music folder. Talks to /api/downloads/* and listens for live progress on the
- * Socket.IO 'role:owner' room.
+ * Owner-only page for pulling music into the configured music folder, with
+ * YouTube as the default source and optional Soulseek. Talks to
+ * /api/downloads/* and listens for live progress on the Socket.IO
+ * 'role:owner' room.
  *
  * Every node here is built with createElement/textContent rather than innerHTML
  * string concatenation: search results are remote, attacker-influenced strings
@@ -24,7 +25,9 @@
         initialised: false,
         loading: false,
         searching: false,
-        results: { soulseek: [] },
+        searched: false,
+        sourceMode: 'youtube',
+        results: [],
         sourceStatus: { soulseek: null },
         queue: [],
         downloadFolder: null,
@@ -99,23 +102,27 @@
      * Source status chips
      * ------------------------------------------------------------------ */
 
-    /** True once Soulseek can actually be searched. Drives the whole Soulseek UI. */
+    /** True once Soulseek can actually be searched. Drives the Soulseek UI. */
     function soulseekUsable() {
         const soulseek = state.sourceStatus.soulseek;
         return Boolean(soulseek && soulseek.configured && !soulseek.error);
     }
 
     /**
-     * Renders a notice only when Soulseek needs the user's attention. A working
-     * source is not worth a status badge, so the page stays clean until
-     * something is actually wrong.
+     * Renders a notice only when the selected source needs attention. YouTube
+     * needs nothing, so the page stays clean unless Soulseek is picked while
+     * unconfigured or broken.
      */
     function renderSourceNotice() {
         if (!el.notice) return;
         el.notice.replaceChildren();
 
         const soulseek = state.sourceStatus.soulseek;
-        if (!soulseek || soulseekUsable()) return;
+        // YouTube is the default source and needs no setup: only surface
+        // Soulseek trouble when the user actually switched to it, or when a
+        // configured account has stopped working.
+        if (!soulseek || state.sourceMode !== 'soulseek') return;
+        if (soulseekUsable()) return;
 
         const failed = Boolean(soulseek.configured && soulseek.error);
         const card = node('div', `downloads-notice downloads-notice--${failed ? 'error' : 'warn'}`);
@@ -133,8 +140,8 @@
         body.appendChild(node('div', 'downloads-notice-title',
             failed ? 'Soulseek is not connected' : 'Soulseek is not set up'));
         body.appendChild(node('div', 'downloads-notice-text', failed
-            ? `${soulseek.error} Fix the connection before searching or importing Spotify tracklists.`
-            : 'Add a Soulseek account to search files shared by other users, often at 320 kbps or lossless.'));
+            ? `${soulseek.error} Fix the connection, or switch back to YouTube search.`
+            : 'Add a Soulseek account to search lossless files shared by other users. YouTube search works without it.'));
         card.appendChild(body);
 
         const action = node('button', 'btn');
@@ -160,12 +167,47 @@
         el.folder.appendChild(node('span', null, state.downloadFolder));
     }
 
+    /** Syncs the YouTube/Soulseek toggle with the active source mode. */
+    function renderSourceSwitch() {
+        if (!el.sourceYoutubeBtn || !el.sourceSoulseekBtn) return;
+        const active = state.sourceMode;
+        el.sourceYoutubeBtn.classList.toggle('is-active', active === 'youtube');
+        el.sourceYoutubeBtn.setAttribute('aria-pressed', String(active === 'youtube'));
+        el.sourceSoulseekBtn.classList.toggle('is-active', active === 'soulseek');
+        el.sourceSoulseekBtn.setAttribute('aria-pressed', String(active === 'soulseek'));
+        if (el.searchInput) {
+            el.searchInput.placeholder = active === 'soulseek'
+                ? 'Search Soulseek, or paste a Spotify link'
+                : 'Artist and song name, or paste a Spotify / YouTube link';
+        }
+    }
+
+    function setSourceMode(mode) {
+        if (mode === state.sourceMode) return;
+        state.sourceMode = mode;
+        renderSourceSwitch();
+        renderSourceNotice();
+        // Results from one source are meaningless under the other; drop them
+        // rather than rendering a stale list under the wrong heading.
+        state.results = [];
+        renderResults();
+    }
+
     /* ------------------------------------------------------------------ *
      * Search results
      * ------------------------------------------------------------------ */
 
     function qualityTags(result) {
         const wrap = node('div', 'download-result-tags');
+
+        if (result.source === 'youtube') {
+            wrap.appendChild(node('span', 'download-tag download-tag--good', 'MP3'));
+            if (result.bitrate) {
+                wrap.appendChild(node('span', 'download-tag download-tag--good', `${result.bitrate} kbps`));
+            }
+            if (result.duration) wrap.appendChild(node('span', 'download-tag', formatDuration(result.duration)));
+            return wrap;
+        }
 
         if (result.extension) {
             const lossless = result.extension === 'FLAC' || result.extension === 'WAV';
@@ -185,8 +227,15 @@
         return wrap;
     }
 
+    function formatDuration(seconds) {
+        const total = Math.max(0, Math.round(Number(seconds) || 0));
+        const minutes = Math.floor(total / 60);
+        return `${minutes}:${String(total % 60).padStart(2, '0')}`;
+    }
+
     function buildResultRow(result) {
         const row = node('div', 'download-result');
+        const isYoutube = result.source === 'youtube';
 
         if (result.thumbnail) {
             const image = document.createElement('img');
@@ -197,13 +246,13 @@
             image.src = result.thumbnail;
             image.addEventListener('error', () => {
                 const fallback = node('div', 'download-result-art');
-                fallback.appendChild(icon('bx-user-voice'));
+                fallback.appendChild(icon(isYoutube ? 'bx-music' : 'bx-user-voice'));
                 image.replaceWith(fallback);
             });
             row.appendChild(image);
         } else {
             const placeholder = node('div', 'download-result-art');
-            placeholder.appendChild(icon('bx-user-voice'));
+            placeholder.appendChild(icon(isYoutube ? 'bx-music' : 'bx-user-voice'));
             row.appendChild(placeholder);
         }
 
@@ -218,11 +267,10 @@
             main.appendChild(titleLine);
         }
 
-        main.appendChild(node(
-            'div',
-            'download-result-sub',
-            `Shared by ${result.user}${result.queueLength ? ` - ${result.queueLength} in queue` : ''}`
-        ));
+        const sub = isYoutube
+            ? `From YouTube - ${result.user || 'video'}`
+            : `Shared by ${result.user}${result.queueLength ? ` - ${result.queueLength} in queue` : ''}`;
+        main.appendChild(node('div', 'download-result-sub', sub));
         row.appendChild(main);
 
         row.appendChild(qualityTags(result));
@@ -240,51 +288,71 @@
     }
 
     function renderResults() {
-        const panel = el.panelSoulseek;
+        const panel = el.panelResults;
         if (!panel) return;
         panel.replaceChildren();
-        if (!soulseekUsable()) return;
-        if (state.searching) {
-            panel.appendChild(emptyState('bx-loader-alt', 'Searching Soulseek...'));
-            return;
-        }
-        const results = state.results.soulseek || [];
-        if (results.length === 0) {
-            const status = state.sourceStatus.soulseek;
-            const message = status && status.error
-                ? status.error
-                : (status && status.searched ? 'No results found for that search.' : 'Search for a song above.');
-            panel.appendChild(emptyState('bx-search-alt', message));
-            return;
-        }
-        
-        const best = [];
-        const good = [];
-        const other = [];
-        
-        results.forEach(result => {
-            const isLossless = result.extension === 'FLAC' || result.extension === 'WAV';
-            const is320 = result.bitrate >= 320;
-            const isGood = result.bitrate >= 192;
-            
-            if ((isLossless || is320) && result.slots) best.push(result);
-            else if (isGood) good.push(result);
-            else other.push(result);
-        });
 
-        const renderGroup = (title, items) => {
-            if (items.length === 0) return;
-            const groupWrap = node('div', 'download-result-group');
-            groupWrap.appendChild(node('h4', 'download-result-group-title', title));
-            const list = node('div', 'download-result-list');
-            items.forEach(result => list.appendChild(buildResultRow(result)));
-            groupWrap.appendChild(list);
-            panel.appendChild(groupWrap);
-        };
-        
-        renderGroup('Best Quality', best);
-        renderGroup('Good Quality', good);
-        renderGroup('Other', other);
+        const isSoulseek = state.sourceMode === 'soulseek';
+        if (isSoulseek && !soulseekUsable()) {
+            // The notice card above already explains what is wrong; an extra
+            // empty panel would just repeat it.
+            return;
+        }
+        if (state.searching) {
+            panel.appendChild(emptyState('bx-loader-alt', isSoulseek ? 'Searching Soulseek...' : 'Searching YouTube...'));
+            return;
+        }
+        const results = state.results;
+        if (results.length === 0) {
+            if (isSoulseek) {
+                const status = state.sourceStatus.soulseek;
+                const message = status && status.error
+                    ? status.error
+                    : (status && status.searched ? 'No results found for that search.' : 'Search for a song above.');
+                panel.appendChild(emptyState('bx-search-alt', message));
+                return;
+            }
+            panel.appendChild(emptyState('bx-search-alt', state.searched ? 'No results found for that search.' : 'Search for a song above.'));
+            return;
+        }
+
+        if (isSoulseek) {
+            const best = [];
+            const good = [];
+            const other = [];
+
+            results.forEach(result => {
+                const isLossless = result.extension === 'FLAC' || result.extension === 'WAV';
+                const is320 = result.bitrate >= 320;
+                const isGood = result.bitrate >= 192;
+
+                if ((isLossless || is320) && result.slots) best.push(result);
+                else if (isGood) good.push(result);
+                else other.push(result);
+            });
+
+            const renderGroup = (title, items) => {
+                if (items.length === 0) return;
+                const groupWrap = node('div', 'download-result-group');
+                groupWrap.appendChild(node('h4', 'download-result-group-title', title));
+                const list = node('div', 'download-result-list');
+                items.forEach(result => list.appendChild(buildResultRow(result)));
+                groupWrap.appendChild(list);
+                panel.appendChild(groupWrap);
+            };
+
+            renderGroup('Best Quality', best);
+            renderGroup('Good Quality', good);
+            renderGroup('Other', other);
+            return;
+        }
+
+        const groupWrap = node('div', 'download-result-group');
+        groupWrap.appendChild(node('h4', 'download-result-group-title', 'YouTube matches'));
+        const list = node('div', 'download-result-list');
+        results.forEach(result => list.appendChild(buildResultRow(result)));
+        groupWrap.appendChild(list);
+        panel.appendChild(groupWrap);
     }
 
     function emptyState(iconName, message) {
@@ -317,6 +385,15 @@
         return 'bx-time-five';
     }
 
+    /** "Connecting to a peer" is Soulseek wording; YouTube goes straight
+     * from searching to downloading, so stage text must follow the source. */
+    function stageLabel(item) {
+        const isYoutube = item.resolvedSource === 'youtube' || item.requestedSource === 'youtube';
+        if (item.stage === 'connecting') return isYoutube ? 'Starting download' : 'Connecting to peer';
+        if (item.stage === 'searching') return isYoutube ? 'Searching YouTube' : 'Looking for a source';
+        return STAGE_LABELS[item.stage] || 'Working';
+    }
+
     function queueItemMeta(item) {
         if (item.status === 'completed') {
             let sourceLabel = 'Soulseek';
@@ -327,7 +404,7 @@
         if (item.status === 'cancelled') return 'Cancelled.';
         if (item.status === 'queued') return 'Waiting in queue';
 
-        const parts = [STAGE_LABELS[item.stage] || 'Working'];
+        const parts = [stageLabel(item)];
         if (item.stage === 'downloading') {
             if (item.resolvedSource) {
                 let currentSource = 'Soulseek';
@@ -474,35 +551,41 @@
             return;
         }
 
-        // A pasted link is a direct operation; route it immediately without requiring Soulseek.
+        // A pasted link is a direct operation; route it immediately regardless
+        // of the selected source mode.
         if (/^https?:\/\//i.test(query)) {
             return resolveLink(query);
         }
 
-        if (!soulseekUsable()) {
-            toast('Set up Soulseek in Settings before searching.', 'error');
+        const isSoulseek = state.sourceMode === 'soulseek';
+        if (isSoulseek && !soulseekUsable()) {
+            toast('Set up Soulseek in Settings before searching it, or switch to YouTube.', 'error');
             if (typeof window.openDownloadSettings === 'function') window.openDownloadSettings();
             return;
         }
 
         const token = ++state.searchToken;
         state.searching = true;
-        state.results = { soulseek: [] };
+        state.searched = false;
+        state.results = [];
         if (el.searchBtn) el.searchBtn.disabled = true;
         renderResults();
 
         try {
             const data = await apiCall('/api/downloads/search', {
                 method: 'POST',
-                body: { query, sources: ['soulseek'] }
+                body: { query, sources: [isSoulseek ? 'soulseek' : 'youtube'] }
             });
             if (token !== state.searchToken) return;
 
-            state.results.soulseek = data.soulseek.results || [];
-            state.sourceStatus.soulseek = Object.assign({}, state.sourceStatus.soulseek, {
-                error: data.soulseek.error,
-                searched: true
-            });
+            state.results = data.results || [];
+            state.searched = true;
+            if (isSoulseek) {
+                state.sourceStatus.soulseek = Object.assign({}, state.sourceStatus.soulseek, {
+                    error: data.soulseek && data.soulseek.error,
+                    searched: true
+                });
+            }
         } catch (error) {
             if (token !== state.searchToken) return;
             toast(error.message, 'error');
@@ -524,12 +607,12 @@
             const data = await apiCall('/api/downloads/resolve', { method: 'POST', body: { url } });
 
             const isDirect = data.kind === 'youtube' || data.kind === 'url';
-            
+
             openConfirm({
                 title: data.label || 'Import',
-                note: isDirect 
+                note: isDirect
                     ? `This will be downloaded directly via YouTube.`
-                    : `${data.tracks.length} track${data.tracks.length === 1 ? '' : 's'} found. Each one will be searched on Soulseek.`,
+                    : `${data.tracks.length} track${data.tracks.length === 1 ? '' : 's'} found. Each one will be found and downloaded automatically.`,
                 tracks: data.tracks,
                 preview: isDirect && data.tracks.length === 1 ? data.tracks[0] : null,
                 batchLabel: data.label
@@ -672,13 +755,15 @@
 
     /** Asks first, then queues. Never downloads straight off a result click. */
     function requestDownload(result, button) {
+        const isSoulseek = result.source === 'soulseek';
         const item = {
-            requestedSource: 'soulseek',
+            requestedSource: isSoulseek ? 'soulseek' : 'youtube',
             title: result.title,
             artist: result.artist || null,
             artworkUrl: result.thumbnail || null,
             searchQuery: result.query || result.title,
-            sourcePayload: result.payload
+            sourcePayload: isSoulseek ? result.payload : null,
+            sourceUrl: isSoulseek ? null : (result.payload && result.payload.url)
         };
 
         const restoreButton = () => {
@@ -699,12 +784,14 @@
 
         openConfirm({
             title: 'Download this track?',
-            note: 'Downloaded from another Soulseek user, then saved to your music folder and added to your library.',
+            note: isSoulseek
+                ? 'Downloaded from another Soulseek user, then saved to your music folder and added to your library.'
+                : 'Downloaded from YouTube, then saved to your music folder and added to your library.',
             tracks: [item],
             preview: {
                 source: result.source,
                 title: result.title,
-                subtitle: `Shared by ${result.user}`,
+                subtitle: isSoulseek ? `Shared by ${result.user}` : `From YouTube - ${result.user || 'video'}`,
                 thumbnail: result.thumbnail,
                 tags: confirmTags(result)
             },
@@ -715,6 +802,12 @@
     /** The same quality summary shown on the result row, for the dialog. */
     function confirmTags(result) {
         const tags = [];
+        if (result.source === 'youtube') {
+            tags.push({ label: 'MP3', variant: 'good' });
+            if (result.bitrate) tags.push({ label: `${result.bitrate} kbps`, variant: 'good' });
+            if (result.duration) tags.push({ label: formatDuration(result.duration) });
+            return tags;
+        }
         if (result.extension) {
             const lossless = result.extension === 'FLAC' || result.extension === 'WAV';
             tags.push({ label: result.extension, variant: lossless ? 'lossless' : null });
@@ -823,7 +916,9 @@
         el.form = document.getElementById('downloads-search-form');
         el.searchInput = document.getElementById('downloads-search-input');
         el.searchBtn = document.getElementById('downloads-search-btn');
-        el.panelSoulseek = document.getElementById('downloads-panel-soulseek');
+        el.sourceYoutubeBtn = document.getElementById('downloads-source-youtube');
+        el.sourceSoulseekBtn = document.getElementById('downloads-source-soulseek');
+        el.panelResults = document.getElementById('downloads-panel-results');
         el.queueList = document.getElementById('downloads-queue-list');
         el.queueCount = document.getElementById('downloads-queue-count');
         el.cancelAllBtn = document.getElementById('downloads-cancel-all-btn');
@@ -844,6 +939,13 @@
                 event.preventDefault();
                 runSearch(el.searchInput ? el.searchInput.value : '');
             });
+        }
+
+        if (el.sourceYoutubeBtn) {
+            el.sourceYoutubeBtn.addEventListener('click', () => setSourceMode('youtube'));
+        }
+        if (el.sourceSoulseekBtn) {
+            el.sourceSoulseekBtn.addEventListener('click', () => setSourceMode('soulseek'));
         }
 
         if (el.cancelAllBtn) el.cancelAllBtn.addEventListener('click', cancelAll);
@@ -871,6 +973,7 @@
             cacheElements();
             if (!el.section) return;
             bindEvents();
+            renderSourceSwitch();
             renderResults();
             state.initialised = true;
         }

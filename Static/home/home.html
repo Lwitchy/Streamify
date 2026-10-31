@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.45">
     <link rel="stylesheet" href="/Static/home/css/components.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.10">
-    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.42">
+    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.48">
     <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.52">
     <link rel="stylesheet" href="/Static/home/css/library.css?v=4.38">
     <link rel="stylesheet" href="/Static/home/css/downloads.css?v=4.34">
@@ -40,7 +40,7 @@
     <link href="/Static/vendor/fonts/outfit.css?v=4.8" rel="stylesheet">
     <link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
     <link rel="stylesheet" href="/Static/vendor/cropperjs/cropper.min.css?v=4.8">
-<script src="/Static/home/js/experiments.js?v=4.35"></script>
+<script src="/Static/home/js/experiments.js?v=4.36"></script>
     <script src="/Static/home/js/theme.js?v=4.36"></script>
 </head>
 
@@ -223,23 +223,30 @@
                     <div>
                         <h2 class="section-title">Get Music</h2>
                         <p class="downloads-subtitle">
-                            Search Soulseek or paste a Spotify link for its tracklist. Files are saved straight
+                            Search for a song or paste a Spotify / YouTube link. Files are saved straight
                             into your music folder, then added to your library.
                         </p>
                         <div class="downloads-folder-path" id="downloads-folder-path"></div>
                     </div>
                 </div>
 
-                <!-- Only rendered when Soulseek needs attention; silent when it is connected. -->
+                <!-- Only rendered when a source needs attention; silent otherwise. -->
                 <div id="downloads-source-notice"></div>
 
                 <div class="downloads-search-card">
+                    <div class="downloads-source-switch" id="downloads-source-switch" role="group"
+                        aria-label="Download source">
+                        <button type="button" class="downloads-source-btn is-active" id="downloads-source-youtube"
+                            aria-pressed="true">YouTube</button>
+                        <button type="button" class="downloads-source-btn" id="downloads-source-soulseek"
+                            aria-pressed="false">Soulseek</button>
+                    </div>
                     <form class="downloads-search-form" id="downloads-search-form" autocomplete="off">
                         <div class="downloads-search-input-wrap">
                             <i class='bx bx-search' aria-hidden="true"></i>
                             <input type="search" class="downloads-search-input" id="downloads-search-input"
                                 aria-label="Search for music to download"
-                                placeholder="Artist and song name, or paste a Spotify link">
+                                placeholder="Artist and song name, or paste a Spotify / YouTube link">
                         </div>
                         <button type="submit" class="downloads-submit-btn" id="downloads-search-btn">
                             <i class='bx bx-search-alt' aria-hidden="true"></i>
@@ -247,12 +254,12 @@
                         </button>
                     </form>
                     <p class="downloads-hint">
-                        Soulseek results come from other users and are often already tagged. Spotify links provide
-                        track names and artwork only; each track is still acquired through Soulseek.
+                        YouTube finds and downloads tracks automatically - no setup needed. Soulseek (when
+                        connected) offers lossless files shared by other users.
                     </p>
                 </div>
 
-                <div class="downloads-panel" id="downloads-panel-soulseek"></div>
+                <div class="downloads-panel" id="downloads-panel-results"></div>
 
                 <div class="downloads-queue-header">
                     <h3 class="section-title" style="font-size: 1.3rem; margin-bottom: 0;">
@@ -589,45 +596,96 @@
                     </div>
 
                     <div id="dedicated-lyrics-container" class="hidden">
-                        <div class="lyrics-header"
-                            style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 20px;">
-                            <button class="btn btn-outline btn-sm" id="close-lyrics-btn"
-                                style="background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                <i class='bx bx-x'></i> Close
+                        <div class="lyrics-header" id="lyrics-view-header">
+                            <button type="button" class="lyrics-pill" id="close-lyrics-btn" aria-label="Close lyrics">
+                                <i class='bx bx-x'></i><span>Close</span>
                             </button>
-
-                            <div id="lyric-editor-controls" class="hidden" style="display: flex; gap: 8px;">
-                                <button class="btn btn-sm" id="save-lyrics-btn"
-                                    style="background: var(--accent); color: var(--on-accent); border-radius: 30px; padding: 4px 16px; font-weight: 600;">
-                                    <i class='bx bx-check'></i> Save
+                            <div class="lyrics-header-actions">
+                                <button type="button" class="lyrics-pill" id="re-request-lyrics-btn" title="Search for different lyrics">
+                                    <i class='bx bx-search'></i><span>Find</span>
                                 </button>
-                                <button class="btn btn-outline btn-sm" id="clear-lyrics-btn"
-                                    style="border-radius: 30px; padding: 4px 12px; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
-                                    <i class='bx bx-trash'></i> Clear
-                                </button>
-                                <button class="btn btn-outline btn-sm" id="cancel-lyric-edit-btn"
-                                    style="border-radius: 30px; padding: 4px 12px;">
-                                    Cancel
-                                </button>
-                            </div>
-
-                            <div style="display: flex; gap: 8px; margin-left: auto;">
-                                <button class="btn btn-outline btn-sm" id="re-request-lyrics-btn"
-                                    style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                    <i class='bx bx-search'></i> Find Lyrics
-                                </button>
-                                <button class="btn btn-outline btn-sm" id="edit-lyrics-btn"
-                                    style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; padding: 4px 12px;">
-                                    <i class='bx bx-edit-alt'></i> Edit Lyrics
+                                <button type="button" class="lyrics-pill" id="edit-lyrics-btn" title="Edit text or fix timing">
+                                    <i class='bx bx-edit-alt'></i><span>Edit</span>
                                 </button>
                             </div>
                         </div>
+
+                        <div class="lyric-editor hidden" id="lyric-editor" role="region" aria-label="Lyrics editor">
+                            <div class="lyric-editor-top">
+                                <button type="button" class="lyrics-pill" id="cancel-lyric-edit-btn">
+                                    <i class='bx bx-arrow-back'></i><span>Cancel</span>
+                                </button>
+                                <div class="lyric-editor-heading">
+                                    <strong>Edit lyrics</strong>
+                                    <span id="lyric-editor-status" aria-live="polite"></span>
+                                </div>
+                                <button type="button" class="lyrics-pill lyrics-pill-primary" id="save-lyrics-btn" title="Save (Ctrl+S)">
+                                    <i class='bx bx-check'></i><span>Save</span>
+                                </button>
+                            </div>
+                            <div class="lyric-editor-toolbar">
+                                <div class="lyric-editor-tabs" role="tablist" aria-label="Editor mode">
+                                    <button type="button" role="tab" data-lyric-tab="sync" aria-selected="true"><i class='bx bx-time-five'></i>Sync</button>
+                                    <button type="button" role="tab" data-lyric-tab="words" aria-selected="false" class="hidden" id="lyric-editor-words-tab"><i class='bx bx-font-size'></i>Words</button>
+                                    <button type="button" role="tab" data-lyric-tab="text" aria-selected="false"><i class='bx bx-text'></i>Text</button>
+                                </div>
+                                <div class="lyric-editor-transport">
+                                    <button type="button" data-lyric-seek="-2" title="Back 2s (&larr;)" aria-label="Back 2 seconds"><i class='bx bx-rewind'></i></button>
+                                    <button type="button" id="lyric-editor-play" class="is-play" title="Play / pause (Space)" aria-label="Play"><i class='bx bx-play'></i></button>
+                                    <button type="button" data-lyric-seek="2" title="Forward 2s (&rarr;)" aria-label="Forward 2 seconds"><i class='bx bx-fast-forward'></i></button>
+                                    <span class="lyric-editor-clock" id="lyric-editor-clock">0:00.00</span>
+                                </div>
+                            </div>
+                            <div class="lyric-editor-shift">
+                                <span class="lyric-editor-shift-label">Shift all</span>
+                                <button type="button" data-lyric-shift="-500">&minus;0.5s</button>
+                                <button type="button" data-lyric-shift="-100">&minus;0.1s</button>
+                                <button type="button" data-lyric-shift="100">+0.1s</button>
+                                <button type="button" data-lyric-shift="500">+0.5s</button>
+                                <button type="button" class="lyric-editor-remove" id="clear-lyrics-btn" title="Delete your saved lyrics and search again">
+                                    <i class='bx bx-trash'></i><span>Remove saved lyrics</span>
+                                </button>
+                            </div>
+                            <p class="lyric-editor-text-help">Paste plain lyrics or LRC lines like <code>[01:23.45] text</code>. Switch to <b>Sync</b> to time each line while the song plays.</p>
+                        </div>
+
                         <section class="lyrics-scroll-area" id="lyrics-scroll-area"
                             aria-label="Synchronized lyrics">
                             <div class="lyrics-content" id="lyrics-content">
                                 <!-- Lyrics lines injected here -->
                             </div>
                         </section>
+                        <textarea id="lyric-editor-text" class="lyric-editor-textarea hidden" spellcheck="false"
+                            aria-label="Lyrics text" placeholder="Paste or type lyrics here&#10;One line per row"></textarea>
+
+                        <div class="lyric-editor-footer hidden" id="lyric-editor-footer">
+                            <button type="button" class="lyric-tap-sync" id="lyric-tap-sync">
+                                <span class="lyric-tap-icon"><i class='bx bx-stopwatch'></i></span>
+                                <span class="lyric-tap-body">
+                                    <span class="lyric-tap-label">Sync line 1</span>
+                                    <span class="lyric-tap-text"></span>
+                                </span>
+                                <kbd>Enter</kbd>
+                            </button>
+                            <div class="lyric-word-tools">
+                                <button type="button" data-word-tool="undo"><i class='bx bx-undo'></i>Undo tap</button>
+                                <button type="button" data-word-tool="replay"><i class='bx bx-revision'></i>Replay line</button>
+                            </div>
+                            <div class="lyric-editor-hints lyric-editor-hints-words">
+                                <span><kbd>Space</kbd> play/pause</span>
+                                <span><kbd>Enter</kbd> tap word</span>
+                                <span><kbd>Backspace</kbd> undo</span>
+                                <span><kbd>R</kbd> replay line</span>
+                                <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> pick line</span>
+                            </div>
+                            <div class="lyric-editor-hints lyric-editor-hints-sync">
+                                <span><kbd>Space</kbd> play/pause</span>
+                                <span><kbd>Enter</kbd> sync line</span>
+                                <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> pick line</span>
+                                <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> seek</span>
+                                <span>Tap a time to replay it</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -712,31 +770,38 @@
 
     <!-- LYRICS SELECTION MODAL -->
     <div id="lyrics-selection-modal" class="modal-overlay hidden" style="z-index: 3000;">
-        <div class="modal-box" style="max-width: 600px;">
+        <div class="modal-box lyrics-picker" role="dialog" aria-modal="true" aria-labelledby="lyrics-picker-title">
             <div class="modal-header">
-                <h3>Select Lyrics</h3>
-                <i class='bx bx-x' id="close-lyrics-selection-modal"></i>
+                <h3 id="lyrics-picker-title">Find lyrics</h3>
+                <i class='bx bx-x' id="close-lyrics-selection-modal" role="button" tabindex="0" aria-label="Close"></i>
             </div>
             <div class="modal-body">
-                <div style="margin-bottom: 15px; display: flex; gap: 10px;">
-                    <input type="text" id="lyrics-search-title" class="form-control" placeholder="Song Title"
-                        style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
-                    <input type="text" id="lyrics-search-artist" class="form-control" placeholder="Artist"
-                        style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: white;">
-                    <button class="btn" id="lyrics-search-btn"
-                        style="background: var(--accent); color: var(--on-accent); border-radius: 4px; padding: 8px 16px; font-weight: bold;">Search</button>
+                <p class="lyrics-picker-track" id="lyrics-selection-track"></p>
+                <form class="lyrics-picker-search" id="lyrics-search-form" autocomplete="off">
+                    <label>
+                        <span>Title</span>
+                        <input type="text" id="lyrics-search-title" placeholder="Song title" required>
+                    </label>
+                    <label>
+                        <span>Artist</span>
+                        <input type="text" id="lyrics-search-artist" placeholder="Artist (optional)">
+                    </label>
+                    <button type="submit" class="lyrics-picker-go" id="lyrics-search-btn"><i class='bx bx-search'></i><span>Search</span></button>
+                </form>
+                <div id="lyrics-selection-loading" class="lyrics-picker-state hidden">
+                    <i class='bx bx-loader-alt bx-spin'></i>
+                    <p>Searching LRCLIB&hellip;</p>
                 </div>
-                <div id="lyrics-selection-loading" class="hidden" style="text-align: center; padding: 20px;">
-                    <i class='bx bx-loader-alt bx-spin' style="font-size: 24px;"></i>
-                    <p>Searching for lyrics...</p>
-                </div>
-                <div id="lyrics-selection-results"
-                    style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
+                <div id="lyrics-selection-results" class="lyrics-picker-results">
                     <!-- Results will be injected here -->
                 </div>
-                <div id="lyrics-selection-empty" class="hidden"
-                    style="text-align: center; padding: 20px; color: #b3b3b3;">
-                    No lyrics found. Try searching with different terms.
+                <div id="lyrics-selection-empty" class="lyrics-picker-state hidden">
+                    <i class='bx bx-music'></i>
+                    <p>No lyrics found. Try a shorter title or remove the artist.</p>
+                </div>
+                <div class="lyrics-picker-footer">
+                    <span>Can't find the right ones?</span>
+                    <button type="button" class="lyrics-pill" data-lyrics-write-own><i class='bx bx-edit-alt'></i><span>Paste or write your own</span></button>
                 </div>
             </div>
         </div>
@@ -949,6 +1014,85 @@
                                 </label>
                             </div>
                         </div>
+                                            <section class="lyrics-appearance" aria-labelledby="lyrics-appearance-title">
+                            <div class="appearance-heading">
+                                <h4 id="lyrics-appearance-title">Lyrics</h4>
+                                <p>How lyrics look in the player. Saved on this device.</p>
+                            </div>
+
+                            <div class="lyrics-preview" aria-hidden="true">
+                                <div class="lyrics-preview-line">
+                                    <span class="lp-word is-sung">I</span>
+                                    <span class="lp-word is-sung">just</span>
+                                    <span class="lp-word is-sung">wanna</span>
+                                    <span class="lp-word is-singing">stay</span>
+                                    <span class="lp-word">in</span>
+                                    <span class="lp-word">that</span>
+                                    <span class="lp-word is-held">haze</span>
+                                </div>
+                                <div class="lyrics-preview-next">That lavender haze</div>
+                            </div>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Enhanced lyrics</legend>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-size-label">Text size</span>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-size-label">
+                                        <label><input type="radio" name="lyrics-size" value="small"><span>Small</span></label>
+                                        <label><input type="radio" name="lyrics-size" value="default"><span>Default</span></label>
+                                        <label><input type="radio" name="lyrics-size" value="large"><span>Large</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-glow-label">Glow</span>
+                                        <p>Soft light around the line being sung.</p>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-glow-label">
+                                        <label><input type="radio" name="lyrics-glow" value="off"><span>Off</span></label>
+                                        <label><input type="radio" name="lyrics-glow" value="soft"><span>Soft</span></label>
+                                        <label><input type="radio" name="lyrics-glow" value="strong"><span>Strong</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="lyrics-bold-toggle">Bold lyrics</label>
+                                        <p>Heavier lettering for every line.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="lyrics-bold-toggle" data-lyrics-pref="bold">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="lyrics-held-glow-toggle">Glowing held notes</label>
+                                        <p>Long, held words light up as they're sung, brightest at the end of a line. Needs word-by-word lyrics.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="lyrics-held-glow-toggle" data-lyrics-pref="heldGlow">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="lyrics-motion-toggle">Word animations</label>
+                                        <p>Words gently rise as they're sung and letters wave on held notes.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="lyrics-motion-toggle" data-lyrics-pref="motion">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </fieldset>
+                        </section>
                     </div>
 
                     <!-- Experimental Features Tab -->
@@ -972,6 +1116,42 @@
                                 <input type="checkbox" id="experimental-themes-toggle"
                                     aria-label="Enable experimental Themes"
                                     aria-describedby="experimental-themes-description">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="settings-toggle-row experimental-feature-row">
+                            <div>
+                                <div class="experimental-feature-title">
+                                    <strong>Estimated word-by-word lyrics</strong>
+                                </div>
+                                <span class="experimental-feature-description" id="experimental-estimated-words-description">
+                                    Gives line-synced lyrics the word-by-word fill by spreading each line's time across its words.
+                                    Timing is approximate. Songs with real word timing always use it instead.
+                                </span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="experimental-estimated-words-toggle" data-experiment="lyricsEstimatedWords"
+                                    aria-label="Enable estimated word-by-word lyrics"
+                                    aria-describedby="experimental-estimated-words-description">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="settings-toggle-row experimental-feature-row">
+                            <div>
+                                <div class="experimental-feature-title">
+                                    <strong>Word timing editor</strong>
+                                </div>
+                                <span class="experimental-feature-description" id="experimental-word-tapping-description">
+                                    Adds a Words tab to the lyrics editor so you can tap along to each word and record exact
+                                    word-by-word timing for a song.
+                                </span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="experimental-word-tapping-toggle" data-experiment="lyricsWordTapping"
+                                    aria-label="Enable the word timing editor"
+                                    aria-describedby="experimental-word-tapping-description">
                                 <span class="slider"></span>
                             </label>
                         </div>
@@ -2087,7 +2267,8 @@
     <!-- Must load before ui.js: activateSettingsTab() calls into
          window.StreamifyUpdates when the Updates pane is opened. -->
     <script src="/Static/home/js/updates.js?v=4.46"></script>
-    <script src="/Static/home/js/player.js?v=4.43"></script>
+    <script src="/Static/home/js/player.js?v=4.44"></script>
+    <script src="/Static/home/js/lyrics.js?v=1.5"></script>
     <script src="/Static/home/js/api_v2.js?v=4.42"></script>
     <script src="/Static/home/js/downloads.js?v=4.44"></script>
     <script src="/Static/home/js/ui.js?v=4.51"></script>

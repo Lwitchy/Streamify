@@ -152,6 +152,38 @@
     backdrop-filter: blur(20px);
 }
 
+.downloads-source-switch {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--glass-border);
+    margin-bottom: 12px;
+}
+
+.downloads-source-btn {
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.downloads-source-btn:hover {
+    color: var(--text-primary);
+}
+
+.downloads-source-btn.is-active {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
 .downloads-search-form {
     display: flex;
     gap: 10px;

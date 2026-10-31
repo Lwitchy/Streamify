@@ -2795,8 +2795,8 @@ app.get('/api/downloads/status', requireOwner, async (req, res) => {
 app.post('/api/downloads/search', requireOwner, downloadSearchLimiter, async (req, res) => {
     const { query, sources } = req.body || {};
     const requestedSources = Array.isArray(sources) && sources.length > 0
-        ? sources.filter(source => source === 'soulseek')
-        : ['soulseek'];
+        ? [...new Set(sources.filter(source => source === 'soulseek' || source === 'youtube'))]
+        : ['youtube'];
 
     try {
         const results = await Downloads.search(query, { sources: requestedSources });

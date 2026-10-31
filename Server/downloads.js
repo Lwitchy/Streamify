@@ -2,7 +2,7 @@
  * Streamify Download Engine
  * =========================
  *
- * Acquires music from Soulseek (P2P) and files it into the
+ * Acquires music from YouTube, with optional Soulseek (P2P) fallback, and files it into the
  * Owner's real music folder so the normal library scanner picks it up.
  *
  * Design rules that shaped this module:
@@ -20,7 +20,8 @@
  * 3. The queue is persisted in SQLite. A Spotify album is 15 sequential
  *    network transfers; a restart in the middle must resume, not lose them.
  *
- * 4. One transfer at a time. Soulseek peers respond badly to parallel
+ * 4. One transfer at a time. This keeps downloads predictable on home connections
+ *    and avoids competing with playback for bandwidth.
  *    hammering, and a single worker makes cancellation unambiguous.
  *
  * 5. Nothing here trusts a remote URL. Artwork is fetched only from an explicit
@@ -62,6 +63,12 @@ const SOULSEEK_INTERACTIVE_SEARCH_MS = 9000;
 const SOULSEEK_AUTO_SEARCH_MS = 14000;
 const SOULSEEK_DOWNLOAD_TIMEOUT_MS = 210000;
 const SOULSEEK_CONNECT_TIMEOUT_MS = 20000;
+
+const YOUTUBE_SEARCH_TIMEOUT_MS = 20000;
+const YOUTUBE_DOWNLOAD_TIMEOUT_MS = 300000;
+const YOUTUBE_MAX_ATTEMPTS = 3;
+const YOUTUBE_MAX_DURATION_SECONDS = 15 * 60;
+const YOUTUBE_SEARCH_RESULTS = 8;
 
 const REQUESTED_SOURCES = new Set(['auto', 'soulseek', 'youtube']);
 const MAX_ARTWORK_BYTES = 8 * 1024 * 1024;
@@ -738,6 +745,125 @@ function isYoutubeUrl(value) {
     return /^(https?:\/\/)?([a-zA-Z0-9-]+\.)?(youtube\.com|youtu\.be)\//i.test(trimmed);
 }
 
+function formatDuration(seconds) {
+    const total = Math.max(0, Math.round(Number(seconds) || 0));
+    const minutes = Math.floor(total / 60);
+    return `${minutes}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function youtubeWebpageUrl(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (entry.webpage_url && isYoutubeUrl(entry.webpage_url) && extractYoutubeVideoId(entry.webpage_url)) {
+        return canonicalYoutubeUrl(entry.webpage_url);
+    }
+    return /^[a-zA-Z0-9_-]{11}$/.test(String(entry.id || ''))
+        ? `https://www.youtube.com/watch?v=${entry.id}`
+        : null;
+}
+
+function normalizeYoutubeResult(entry) {
+    const url = youtubeWebpageUrl(entry);
+    if (!url) return null;
+
+    const id = extractYoutubeVideoId(url);
+    const duration = Number(entry.duration) || null;
+    const metadata = entry.track && entry.artist
+        ? { artist: cleanYoutubeTitle(entry.artist), title: cleanYoutubeTitle(entry.track) }
+        : splitYoutubeTitle(entry.title, entry.artist || entry.uploader || entry.channel);
+    const thumbnails = Array.isArray(entry.thumbnails) ? entry.thumbnails : [];
+    const thumbnail = entry.thumbnail || (thumbnails.length > 0 ? thumbnails[thumbnails.length - 1].url : null);
+
+    return {
+        id: `youtube:${id}`,
+        source: 'youtube',
+        title: metadata.title || 'Unknown Title',
+        artist: metadata.artist || null,
+        user: entry.uploader || entry.channel || 'YouTube',
+        extension: 'MP3',
+        bitrate: 320,
+        duration,
+        thumbnail: thumbnail || (id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null),
+        payload: { url }
+    };
+}
+
+/** Metadata is read before downloading, but a cancelled search must not leave
+ * yt-dlp running for the rest of its timeout. */
+async function youtubeMetadata(target, { shouldCancel, timeout = YOUTUBE_SEARCH_TIMEOUT_MS } = {}) {
+    return new Promise((resolve, reject) => {
+        let child;
+        try {
+            child = ytDlp.exec(target, {
+                dumpSingleJson: true,
+                noWarnings: true,
+                noPlaylist: true,
+                skipDownload: true
+            }, { env: ytDlpEnv(), timeout });
+        } catch (error) {
+            reject(error);
+            return;
+        }
+
+        let settled = false;
+        const finish = (error, result) => {
+            if (settled) return;
+            settled = true;
+            clearInterval(cancelPoller);
+            if (error && child) {
+                try { child.kill('SIGTERM', { forceKillAfterTimeout: 2000 }); } catch { /* already gone */ }
+            }
+            if (error) reject(error);
+            else resolve(result);
+        };
+        const cancelPoller = setInterval(() => {
+            if (typeof shouldCancel === 'function' && shouldCancel()) finish(new Error('Cancelled.'));
+        }, 200);
+        child.then(result => {
+            try { finish(null, JSON.parse(result.stdout)); }
+            catch (error) { finish(error); }
+        }, finish);
+    });
+}
+
+function scoreYoutubeResult(result, query, expectedDuration) {
+    const haystack = normalizeForMatch(`${result.artist || ''} ${result.title} ${result.user}`);
+    const tokens = normalizeForMatch(query).split(' ').filter(token => token && token !== 'audio');
+    const matched = tokens.filter(token => haystack.includes(token)).length;
+    let score = tokens.length > 0 ? (matched / tokens.length) * 150 : 0;
+    if (/\b(official|topic)\b/.test(normalizeForMatch(result.user))) score += 30;
+    if (/\b(karaoke|ringtone|8d audio|nightcore)\b/.test(haystack)) score -= 180;
+
+    if (expectedDuration && result.duration) {
+        const difference = Math.abs(expectedDuration - result.duration);
+        score += Math.max(0, 80 - difference * 3);
+        if (difference > 60) score -= 150;
+    }
+    return score;
+}
+
+function youtubeQuery(item) {
+    const base = buildSearchQuery(item);
+    return `${base} audio`;
+}
+
+async function youtubeSearch(query, { limit = 5, shouldCancel, expectedDuration } = {}) {
+    const info = await youtubeMetadata(`ytsearch${YOUTUBE_SEARCH_RESULTS}:${query}`, { shouldCancel });
+    const entries = info && Array.isArray(info.entries) ? info.entries : (info ? [info] : []);
+    const seen = new Set();
+    return entries
+        .map(normalizeYoutubeResult)
+        .filter(Boolean)
+        .filter(entry => !entry.duration || entry.duration <= YOUTUBE_MAX_DURATION_SECONDS)
+        .filter(entry => {
+            if (seen.has(entry.id)) return false;
+            seen.add(entry.id);
+            return true;
+        })
+        .map(entry => ({ ...entry, score: scoreYoutubeResult(entry, query, expectedDuration) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
+}
+
 async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldCancel } = {}) {
     await reportProgress({ stage: 'connecting', resolved_source: 'youtube' });
 
@@ -768,6 +894,10 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
         const targetUrl = canonicalYoutubeUrl(sourceUrl);
         const outTemplate = destination.replace(/\.[^.]+$/, '') + '.%(ext)s';
 
+        // Metadata is NOT fetched with --print in the same run: --print implies
+        // --quiet in yt-dlp, which suppresses the [download] lines the progress
+        // parser below needs. The search/resolve step already captured real
+        // metadata, so this run only downloads and reports progress.
         const args = {
             ffmpegLocation: ffmpegPath,
             extractAudio: true,
@@ -776,32 +906,25 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
             output: outTemplate,
             noWarnings: true,
             noPlaylist: true,
-            noSimulate: true,
-            print: 'STREAMIFY_META\t%(title)s\t%(artist)s\t%(track)s\t%(uploader)s\t%(thumbnail)s',
-            newline: true
+            noSimulate: true
         };
 
         try {
-            const child = ytDlp.exec(targetUrl, args, { env: ytDlpEnv(), timeout: 300000 });
+            const child = ytDlp.exec(targetUrl, args, { env: ytDlpEnv(), timeout: YOUTUBE_DOWNLOAD_TIMEOUT_MS });
             activeChild = child;
 
             let totalBytes = 0;
             let transferred = 0;
-            let capturedMeta = null;
 
             if (child.stdout) {
                 child.stdout.on('data', chunk => {
-                    const text = chunk.toString();
-                    if (!capturedMeta) {
-                        for (const line of text.split(/\r?\n/)) {
-                            if (line.startsWith('STREAMIFY_META\t')) {
-                                capturedMeta = line;
-                                break;
-                            }
-                        }
-                    }
-                    const progressMatch = text.match(/\[download\]\s+([\d.]+)%\s+of\s+(?:~?\s*([\d.]+)\s*(KiB|MiB|GiB|B))?(?:\s+at\s+([\d.]+)\s*(KiB|MiB|GiB|B)\/s)?(?:\s+ETA\s+(\d+:\d+))?/i);
-                    if (progressMatch) {
+                    // yt-dlp rewrites one progress line with \r, so a single
+                    // chunk can carry a whole burst of updates. Parse every
+                    // line and let reportProgress's DB throttle smooth them.
+                    const lines = chunk.toString().split(/[\r\n]+/);
+                    for (const line of lines) {
+                        const progressMatch = line.match(/\[download\]\s+([\d.]+)%\s+of\s+(?:~?\s*([\d.]+)\s*(KiB|MiB|GiB|B))?(?:\s+at\s+([\d.]+)\s*(KiB|MiB|GiB|B)\/s)?(?:\s+ETA\s+(\d+:\d+))?/i);
+                        if (!progressMatch) continue;
                         const pct = parseFloat(progressMatch[1]) / 100;
                         if (progressMatch[2] && progressMatch[3]) {
                             const val = parseFloat(progressMatch[2]);
@@ -836,38 +959,6 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
                 settled = true;
                 cleanup();
 
-                let downloadedMetadata = null;
-                if (capturedMeta) {
-                    const parts = capturedMeta.split('\t');
-                    const rawTitle = parts[1] && parts[1] !== 'NA' ? parts[1].trim() : null;
-                    const rawArtist = parts[2] && parts[2] !== 'NA' ? parts[2].trim() : null;
-                    const rawTrack = parts[3] && parts[3] !== 'NA' ? parts[3].trim() : null;
-                    const rawUploader = parts[4] && parts[4] !== 'NA' ? parts[4].trim() : null;
-                    const rawThumb = parts[5] && parts[5] !== 'NA' ? parts[5].trim() : null;
-
-                    let title = rawTitle;
-                    let artist = rawArtist;
-
-                    if (rawTrack && rawArtist) {
-                        title = cleanYoutubeTitle(rawTrack);
-                        artist = cleanYoutubeTitle(rawArtist);
-                    } else if (rawTitle) {
-                        const splitted = splitYoutubeTitle(rawTitle, rawArtist || rawUploader);
-                        title = splitted.title;
-                        artist = splitted.artist;
-                    }
-
-                    const videoId = extractYoutubeVideoId(targetUrl);
-                    const thumbnail = rawThumb || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null);
-
-                    downloadedMetadata = {
-                        title: title || 'Unknown Title',
-                        artist: artist || null,
-                        uploader: rawUploader,
-                        thumbnail
-                    };
-                }
-
                 let finalFilePath = destination;
                 if (!fs.existsSync(destination)) {
                     const dir = path.dirname(destination);
@@ -880,6 +971,24 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
                         return reject(new Error('Audio file was not produced by yt-dlp.'));
                     }
                 }
+
+                // The search/resolve step already captured real metadata; this
+                // is only a safety net for direct URL downloads. Read it from
+                // the produced file; anything missing stays null and the queue
+                // row's own title/artist win.
+                let downloadedMetadata = null;
+                try {
+                    const tags = NodeID3.read(finalFilePath);
+                    if (tags && (tags.title || tags.artist)) {
+                        const videoId = extractYoutubeVideoId(targetUrl);
+                        downloadedMetadata = {
+                            title: tags.title || null,
+                            artist: tags.artist || null,
+                            uploader: tags.artist || null,
+                            thumbnail: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null
+                        };
+                    }
+                } catch { /* tags are optional */ }
 
                 resolve({ filePath: finalFilePath, source: 'youtube', bitrate: 320, metadata: downloadedMetadata });
             }).catch(err => {
@@ -910,7 +1019,7 @@ function isSpotifyUrl(value) {
 
 /**
  * Spotify is a tracklist source only - no audio is ever taken from Spotify.
- * Each resolved track is queued and then acquired from Soulseek.
+ * Each resolved track is queued and acquired automatically from the available sources.
  */
 async function resolveSpotifyUrl(url) {
     const { getSpotifyTracks } = requireDeps();
@@ -1131,15 +1240,19 @@ async function acquireAudio(item, temporaryDirectory, reportProgress) {
     const query = buildSearchQuery(item);
     const failures = [];
 
+    const tryYoutube = async url => {
+        const destination = path.join(temporaryDirectory, 'audio.mp3');
+        return await youtubeDownload(url, destination, reportProgress, {
+            shouldCancel: () => activeTransfer.cancelled
+        });
+    };
+
     if (requestedSource === 'youtube') {
         try {
-            const destination = path.join(temporaryDirectory, 'audio.mp3');
-            return await youtubeDownload(item.source_url, destination, reportProgress, {
-                shouldCancel: () => activeTransfer.cancelled
-            });
+            return await tryYoutube(item.source_url);
         } catch (error) {
             if (error.message === 'Cancelled.') throw error;
-            throw new Error(`YouTube: ${error.message}`);
+            failures.push(`YouTube: ${error.message}`);
         }
     }
 
@@ -1164,11 +1277,39 @@ async function acquireAudio(item, temporaryDirectory, reportProgress) {
         return { ...result, source: 'soulseek', bitrate: live.bitrate };
     };
 
+    if (requestedSource === 'auto') {
+        try {
+            await reportProgress({ stage: 'searching', resolved_source: 'youtube' });
+            const results = await youtubeSearch(youtubeQuery(item), {
+                limit: YOUTUBE_MAX_ATTEMPTS,
+                expectedDuration: item.duration_seconds,
+                shouldCancel: () => activeTransfer.cancelled
+            });
+
+            for (const candidate of results) {
+                if (activeTransfer.cancelled) throw new Error('Cancelled.');
+                try {
+                    return await tryYoutube(candidate.payload.url);
+                } catch (error) {
+                    if (error.message === 'Cancelled.') throw error;
+                    failures.push(`YouTube: ${error.message}`);
+                }
+            }
+            if (results.length === 0) failures.push('YouTube: No matching videos.');
+        } catch (error) {
+            if (error.message === 'Cancelled.') throw error;
+            if (!failures.some(failure => failure.startsWith('YouTube:'))) {
+                failures.push(`YouTube: ${error.message}`);
+            }
+        }
+    }
+
     // An explicitly picked search result.
     if (requestedSource === 'soulseek' && payload) {
         return await trySoulseek(payload);
     }
-    // Automatic mode searches Soulseek for Spotify tracklists and legacy rows.
+    // Automatic mode uses Soulseek only as a fallback. Explicit requests still
+    // prefer the selected peer so lossless downloads do not silently change source.
     if (requestedSource === 'auto' || requestedSource === 'soulseek') {
         try {
             await reportProgress({ stage: 'searching', resolved_source: 'soulseek' });
@@ -1197,31 +1338,7 @@ async function acquireAudio(item, temporaryDirectory, reportProgress) {
             failures.push(`Soulseek: ${error.message}`);
         }
 
-        // Secondary fallback for automatic mode: search YouTube directly via native yt-dlp
-        if (requestedSource === 'auto') {
-            try {
-                await reportProgress({ stage: 'searching', resolved_source: 'youtube' });
-                const searchChild = ytDlp.exec(`ytsearch1:${query}`, {
-                    dumpSingleJson: true,
-                    noWarnings: true,
-                    noPlaylist: true,
-                    skipDownload: true
-                }, { env: ytDlpEnv(), timeout: 15000 });
-                const searchRes = await searchChild;
-                const info = JSON.parse(searchRes.stdout);
-                const entry = (info && Array.isArray(info.entries)) ? info.entries[0] : info;
-                if (entry && (entry.url || entry.id || entry.webpage_url)) {
-                    const targetUrl = entry.webpage_url || (entry.id ? `https://www.youtube.com/watch?v=${entry.id}` : entry.url);
-                    const destination = path.join(temporaryDirectory, 'audio.mp3');
-                    return await youtubeDownload(targetUrl, destination, reportProgress, {
-                        shouldCancel: () => activeTransfer.cancelled
-                    });
-                }
-            } catch (error) {
-                if (error.message === 'Cancelled.') throw error;
-                failures.push(`YouTube fallback: ${error.message}`);
-            }
-        }
+
     }
 
     throw new Error(failures.join(' | ') || 'Could not provide this track.');
@@ -1488,8 +1605,8 @@ function fetchItunesArtwork(artist, title) {
     });
 }
 
-/** Soulseek search for the Downloads page. */
-async function search(query, { sources = ['soulseek'], limit = 40 } = {}) {
+/** Search the requested sources for the Downloads page. */
+async function search(query, { sources = ['youtube'], limit = 40 } = {}) {
     const trimmed = String(query || '').trim();
     if (trimmed.length < 2) {
         throw Object.assign(new Error('Enter at least two characters to search.'), { statusCode: 400 });
@@ -1499,27 +1616,38 @@ async function search(query, { sources = ['soulseek'], limit = 40 } = {}) {
     }
 
     const wantSoulseek = sources.includes('soulseek');
-    const soulseekResult = wantSoulseek ? await soulseekSearch(trimmed, { limit }).catch(error => ({
-        available: false, results: [], error: error.message
-    })) : { available: false, results: [], error: null };
+    const wantYoutube = sources.includes('youtube');
+    const [soulseekResult, youtubeResult] = await Promise.all([
+        wantSoulseek ? soulseekSearch(trimmed, { limit }).catch(error => ({
+            available: false, results: [], error: error.message
+        })) : Promise.resolve({ available: false, results: [], error: null }),
+        wantYoutube ? youtubeSearch(`${trimmed} audio`, { limit: Math.min(limit, 10) })
+            .then(results => ({ available: true, results, error: null }))
+            .catch(error => ({ available: false, results: [], error: error.message }))
+            : Promise.resolve({ available: false, results: [], error: null })
+    ]);
+    const results = wantYoutube && !wantSoulseek ? youtubeResult.results : soulseekResult.results;
 
     // Group unique parsed names to minimize iTunes lookups
     const artworkCache = new Map();
-    const mappedResults = soulseekResult.results.map(entry => {
-        const parsed = parseFilename(entry.filename);
+    const mappedResults = results.map(entry => {
+        const parsed = entry.source === 'youtube' ? entry : parseFilename(entry.filename);
         return {
-            id: `slsk:${entry.user}:${entry.remotePath}`,
-            source: 'soulseek',
+            id: entry.source === 'youtube' ? entry.id : `slsk:${entry.user}:${entry.remotePath}`,
+            source: entry.source,
             title: parsed.title,
             artist: parsed.artist,
             user: entry.user,
+            duration: entry.duration || null,
+            thumbnail: entry.thumbnail || null,
             extension: entry.extension.replace('.', '').toUpperCase(),
             bitrate: entry.bitrate,
             sizeBytes: entry.sizeBytes,
             slots: entry.slots,
             queueLength: entry.queueLength,
-            rawFilename: entry.filename,
-            payload: {
+            rawFilename: entry.filename || null,
+            query: trimmed,
+            payload: entry.source === 'youtube' ? entry.payload : {
                 user: entry.user,
                 remotePath: entry.remotePath,
                 filename: entry.filename,
@@ -1535,6 +1663,10 @@ async function search(query, { sources = ['soulseek'], limit = 40 } = {}) {
 
     // Concurrently fetch artwork for unique (artist + title) combinations
     await Promise.all(mappedResults.map(async entry => {
+        if (entry.source === 'youtube') {
+            entry.thumbnail = entry.thumbnail || null;
+            return;
+        }
         const cacheKey = `${entry.artist || ''} - ${entry.title}`.toLowerCase();
         if (!artworkCache.has(cacheKey)) {
             artworkCache.set(cacheKey, fetchItunesArtwork(entry.artist, entry.title));
@@ -1544,10 +1676,17 @@ async function search(query, { sources = ['soulseek'], limit = 40 } = {}) {
 
     return {
         query: trimmed,
+        source: wantYoutube && !wantSoulseek ? 'youtube' : 'soulseek',
+        results: mappedResults,
         soulseek: {
             available: soulseekResult.available,
             error: soulseekResult.error,
-            results: mappedResults
+            results: wantYoutube ? [] : mappedResults
+        },
+        youtube: {
+            available: youtubeResult.available,
+            error: youtubeResult.error,
+            results: wantYoutube ? mappedResults : []
         }
     };
 }
@@ -1561,7 +1700,7 @@ async function resolveLink(url) {
         return {
             kind: 'spotify',
             label: tracks[0] && tracks[0].album ? tracks[0].album : 'Spotify import',
-            tracks: tracks.map(track => ({ ...track, requestedSource: 'soulseek' }))
+            tracks: tracks.map(track => ({ ...track, requestedSource: 'auto' }))
         };
     }
 
@@ -1640,9 +1779,8 @@ async function enqueue(items, requestedBy, { batchLabel = null } = {}) {
             throw Object.assign(new Error(`Unknown download source "${item.requestedSource}".`), { statusCode: 400 });
         }
     }
-    const needsSoulseek = items.some(item => (item.requestedSource || 'auto') !== 'youtube');
-    if (needsSoulseek && !await readSoulseekCredentials()) {
-        throw Object.assign(new Error('Set up Soulseek before queueing downloads.'), { statusCode: 409 });
+    if (items.some(item => item.requestedSource === 'soulseek') && !await readSoulseekCredentials()) {
+        throw Object.assign(new Error('Connect Soulseek to download a specific peer file.'), { statusCode: 409 });
     }
 
     // Fail fast with a clear message rather than after the first transfer.

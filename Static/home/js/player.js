@@ -43,31 +43,12 @@ const dedicatedVolSlider = document.getElementById('dedicated-volume-slider');
 const dedicatedVolIcon = document.getElementById('dedicated-vol-icon');
 const btnLyrics = document.getElementById('dedicated-btn-lyrics');
 const btnFindLyrics = document.getElementById('dedicated-btn-find-lyrics');
-const btnEditLyrics = document.getElementById('edit-lyrics-btn');
-const btnSaveLyrics = document.getElementById('save-lyrics-btn');
-const btnClearLyrics = document.getElementById('clear-lyrics-btn');
-const btnCancelLyrics = document.getElementById('cancel-lyric-edit-btn');
-const editorControls = document.getElementById('lyric-editor-controls');
 const lyricsScrollArea = document.getElementById('lyrics-scroll-area');
 const lyricsContent = document.getElementById('lyrics-content');
 
-// Lyrics Selection UI
-const btnReRequestLyrics = document.getElementById('re-request-lyrics-btn');
-const lyricsSelectionModal = document.getElementById('lyrics-selection-modal');
-const closeLyricsSelectionModal = document.getElementById('close-lyrics-selection-modal');
-const lyricsSearchTitle = document.getElementById('lyrics-search-title');
-const lyricsSearchArtist = document.getElementById('lyrics-search-artist');
-const lyricsSearchBtn = document.getElementById('lyrics-search-btn');
-const lyricsSelectionResults = document.getElementById('lyrics-selection-results');
-const lyricsSelectionLoading = document.getElementById('lyrics-selection-loading');
-const lyricsSelectionEmpty = document.getElementById('lyrics-selection-empty');
-
+// Lyrics lookup, picker and editor live in lyrics.js (loaded right after this file).
 let isLyricEditMode = false;
 let tempLyricsData = [];
-let originalLyricsData = []; // To restore on cancel
-let _lyricsFetchAbort = null;
-let _lyricsSearchAbort = null;
-let _lyricsSelectionAbort = null;
 
 /* Set gradient placeholder until a song is playing */
 if (playerImg) playerImg.src = COVER_PLACEHOLDER;
@@ -247,6 +228,7 @@ function loadSong(song) {
     canSeek = false;
 
     resetLyrics();
+    setCurrentLyricsTrack(song);
     fetchLyrics(song.title, song.artist, song.id, song.playlistOwner);
 
     progressBar.style.width = '0%';
@@ -1017,226 +999,6 @@ if (dedicatedVolSlider) dedicatedVolSlider.addEventListener('wheel', e => handle
 if (dedicatedVolIcon) dedicatedVolIcon.addEventListener('wheel', e => handleVolumeScroll(e, dedicatedVolSlider), { passive: false });
 const dedicatedVolWrapper = document.querySelector('.dedicated-volume-wrapper');
 if (dedicatedVolWrapper) dedicatedVolWrapper.addEventListener('wheel', e => handleVolumeScroll(e, dedicatedVolSlider), { passive: false });
-
-/* --- Lyric Editor Listeners --- */
-if (btnEditLyrics) btnEditLyrics.addEventListener('click', toggleLyricEditor);
-if (btnSaveLyrics) btnSaveLyrics.addEventListener('click', saveLyricsToServer);
-if (btnClearLyrics) btnClearLyrics.addEventListener('click', clearLyricsFromServer);
-if (btnCancelLyrics) btnCancelLyrics.addEventListener('click', cancelLyricEdit);
-
-/* --- Lyrics Selection Listeners --- */
-function openLyricsSearchModal() {
-    if (!window.currentlyPlayingSongId) return;
-    if (_lyricsFetchAbort) _lyricsFetchAbort.abort();
-    _lyricsFetchAbort = null;
-    const currentTitle = document.getElementById('dedicated-player-title')?.textContent || '';
-    const currentArtist = document.getElementById('dedicated-player-artist')?.textContent || '';
-
-    const cleaned = cleanMetadata(currentTitle, currentArtist);
-
-    lyricsSearchTitle.value = cleaned.title;
-    lyricsSearchArtist.value = cleaned.artist !== 'Unknown Artist' ? cleaned.artist : '';
-
-    lyricsSelectionResults.innerHTML = '';
-    lyricsSelectionLoading.classList.add('hidden');
-    lyricsSelectionEmpty.classList.add('hidden');
-    lyricsSelectionModal.classList.remove('hidden');
-
-    performLyricsSearch();
-}
-
-if (btnReRequestLyrics) {
-    btnReRequestLyrics.addEventListener('click', openLyricsSearchModal);
-}
-if (btnFindLyrics) {
-    btnFindLyrics.addEventListener('click', openLyricsSearchModal);
-}
-
-if (closeLyricsSelectionModal) {
-    closeLyricsSelectionModal.addEventListener('click', () => {
-        if (_lyricsSearchAbort) _lyricsSearchAbort.abort();
-        _lyricsSearchAbort = null;
-        lyricsSelectionModal.classList.add('hidden');
-    });
-}
-
-if (lyricsSearchBtn) {
-    lyricsSearchBtn.addEventListener('click', performLyricsSearch);
-}
-if (lyricsSearchTitle) {
-    lyricsSearchTitle.addEventListener('keypress', e => {
-        if (e.key === 'Enter') performLyricsSearch();
-    });
-}
-if (lyricsSearchArtist) {
-    lyricsSearchArtist.addEventListener('keypress', e => {
-        if (e.key === 'Enter') performLyricsSearch();
-    });
-}
-
-async function performLyricsSearch() {
-    const title = lyricsSearchTitle.value.trim();
-    const artist = lyricsSearchArtist.value.trim();
-    const songId = window.currentlyPlayingSongId;
-
-    if (!title || !songId) return;
-
-    if (_lyricsSearchAbort) _lyricsSearchAbort.abort();
-    const controller = new AbortController();
-    _lyricsSearchAbort = controller;
-
-    lyricsSelectionLoading.classList.remove('hidden');
-    lyricsSelectionResults.innerHTML = '';
-    lyricsSelectionEmpty.classList.add('hidden');
-
-    try {
-        const url = new URL('https://lrclib.net/api/search');
-        url.searchParams.append('q', `${title} ${artist}`.trim());
-
-        const response = await fetch(url, { signal: controller.signal });
-        if (_lyricsSearchAbort !== controller || songId !== window.currentlyPlayingSongId || lyricsSelectionModal.classList.contains('hidden')) return;
-        if (response.ok) {
-            const results = await response.json();
-            if (_lyricsSearchAbort !== controller || songId !== window.currentlyPlayingSongId || lyricsSelectionModal.classList.contains('hidden')) return;
-            lyricsSelectionLoading.classList.add('hidden');
-
-            if (results && results.length > 0) {
-                renderLyricsSelectionResults(results, songId);
-            } else {
-                lyricsSelectionEmpty.classList.remove('hidden');
-            }
-        } else {
-            lyricsSelectionLoading.classList.add('hidden');
-            lyricsSelectionEmpty.classList.remove('hidden');
-        }
-    } catch (e) {
-        if (e.name === 'AbortError' || _lyricsSearchAbort !== controller) return;
-        console.error("Lyrics search failed:", e);
-        lyricsSelectionLoading.classList.add('hidden');
-        lyricsSelectionEmpty.classList.remove('hidden');
-    } finally {
-        if (_lyricsSearchAbort === controller) _lyricsSearchAbort = null;
-    }
-}
-
-function renderLyricsSelectionResults(results, songId) {
-    lyricsSelectionResults.innerHTML = '';
-
-    results.forEach(result => {
-        const resultItem = document.createElement('div');
-        resultItem.style.cssText = `
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 8px;
-            padding: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        `;
-
-        const infoDiv = document.createElement('div');
-        const titleSpan = document.createElement('div');
-        titleSpan.style.fontWeight = 'bold';
-        titleSpan.textContent = result.name || 'Unknown Title';
-
-        const artistSpan = document.createElement('div');
-        artistSpan.style.fontSize = '12px';
-        artistSpan.style.color = '#b3b3b3';
-        const durationStr = result.duration ? Math.floor(result.duration / 60) + ':' + String(result.duration % 60).padStart(2, '0') : '?';
-        artistSpan.textContent = `${result.artistName || 'Unknown Artist'} \u2022 ${result.albumName || 'Unknown Album'} (${durationStr})`;
-
-        const typeSpan = document.createElement('div');
-        typeSpan.style.fontSize = '11px';
-        typeSpan.style.marginTop = '4px';
-
-        if (result.syncedLyrics) {
-            typeSpan.innerHTML = `<span style="background: var(--accent); color: var(--on-accent); padding: 2px 6px; border-radius: 4px; font-weight: bold;">Synced</span>`;
-        } else if (result.plainLyrics) {
-            typeSpan.innerHTML = `<span style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 4px;">Plain Text</span>`;
-        } else {
-            typeSpan.innerHTML = `<span style="background: rgba(244,63,94,0.2); color: #f43f5e; padding: 2px 6px; border-radius: 4px;">Instrumental/None</span>`;
-        }
-
-        infoDiv.appendChild(titleSpan);
-        infoDiv.appendChild(artistSpan);
-        infoDiv.appendChild(typeSpan);
-
-        const selectBtn = document.createElement('button');
-        selectBtn.className = 'btn btn-sm';
-        selectBtn.style.cssText = 'background: var(--accent); color: var(--on-accent); font-weight: bold; padding: 6px 12px; border-radius: 30px;';
-        selectBtn.textContent = 'Select';
-        selectBtn.addEventListener('click', () => selectLyricsResult(result, songId));
-
-        if (!result.syncedLyrics && !result.plainLyrics) {
-            selectBtn.disabled = true;
-            selectBtn.style.opacity = '0.5';
-        }
-
-        resultItem.appendChild(infoDiv);
-        resultItem.appendChild(selectBtn);
-
-        lyricsSelectionResults.appendChild(resultItem);
-    });
-}
-
-function selectLyricsResult(result, expectedSongId = window.currentlyPlayingSongId) {
-    const songId = window.currentlyPlayingSongId;
-    if (!songId || String(songId) !== String(expectedSongId)) return;
-    const lyricsToSave = result.syncedLyrics || result.plainLyrics;
-    const isSynced = !!result.syncedLyrics;
-    if (typeof lyricsToSave !== 'string' || !lyricsToSave) return;
-
-    if (_lyricsSearchAbort) _lyricsSearchAbort.abort();
-    _lyricsSearchAbort = null;
-    if (_lyricsSelectionAbort) _lyricsSelectionAbort.abort();
-    const controller = new AbortController();
-    _lyricsSelectionAbort = controller;
-
-    // Apply locally immediately
-    lyricsData = [];
-    if (lyricsContent) lyricsContent.innerHTML = '';
-
-    if (isSynced) {
-        parseLRC(lyricsToSave);
-    } else {
-        lyricsData = [{ time: 0, text: lyricsToSave }];
-    }
-    renderLyrics();
-
-    // Ensure lyrics button is visible
-    if (btnLyrics) {
-        if (btnFindLyrics) btnFindLyrics.classList.remove('show-lyrics-btn');
-        btnLyrics.classList.add('show-lyrics-btn');
-        btnLyrics.parentElement.classList.add('has-lyrics');
-    }
-    lyricsSelectionModal.classList.add('hidden');
-
-    // Attempt to save to our server
-    fetch(`/api/lyrics/${encodeURIComponent(songId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-            lyrics: lyricsToSave,
-            is_synced: isSynced
-        })
-    }).then(async response => {
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            if (response.status === 403) {
-                console.warn("Applied lyrics locally. You don't have permission to update the lyrics in the database.");
-            } else {
-                console.error("Failed to save lyrics to database:", errData.error || response.status);
-            }
-        }
-    }).catch(err => {
-        if (err.name === 'AbortError') return;
-        console.error("Failed to save selected lyrics:", err);
-    }).finally(() => {
-        if (_lyricsSelectionAbort === controller) _lyricsSelectionAbort = null;
-    });
-}
-
 
 volSlider.addEventListener('input', e => {
     const val = e.target.value / 100;
@@ -2042,7 +1804,8 @@ document.addEventListener('keydown', event => {
 
 
 /* ========== DEDICATED PLAYER LYRICS LOGIC ========== */
-let lyricsData = []; // Array of {time: seconds, text: string}
+let lyricsData = []; // Array of {time: seconds|null, text: string}
+let lyricsAreSynced = true; // false => plain lyrics, shown statically
 let isLyricsActive = false;
 let isUserScrollingLyrics = false;
 let userScrollingLyricsTimeout = null;
@@ -2099,14 +1862,15 @@ function startDesktopLyricsSync() {
     stopDesktopLyricsSync();
     if (
         !isLyricsActive ||
+        isLyricEditMode ||
+        !lyricsAreSynced ||
         window.innerWidth <= 900 ||
         audio.paused ||
         !document.body.classList.contains('player-section-active')
     ) return;
 
-    const data = isLyricEditMode ? tempLyricsData : lyricsData;
     const currentTime = audio.currentTime;
-    const nextLine = data.find(line => Number(line.time) > currentTime + 0.01);
+    const nextLine = lyricsData.find(line => Number(line.time) > currentTime + 0.01);
     if (!nextLine) return;
 
     const playbackRate = Math.max(0.1, Number(audio.playbackRate) || 1);
@@ -2199,6 +1963,10 @@ if (btnLyrics) {
 }
 
 function deactivateLyricsView({ resetLineDepth = true } = {}) {
+    if (isLyricEditMode && typeof closeLyricEditor === 'function') {
+        if (lyricEditorState.dirty) showToast('Unsaved lyric edits were discarded', 'error');
+        closeLyricEditor({ render: true });
+    }
     isLyricsActive = false;
     activeLyricIndex = -1;
     stopDesktopLyricsSync();
@@ -2248,8 +2016,8 @@ if (btnCloseLyrics) {
         }
 
         const target = e.target;
-        // Never hijack progress sliders, volume sliders, buttons, inputs, links, or lyric edit controls
-        if (target.closest('.dedicated-progress-bar-wrapper, .progress-bar-wrapper, .volume-slider, button, input, a, .lyric-sync-btn, .lyric-edit-input')) {
+        // Never hijack progress sliders, volume sliders, buttons, inputs, links, or the lyrics editor
+        if (isLyricEditMode || target.closest('.dedicated-progress-bar-wrapper, .progress-bar-wrapper, .volume-slider, button, input, textarea, a, .lyric-editor, .lyric-editor-footer')) {
             isGestureIgnored = true;
             return;
         }
@@ -2387,600 +2155,16 @@ if (btnCloseLyrics) {
     }, { passive: true });
 })();
 
-function resetLyrics() {
-    if (_lyricsFetchAbort) _lyricsFetchAbort.abort();
-    if (_lyricsSearchAbort) _lyricsSearchAbort.abort();
-    if (_lyricsSelectionAbort) _lyricsSelectionAbort.abort();
-    _lyricsFetchAbort = null;
-    _lyricsSearchAbort = null;
-    _lyricsSelectionAbort = null;
-    if (lyricsSelectionModal) lyricsSelectionModal.classList.add('hidden');
-    if (lyricsSelectionLoading) lyricsSelectionLoading.classList.add('hidden');
-
-    lyricsData = [];
-    activeLyricIndex = -1;
-    if (lyricsContent) {
-        lyricsContent.style.removeProperty('transform');
-        lyricsContent.classList.remove('lyrics-position-immediate');
-        lyricsContent.classList.remove('lyrics-editing');
-        lyricsContent.innerHTML = '';
-    }
-    if (lyricsScrollArea) lyricsScrollArea.classList.remove('lyrics-editing');
-    if (btnLyrics) btnLyrics.classList.remove('show-lyrics-btn');
-    if (btnFindLyrics) btnFindLyrics.classList.remove('show-lyrics-btn');
-    if (btnLyrics && btnLyrics.parentElement) {
-        btnLyrics.parentElement.classList.remove('has-lyrics');
-    }
-
-    // Cancel edit mode if active
-    if (isLyricEditMode) {
-        isLyricEditMode = false;
-        if (btnEditLyrics) btnEditLyrics.classList.remove('hidden');
-        if (editorControls) editorControls.classList.add('hidden');
-    }
-
-    // If lyrics view is active but we reset, go back to standard view
-    if (isLyricsActive) {
-        deactivateLyricsView();
-    }
-}
-
-/**
- * Utility to strip common noise from song titles and artists (4K, Official Video, etc.)
- * @param {string} title 
- * @param {string} artist 
- * @returns {object} {title, artist}
- */
-function cleanMetadata(title, artist) {
-    let cleanTitle = title || '';
-    let cleanArtist = artist && artist !== 'Unknown Artist' ? artist : '';
-
-    // 1. Remove common YouTube suffixes and noise
-    const noisePatterns = [
-        // Parentheses/Brackets that START with noise keywords (Wildcard match)
-        /\((?:official|music|video|audio|lyrics?|hd|4k|8k|uhd|hdr|full|hq|high quality|visualizer|mv|m\/v|remastered|remaster|live|performance|exclusive|premiere|vevo|topic|dolby|atmos|dts|spatial audio|hi-res|360ra|8d|432hz|extended|radio edit|original mix|prod\.\s+by|featuring|feat\.).*?\)/gi,
-        /\[(?:official|music|video|audio|lyrics?|hd|4k|8k|uhd|hdr|full|hq|high quality|visualizer|mv|m\/v|remastered|remaster|live|performance|exclusive|premiere|vevo|topic|dolby|atmos|dts|spatial audio|hi-res|360ra|8d|432hz|extended|radio edit|original mix|prod\.\s+by|featuring|feat\.).*?\]/gi,
-
-        // Standalone keywords
-        /\b(?:official|music|video|audio|lyrics?|hd|4k|8k|uhd|hdr|full|hq|high quality|visualizer|mv|m\/v|remastered|remaster|live|performance|exclusive|premiere|vevo|topic|dolby|atmos|dts|disney plus|disney\+|netflix|apple music|spotify|vevo|topic|prod\.\s+by|featuring|feat\.)\b/gi,
-
-        // Patterns like "Official Video", "Lyric Video"
-        /\b(?:official\s+video|music\s+video|lyric\s+video|official\s+audio|official\s+lyric\s+video)\b/gi,
-
-        // Remove tour/version info
-        /\b(?:eras tour|world tour|tour version|taylor\'s version)\b/gi,
-
-        // Year strings
-        /\b\(\d{4}\)\b/g,
-        /\b\[\d{4}\]\b/g,
-    ];
-
-    noisePatterns.forEach(pattern => {
-        cleanTitle = cleanTitle.replace(pattern, ' ');
-    });
-
-    // 2. Intelligently handle separators (| or //)
-    // If it looks like "Artist | Title | Noise", we want to keep the first two parts
-    if (cleanTitle.includes(' | ')) {
-        const parts = cleanTitle.split(' | ').map(p => p.trim()).filter(p => p.length > 0);
-        if (parts.length >= 2 && !cleanTitle.includes(' - ')) {
-            // Use the first two parts as Artist - Title
-            cleanTitle = `${parts[0]} - ${parts[1]}`;
-        } else {
-            cleanTitle = parts[0]; // Just take the first part
-        }
-    }
-    cleanTitle = cleanTitle.replace(/\/\/.*$/g, ' ');
-
-    // 3. Handle Artist-Title split in the title itself (Standard " - ")
-    // Many YouTube titles are "Artist - Title"
-    if (cleanTitle.includes(' - ')) {
-        const parts = cleanTitle.split(' - ').map(p => p.trim());
-        if (cleanArtist) {
-            const lowArtist = cleanArtist.toLowerCase();
-            const lowPart0 = parts[0].toLowerCase();
-            const lowPart1 = parts[1].toLowerCase();
-
-            // Normalized comparison (ignore spaces/special chars)
-            const normArtist = lowArtist.replace(/[^\w]/g, '');
-            const normPart0 = lowPart0.replace(/[^\w]/g, '');
-            const normPart1 = lowPart1.replace(/[^\w]/g, '');
-
-            if (normPart0 && normArtist && (normPart0.includes(normArtist) || normArtist.includes(normPart0))) {
-                cleanTitle = parts[1];
-                cleanArtist = parts[0]; // Adopt the cleaner name from the title
-            } else if (normPart1 && normArtist && (normPart1.includes(normArtist) || normArtist.includes(normPart1))) {
-                cleanTitle = parts[0];
-                cleanArtist = parts[1]; // Adopt the cleaner name from the title
-            }
-        } else {
-            // No artist, assume Part 0 is artist, Part 1 is title
-            cleanArtist = parts[0];
-            cleanTitle = parts[1];
-        }
-    }
-
-    // 4. Remove artist from title if it's still present
-    if (cleanArtist && cleanArtist !== 'Unknown Artist') {
-        // Strip common channel noise from the artist name itself for better matching
-        const artistNoise = /\b(?:vevo|topic|official|channel)\b/gi;
-        const baseArtist = cleanArtist.replace(artistNoise, '').trim();
-
-        const escapedArtist = baseArtist.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const artistRegex = new RegExp(`\\b${escapedArtist}\\b`, 'gi');
-        cleanTitle = cleanTitle.replace(artistRegex, ' ');
-
-        // Update cleanArtist to the stripped version if it's not empty
-        if (baseArtist) cleanArtist = baseArtist;
-    }
-
-    // 5. Final cleanup of whitespace and special characters
-    cleanTitle = cleanTitle
-        .replace(/\s+/g, ' ')
-        .replace(/[^\w\s\-\'\!\?\&\.]/gi, '') // Remove weird non-song symbols
-        .trim();
-
-    cleanArtist = cleanArtist
-        .replace(/\s+/g, ' ')
-        .replace(/[^\w\s\-\'\!\?\&\.]/gi, '')
-        .trim();
-
-    if (cleanTitle !== title || cleanArtist !== artist) {
-        console.log(`[METADATA CLEAN] Original: "${title}" [${artist}] -> Cleaned: "${cleanTitle}" [${cleanArtist}]`);
-    }
-
-    return { title: cleanTitle, artist: cleanArtist };
-}
-
-async function fetchLyrics(title, artist, songId, preferUser = null) {
-    if (_lyricsFetchAbort) _lyricsFetchAbort.abort();
-    if (!title || !navigator.onLine) return;
-    if (songId !== window.currentlyPlayingSongId) return;
-
-    const controller = new AbortController();
-    _lyricsFetchAbort = controller;
-
-    try {
-        // Try fetching from our server first
-        if (songId) {
-            let lyricsUrl = `/api/lyrics/${encodeURIComponent(songId)}`;
-            if (preferUser) lyricsUrl += `?prefer=${encodeURIComponent(preferUser)}`;
-            const serverResponse = await fetch(lyricsUrl, { signal: controller.signal });
-            if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
-
-            if (serverResponse.ok) {
-                const cachedData = await serverResponse.json();
-                if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
-                if (cachedData && cachedData.lyrics) {
-                    console.log(`[LYRICS] Serving cached lyrics for song ID: ${songId}`);
-                    if (cachedData.is_synced) {
-                        parseLRC(cachedData.lyrics);
-                    } else {
-                        lyricsData = [{ time: 0, text: cachedData.lyrics }];
-                    }
-                    renderLyrics();
-                    if (btnLyrics) {
-                        if (btnFindLyrics) btnFindLyrics.classList.remove('show-lyrics-btn');
-                        btnLyrics.classList.add('show-lyrics-btn');
-                        btnLyrics.parentElement.classList.add('has-lyrics');
-                    }
-                    return; // Successfully used cache
-                }
-            }
-        }
-
-        // --- AUTOMATIC SEARCH WITH ROBUST CLEANING ---
-        const cleaned = cleanMetadata(title, artist);
-        let searchTitle = cleaned.title;
-        let searchArtist = cleaned.artist;
-
-        console.log(`[LYRICS] Searching for: "${searchTitle}" by "${searchArtist}" (Cleaned from "${title}")`);
-
-        // Inner function to do the actual fetch using /api/search
-        const tryFetch = async (t, a) => {
-            const url = new URL('https://lrclib.net/api/search');
-            url.searchParams.append('q', `${t} ${a}`.trim());
-
-            try {
-                const response = await fetch(url, { signal: controller.signal });
-                if (response.ok) {
-                    const results = await response.json();
-                    if (results && results.length > 0) {
-                        // Priority: Synced > Plain
-                        const synced = results.find(r => r.syncedLyrics);
-                        if (synced) return synced;
-                        const plain = results.find(r => r.plainLyrics);
-                        if (plain) return plain;
-                    }
-                }
-            } catch (e) {
-                console.warn("[LYRICS] fetch error:", e);
-            }
-            return null;
-        };
-
-        // Try 1: Fully Cleaned Title + Artist
-        let data = await tryFetch(searchTitle, searchArtist);
-        if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
-
-        // Try 2: Title only (sometimes artist name in metadata vs LRCLIB differs)
-        if (!data && searchArtist) {
-            console.log(`[LYRICS] Stage 1 failed. Trying Stage 2 (Title only): "${searchTitle}"`);
-            data = await tryFetch(searchTitle, '');
-            if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
-        }
-
-        // Try 3: Aggressive stripping (remove all non-alphanumeric)
-        if (!data) {
-            let ultraCleanTitle = searchTitle.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-            if (ultraCleanTitle && ultraCleanTitle !== searchTitle) {
-                console.log(`[LYRICS] Stage 2 failed. Trying Stage 3 (Aggressive): "${ultraCleanTitle}"`);
-                data = await tryFetch(ultraCleanTitle, '');
-                if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
-            }
-        }
-
-        // Try 4: Text before brackets (handles "Title (Live at...)")
-        if (!data && (searchTitle.includes('(') || searchTitle.includes('['))) {
-            let beforeBrackets = searchTitle.split(/[\(\[]/)[0].trim();
-            if (beforeBrackets && beforeBrackets.length > 2) {
-                console.log(`[LYRICS] Stage 3 failed. Trying Stage 4 (Before Brackets): "${beforeBrackets}"`);
-                data = await tryFetch(beforeBrackets, searchArtist);
-                if (_lyricsFetchAbort !== controller || songId !== window.currentlyPlayingSongId) return;
-            }
-        }
-
-        if (!data) {
-            if (songId === window.currentlyPlayingSongId && btnFindLyrics) {
-                if (btnLyrics) btnLyrics.classList.remove('show-lyrics-btn');
-                btnFindLyrics.classList.add('show-lyrics-btn');
-                btnFindLyrics.parentElement.classList.add('has-lyrics');
-            }
-            return;
-        }
-        if (songId !== window.currentlyPlayingSongId) return;
-
-        console.log(`[LYRICS] Found lyrics from lrclib.net for ${title}`);
-
-        // Cache them on our server for future
-        fetch(`/api/lyrics/${encodeURIComponent(songId)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-                lyrics: data.syncedLyrics || data.plainLyrics,
-                is_synced: !!data.syncedLyrics
-            })
-        }).catch(err => console.error("[LYRICS] Cache save failed:", err));
-
-        if (data.syncedLyrics) {
-            parseLRC(data.syncedLyrics);
-        } else {
-            lyricsData = [{ time: 0, text: data.plainLyrics }];
-        }
-
-        if (songId === window.currentlyPlayingSongId) {
-            renderLyrics();
-            if (btnLyrics) {
-                if (btnFindLyrics) btnFindLyrics.classList.remove('show-lyrics-btn');
-                btnLyrics.classList.add('show-lyrics-btn');
-                btnLyrics.parentElement.classList.add('has-lyrics');
-            }
-        }
-    } catch (err) {
-        if (err.name === 'AbortError' || _lyricsFetchAbort !== controller) return;
-        console.error("Failed to fetch lyrics:", err);
-        if (songId === window.currentlyPlayingSongId && btnFindLyrics) {
-            if (btnLyrics) btnLyrics.classList.remove('show-lyrics-btn');
-            btnFindLyrics.classList.add('show-lyrics-btn');
-            btnFindLyrics.parentElement.classList.add('has-lyrics');
-        }
-    } finally {
-        if (_lyricsFetchAbort === controller) _lyricsFetchAbort = null;
-    }
-}
-
-function parseLRC(lrcString) {
-    lyricsData = [];
-    const lines = lrcString.split('\n');
-    const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
-
-    for (const line of lines) {
-        const match = timeRegex.exec(line);
-        if (match) {
-            const minutes = parseInt(match[1], 10);
-            const seconds = parseInt(match[2], 10);
-            const milliseconds = parseInt(match[3], 10);
-
-            // Normalize MS depending on if it's 2 or 3 digits
-            const msMultiplier = match[3].length === 2 ? 10 : 1;
-            const timeInSeconds = minutes * 60 + seconds + (milliseconds * msMultiplier) / 1000;
-
-            const text = line.replace(timeRegex, '').trim();
-            if (text) {
-                lyricsData.push({ time: timeInSeconds, text: text });
-            }
-        }
-    }
-
-    // Sort by time just in case
-    lyricsData.sort((a, b) => a.time - b.time);
-}
-
-function renderLyrics() {
-    if (!lyricsContent) return;
-    activeLyricIndex = -1;
-    resetDesktopLyricsPresentation();
-    lyricsContent.classList.toggle('lyrics-editing', isLyricEditMode);
-    if (lyricsScrollArea) lyricsScrollArea.classList.toggle('lyrics-editing', isLyricEditMode);
-    lyricsContent.innerHTML = '';
-
-    const data = isLyricEditMode ? tempLyricsData : lyricsData;
-
-    data.forEach((line, index) => {
-        const lineEl = document.createElement('div');
-        lineEl.className = 'lyric-line';
-        if (line.text === '\u266a') lineEl.classList.add('instrumental');
-
-        if (isLyricEditMode) {
-            lineEl.classList.add('editing');
-
-            // Time Display
-            const timeEl = document.createElement('span');
-            timeEl.className = 'lyric-edit-time';
-            timeEl.textContent = formatLyricsTime(line.time);
-            lineEl.appendChild(timeEl);
-
-            // Text Input
-            const input = document.createElement('input');
-            input.className = 'lyric-edit-input';
-            input.value = line.text;
-            input.addEventListener('change', (e) => {
-                tempLyricsData[index].text = e.target.value;
-            });
-            lineEl.appendChild(input);
-
-            // Sync Button (Now always Sync & Shift Following as requested)
-            const syncBtn = document.createElement('button');
-            syncBtn.className = 'lyric-sync-btn';
-            syncBtn.style.background = 'rgba(var(--accent-rgb), 0.2)';
-            syncBtn.innerHTML = "<i class='bx bx-time-five'></i>";
-            syncBtn.title = "Sync this and all following lines";
-            syncBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                captureTimestamp(index, true);
-            });
-            lineEl.appendChild(syncBtn);
-
-            // Mark active edit if audio is near this line
-            if (Math.abs(audio.currentTime - line.time) < 0.5) {
-                lineEl.classList.add('active-edit');
-            }
-
-        } else {
-            // Standard View Mode
-            String(line.text || '').split('\n').forEach((part, partIndex) => {
-                if (partIndex > 0) lineEl.appendChild(document.createElement('br'));
-                lineEl.appendChild(document.createTextNode(part));
-            });
-            lineEl.dataset.index = index;
-            lineEl.dataset.time = line.time;
-            lineEl.setAttribute('role', 'button');
-            lineEl.setAttribute('tabindex', '0');
-
-            const activateLine = () => {
-                if (audio && isFinite(line.time)) {
-                    audio.currentTime = line.time;
-                    isUserScrollingLyrics = false;
-                    updateActiveLyric();
-                    playSong();
-                }
-            };
-
-            // Click or keyboard activation seeks and updates the depth states
-            // immediately instead of waiting for the next audio timeupdate.
-            lineEl.addEventListener('click', activateLine);
-            lineEl.addEventListener('keydown', event => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
-                event.preventDefault();
-                activateLine();
-            });
-        }
-
-        lyricsContent.appendChild(lineEl);
-    });
-
-    // Add Offset Controls footer in editor mode
-    if (isLyricEditMode) {
-        const footer = document.createElement('div');
-        footer.className = 'lyric-editor-footer';
-        footer.innerHTML = `
-            <div class="offset-controls">
-                <span>Shift All:</span>
-                <button type="button" class="offset-btn" data-offset="-500">-0.5s</button>
-                <button type="button" class="offset-btn" data-offset="-100">-0.1s</button>
-                <button type="button" class="offset-btn" data-offset="100">+0.1s</button>
-                <button type="button" class="offset-btn" data-offset="500">+0.5s</button>
-            </div>
-            <div style="font-size: 11px; color: #666;">Tip: Press 'S' to sync active line</div>
-        `;
-        footer.querySelectorAll('.offset-btn').forEach(button => {
-            button.addEventListener('click', () => shiftAllLyrics(Number(button.dataset.offset)));
-        });
-        lyricsContent.appendChild(footer);
-    }
-
-    if (isLyricsActive && !isLyricEditMode) {
-        updateActiveLyric(true);
-    }
-}
-
-/* --- Lyric Editor Functions --- */
-
-function toggleLyricEditor() {
-    if (isLyricEditMode) {
-        // This is now handled by the "Save" or "Cancel" buttons in the header
-        return;
-    } else {
-        isLyricEditMode = true;
-        originalLyricsData = JSON.parse(JSON.stringify(lyricsData));
-        tempLyricsData = JSON.parse(JSON.stringify(lyricsData));
-
-        btnEditLyrics.classList.add('hidden'); // Hide the "Edit" button
-        editorControls.classList.remove('hidden'); // Show Save/Clear/Cancel
-    }
-    renderLyrics();
-}
-
-function cancelLyricEdit() {
-    isLyricEditMode = false;
-    lyricsData = JSON.parse(JSON.stringify(originalLyricsData));
-    btnEditLyrics.classList.remove('hidden');
-    editorControls.classList.add('hidden');
-    renderLyrics();
-}
-
-async function saveLyricsToServer() {
-    const songId = window.currentlyPlayingSongId;
-    if (!songId) return;
-
-    try {
-        const isSynced = tempLyricsData.length > 1 || (tempLyricsData[0] && tempLyricsData[0].time > 0);
-
-        let lyricsPayload = "";
-        if (isSynced) {
-            // Sort by time before saving
-            tempLyricsData.sort((a, b) => a.time - b.time);
-
-            lyricsPayload = tempLyricsData.map(line => {
-                const min = Math.floor(line.time / 60);
-                const sec = (line.time % 60).toFixed(2).padStart(5, '0');
-                return `[${min.toString().padStart(2, '0')}:${sec}]${line.text}`;
-            }).join('\n');
-        } else {
-            lyricsPayload = tempLyricsData[0]?.text || "";
-        }
-
-        const res = await fetch(`/api/lyrics/${encodeURIComponent(songId)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                lyrics: lyricsPayload,
-                is_synced: isSynced
-            })
-        });
-
-        if (String(songId) !== String(window.currentlyPlayingSongId)) return;
-        if (res.ok) {
-            lyricsData = JSON.parse(JSON.stringify(tempLyricsData));
-            isLyricEditMode = false;
-            btnEditLyrics.classList.remove('hidden');
-            editorControls.classList.add('hidden');
-            renderLyrics();
-            console.log("[LYRICS] Saved edits to server.");
-        } else {
-            alert("Failed to save lyrics.");
-        }
-    } catch (err) {
-        console.error("Save lyrics error:", err);
-    }
-}
-
-async function clearLyricsFromServer() {
-    const songId = window.currentlyPlayingSongId;
-    if (!songId) return;
-
-    if (!confirm("Are you sure you want to delete the cached lyrics for this song? This will revert to fetching from external APIs.")) return;
-
-    try {
-        const res = await fetch(`/api/lyrics/${encodeURIComponent(songId)}`, {
-            method: 'DELETE'
-        });
-
-        if (String(songId) !== String(window.currentlyPlayingSongId)) return;
-        if (res.ok) {
-            console.log("[LYRICS] Cache cleared.");
-            isLyricEditMode = false;
-            btnEditLyrics.classList.remove('hidden', 'active');
-            editorControls.classList.add('hidden');
-
-            // Reload lyrics (will trigger external fetch)
-            const currentSong = {
-                title: playerTitle.textContent,
-                artist: playerArtist.textContent,
-                id: songId
-            };
-            resetLyrics();
-            fetchLyrics(currentSong.title, currentSong.artist, currentSong.id);
-        } else {
-            alert("Failed to clear lyrics.");
-        }
-    } catch (err) {
-        console.error("Clear lyrics error:", err);
-    }
-}
-
-function captureTimestamp(index, shiftFollowing = false) {
-    if (!isLyricEditMode) return;
-    const oldTime = tempLyricsData[index].time;
-    const newTime = audio.currentTime;
-    const delta = newTime - oldTime;
-
-    if (shiftFollowing) {
-        // Shift this line and all subsequent lines by the same delta
-        for (let i = index; i < tempLyricsData.length; i++) {
-            tempLyricsData[i].time = Math.max(0, tempLyricsData[i].time + delta);
-        }
-        renderLyrics(); // Full re-render to update all lines
-    } else {
-        tempLyricsData[index].time = newTime;
-        // Update UI instantly for just this line
-        const lineEl = lyricsContent.querySelector(`.lyric-line:nth-child(${index + 1})`);
-        if (lineEl) {
-            const timeDisplay = lineEl.querySelector('.lyric-edit-time');
-            if (timeDisplay) timeDisplay.textContent = formatLyricsTime(newTime);
-
-            lineEl.style.background = 'rgba(var(--accent-rgb), 0.3)';
-            setTimeout(() => lineEl.style.background = "", 300);
-        }
-    }
-}
-
-function shiftAllLyrics(ms) {
-    if (!isLyricEditMode) return;
-    const offset = ms / 1000;
-    tempLyricsData.forEach(line => {
-        line.time = Math.max(0, line.time + offset);
-    });
-    renderLyrics();
-}
-
-function formatLyricsTime(time) {
-    const min = Math.floor(time / 60);
-    const sec = Math.floor(time % 60);
-    const ms = Math.floor((time % 1) * 100);
-    return `${min}:${sec.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
-}
-
-// Keyboard shortcuts for Editor
-document.addEventListener('keydown', (e) => {
-    if (!isLyricEditMode) return;
-
-    // If 'S' is pressed and not in an input
-    if (e.key.toLowerCase() === 's' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-        // Find the "next" line to sync based on current playback
-        // Usually it's the first line whose time is > current playback, or the line after the last active one
-        const currentTime = audio.currentTime;
-        let indexToSync = tempLyricsData.findIndex(l => l.time > currentTime);
-        if (indexToSync === -1) indexToSync = tempLyricsData.length - 1;
-
-        captureTimestamp(indexToSync);
-    }
-});
-
 function updateActiveLyric(immediate = false) {
-    const data = isLyricEditMode ? tempLyricsData : lyricsData;
-    if (!isLyricsActive || data.length === 0 || !lyricsContent) return;
+    if (!isLyricsActive || !lyricsContent) return;
+    // The editor has its own lightweight "now playing" marker; never apply the
+    // desktop depth/visibility classes to editor rows (that hid them before).
+    if (isLyricEditMode) {
+        if (typeof lyricEditorOnTimeUpdate === 'function') lyricEditorOnTimeUpdate();
+        return;
+    }
+    const data = lyricsData;
+    if (!lyricsAreSynced || data.length === 0) return;
 
     const currentTime = audio.currentTime;
     let activeIndex = -1;
@@ -3066,7 +2250,7 @@ function scrollToActiveLyric(activeEl = null, immediate = false) {
 
 // Ensure resize events adjust scroll if lyrics are open
 window.addEventListener('resize', () => {
-    if (isLyricsActive) {
+    if (isLyricsActive && !isLyricEditMode) {
         if (window.innerWidth > 900) {
             startDesktopLyricsSync();
             const activeEl = lyricsContent?.querySelector('.lyric-line.active');

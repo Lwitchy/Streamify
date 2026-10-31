@@ -223,23 +223,30 @@
                     <div>
                         <h2 class="section-title">Get Music</h2>
                         <p class="downloads-subtitle">
-                            Search Soulseek or paste a Spotify link for its tracklist. Files are saved straight
+                            Search for a song or paste a Spotify / YouTube link. Files are saved straight
                             into your music folder, then added to your library.
                         </p>
                         <div class="downloads-folder-path" id="downloads-folder-path"></div>
                     </div>
                 </div>
 
-                <!-- Only rendered when Soulseek needs attention; silent when it is connected. -->
+                <!-- Only rendered when a source needs attention; silent otherwise. -->
                 <div id="downloads-source-notice"></div>
 
                 <div class="downloads-search-card">
+                    <div class="downloads-source-switch" id="downloads-source-switch" role="group"
+                        aria-label="Download source">
+                        <button type="button" class="downloads-source-btn is-active" id="downloads-source-youtube"
+                            aria-pressed="true">YouTube</button>
+                        <button type="button" class="downloads-source-btn" id="downloads-source-soulseek"
+                            aria-pressed="false">Soulseek</button>
+                    </div>
                     <form class="downloads-search-form" id="downloads-search-form" autocomplete="off">
                         <div class="downloads-search-input-wrap">
                             <i class='bx bx-search' aria-hidden="true"></i>
                             <input type="search" class="downloads-search-input" id="downloads-search-input"
                                 aria-label="Search for music to download"
-                                placeholder="Artist and song name, or paste a Spotify link">
+                                placeholder="Artist and song name, or paste a Spotify / YouTube link">
                         </div>
                         <button type="submit" class="downloads-submit-btn" id="downloads-search-btn">
                             <i class='bx bx-search-alt' aria-hidden="true"></i>
@@ -247,12 +254,12 @@
                         </button>
                     </form>
                     <p class="downloads-hint">
-                        Soulseek results come from other users and are often already tagged. Spotify links provide
-                        track names and artwork only; each track is still acquired through Soulseek.
+                        YouTube finds and downloads tracks automatically - no setup needed. Soulseek (when
+                        connected) offers lossless files shared by other users.
                     </p>
                 </div>
 
-                <div class="downloads-panel" id="downloads-panel-soulseek"></div>
+                <div class="downloads-panel" id="downloads-panel-results"></div>
 
                 <div class="downloads-queue-header">
                     <h3 class="section-title" style="font-size: 1.3rem; margin-bottom: 0;">

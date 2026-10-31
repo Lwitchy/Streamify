@@ -1,6 +1,6 @@
 // Bump this whenever cached app-shell assets change. Old shell caches are
 // removed during activation so clients cannot retain stale CSS or JavaScript.
-const CACHE_NAME = 'streamify-app-shell-v93';
+const CACHE_NAME = 'streamify-app-shell-v100';
 const MEDIA_CACHE_PREFIX = 'streamify-media-cache-';
 const OFFLINE_STATE_CACHE_NAME = 'streamify-offline-state-v1';
 const ACTIVE_USER_STATE_URL = '/__streamify_offline_state__/active-user';
@@ -15,7 +15,7 @@ const APP_SHELL = [
   '/Static/home/css/layout.css?v=4.45',
   '/Static/home/css/components.css?v=4.10',
   '/Static/home/css/upload.css?v=4.10',
-  '/Static/home/css/player.css?v=4.42',
+  '/Static/home/css/player.css?v=4.48',
   '/Static/home/css/modals.css?v=4.52',
   '/Static/home/css/library.css?v=4.38',
   '/Static/home/css/downloads.css?v=4.34',
@@ -33,7 +33,7 @@ const APP_SHELL = [
   '/Static/vendor/fonts/outfit-latin-ext.woff2',
   '/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44',
   '/Static/vendor/fonts/PlusJakartaSans-VariableFont_wght.ttf',
-  '/Static/home/js/experiments.js?v=4.35',
+  '/Static/home/js/experiments.js?v=4.36',
 '/Static/home/js/theme.js?v=4.36',
   '/Static/vendor/cropperjs/cropper.min.css?v=4.8',
   '/Static/home/js/config.js?v=4.22',
@@ -41,7 +41,8 @@ const APP_SHELL = [
   '/Static/home/js/offline.js?v=4.38',
   '/Static/home/js/discord.js?v=4.33',
   '/Static/home/js/updates.js?v=4.46',
-  '/Static/home/js/player.js?v=4.43',
+  '/Static/home/js/player.js?v=4.44',
+  '/Static/home/js/lyrics.js?v=1.5',
   '/Static/home/js/api_v2.js?v=4.42',
   '/Static/home/js/downloads.js?v=4.44',
   '/Static/home/js/ui.js?v=4.51'

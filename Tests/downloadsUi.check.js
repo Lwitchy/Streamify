@@ -2,8 +2,8 @@
  * Renders the Get Music page in a minimal DOM and asserts the behaviour the
  * markup alone cannot prove:
  *
- *   - no obsolete source tabs or YouTube acquisition UI
- *   - search is blocked until Soulseek is configured
+ *   - YouTube search works with no Soulseek setup at all
+ *   - the Soulseek tab only surfaces its notice when selected
  *   - clicking Download asks for confirmation instead of queueing
  *   - cancelling the dialog queues nothing and restores the button
  *
@@ -134,9 +134,22 @@ const context = {
             return jsonResponse({ success: true, items: queueItems, downloadFolder: 'C:/Music/Streamify Downloads', soulseek: soulseekState });
         }
         if (url.endsWith('/api/downloads/search')) {
+            const source = body && body.sources && body.sources[0];
+            if (source === 'soulseek') {
+                return jsonResponse({
+                    success: true,
+                    source: 'soulseek',
+                    results: [soulseekResult],
+                    soulseek: { available: true, error: null, results: [soulseekResult] },
+                    youtube: { available: false, error: null, results: [] }
+                });
+            }
             return jsonResponse({
                 success: true,
-                soulseek: { available: true, error: null, results: [soulseekResult] }
+                source: 'youtube',
+                results: [youtubeResult],
+                soulseek: { available: false, error: null, results: [] },
+                youtube: { available: true, error: null, results: [youtubeResult] }
             });
         }
         if (url.endsWith('/api/downloads/enqueue')) {
@@ -158,6 +171,13 @@ const soulseekResult = {
     extension: 'FLAC', bitrate: 900, sizeBytes: 30000000, slots: true, queueLength: 0,
     payload: { user: 'bob', remotePath: '/music/song.flac' }
 };
+
+const youtubeResult = {
+    id: 'youtube:dQw4w9WgXcQ', source: 'youtube', title: 'song', artist: 'some artist',
+    user: 'SomeVEVO', extension: 'MP3', bitrate: 320, duration: 213,
+    thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+    payload: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }
+};
 /* ------------------------------------------------------------------ *
  * Run
  * ------------------------------------------------------------------ */
@@ -178,7 +198,7 @@ const check = (label, fn) => {
 };
 
 (async () => {
-    /* --- Soulseek NOT set up ---------------------------------------- */
+    /* --- Nothing set up: YouTube must work immediately --------------- */
     soulseekState = { configured: false, username: null, connected: false, error: null };
     api.open();
     await new Promise(r => setTimeout(r, 30));
@@ -189,13 +209,51 @@ const check = (label, fn) => {
         assert.ok(!dump.includes('source-chip'), 'a source-chip element still exists');
     });
 
-    check('YouTube acquisition controls are absent', () => {
-        assert.strictEqual(el('downloads-tab-youtube'), null);
-        assert.strictEqual(el('downloads-panel-youtube'), null);
-        assert.ok(!html.includes('paste a YouTube'), 'Get Music still advertises YouTube links');
+    check('no notice is shown while YouTube (the default) is selected', () => {
+        assert.strictEqual(el('downloads-source-notice').children.length, 0,
+            `a notice is shown without any source trouble: ${textOf('downloads-source-notice')}`);
     });
 
-    check('Soulseek notice uses the shared .btn styling', () => {
+    // Drive a YouTube search through the form handler with no Soulseek account.
+    el('downloads-search-input').value = 'daft punk';
+    (el('downloads-search-form').listeners.submit || []).forEach(fn => fn({ preventDefault() {} }));
+    await new Promise(r => setTimeout(r, 40));
+
+    check('YouTube search works without Soulseek setup', () => {
+        const searches = fetchCalls.filter(c => c.url.endsWith('/api/downloads/search'));
+        assert.strictEqual(searches.length, 1, 'the YouTube search did not reach the server');
+        assert.deepStrictEqual(searches[0].body.sources, ['youtube']);
+        assert.ok(!context.toasts.some(entry => /Set up Soulseek/i.test(entry.m)), 'a setup toast blocked the search');
+    });
+
+    check('YouTube results are rendered with artwork', () => {
+        const panel = el('downloads-panel-results');
+        assert.ok(panel.children.length > 0, 'no results rendered');
+        assert.ok(panel.textContent.includes('song'), `missing the title: ${panel.textContent}`);
+        const images = [];
+        const walk = node => {
+            if (node.tagName === 'IMG') images.push(node);
+            (node.children || []).forEach(walk);
+        };
+        panel.children.forEach(walk);
+        assert.ok(images.length > 0, 'no result thumbnails rendered');
+        assert.ok(images[0].src.includes('i.ytimg.com'), `thumbnail URL is wrong: ${images[0].src}`);
+    });
+
+    // A YouTube item in the connecting stage must not claim a "peer".
+    queueItems = [{ id: 99, title: 'x', status: 'running', stage: 'connecting', resolvedSource: 'youtube' }];
+    await context.window.StreamifyDownloads.refresh();
+    check('queue stage labels follow the resolved source', () => {
+        const text = el('downloads-queue-list').textContent;
+        assert.ok(!text.includes('Connecting to peer'), 'a YouTube download claims a Soulseek peer');
+        assert.ok(text.includes('Starting download'), 'missing the YouTube connecting label');
+    });
+    queueItems = [];
+    await context.window.StreamifyDownloads.refresh();
+
+    /* --- Switching to Soulseek without setup surfaces the notice ---- */
+    el('downloads-source-soulseek').click();
+    check('the Soulseek notice appears only once its tab is selected', () => {
         const notice = el('downloads-source-notice');
         assert.ok(notice.textContent.includes('Soulseek is not set up'), 'missing the setup prompt');
         const button = notice.children[0].children.find(c => c.classList.contains('btn'));
@@ -213,27 +271,27 @@ const check = (label, fn) => {
         const card = el('downloads-source-notice').children[0];
         assert.ok(!card.classList.contains('downloads-notice--enter'), 'the entrance animation replayed');
     });
-    // Drive a search through the form handler.
-    el('downloads-search-input').value = 'daft punk';
+
     (el('downloads-search-form').listeners.submit || []).forEach(fn => fn({ preventDefault() {} }));
     await new Promise(r => setTimeout(r, 40));
 
-    check('search is blocked while Soulseek is unavailable', () => {
+    check('Soulseek search is blocked while unconfigured', () => {
         const searches = fetchCalls.filter(c => c.url.endsWith('/api/downloads/search'));
-        assert.strictEqual(searches.length, 0, 'an unavailable Soulseek search reached the server');
+        assert.strictEqual(searches.length, 1, 'an unavailable Soulseek search reached the server');
         assert.ok(context.toasts.some(entry => /Set up Soulseek/i.test(entry.m)), 'missing setup toast');
     });
 
-    check('Soulseek panel stays empty', () => {
-        assert.strictEqual(el('downloads-panel-soulseek').children.length, 0, 'the Soulseek panel has content');
+    check('results panel is empty after switching to an unusable source', () => {
+        assert.strictEqual(el('downloads-panel-results').children.length, 0, 'the results panel has content');
     });
 
-    /* --- Soulseek configured ----------------------------------------- */
+    /* --- Back to YouTube, configured Soulseek stays silent ---------- */
     soulseekState = { configured: true, username: 'me', connected: true, error: null };
+    el('downloads-source-youtube').click();
     await context.window.StreamifyDownloads.refresh();
     await new Promise(r => setTimeout(r, 20));
 
-    check('the notice disappears when Soulseek works', () => {
+    check('the notice disappears when back on YouTube with a working Soulseek', () => {
         assert.strictEqual(el('downloads-source-notice').children.length, 0,
             `a notice is still shown: ${textOf('downloads-source-notice')}`);
     });
@@ -242,15 +300,15 @@ const check = (label, fn) => {
     (el('downloads-search-form').listeners.submit || []).forEach(fn => fn({ preventDefault() {} }));
     await new Promise(r => setTimeout(r, 40));
 
-    check('search requests Soulseek only', () => {
+    check('search requests the selected source only', () => {
         const search = fetchCalls.filter(c => c.url.endsWith('/api/downloads/search')).pop();
         assert.ok(search, 'no search request was made');
-        assert.deepStrictEqual(search.body.sources, ['soulseek']);
+        assert.deepStrictEqual(search.body.sources, ['youtube']);
     });
 
     /* --- Confirmation before download ------------------------------- */
     const enqueuesBefore = fetchCalls.filter(c => c.url.endsWith('/api/downloads/enqueue')).length;
-    const firstGroup = el('downloads-panel-soulseek').children[0];
+    const firstGroup = el('downloads-panel-results').children[0];
     const rowList = firstGroup && firstGroup.children[1] ? firstGroup.children[1] : firstGroup;
     const row = rowList.children[0];
     const button = row.children[row.children.length - 1];
@@ -267,8 +325,8 @@ const check = (label, fn) => {
     check('the dialog previews the track', () => {
         const summary = el('downloads-confirm-single').textContent;
         assert.ok(summary.includes('song'), `missing the title: ${summary}`);
-        assert.ok(summary.includes('Shared by bob'), `missing the peer: ${summary}`);
-        assert.ok(summary.includes('FLAC'), `missing the format tag: ${summary}`);
+        assert.ok(summary.includes('From YouTube'), `missing the source label: ${summary}`);
+        assert.ok(summary.includes('MP3'), `missing the format tag: ${summary}`);
     });
 
     check('cancelling queues nothing and restores the button', () => {
@@ -291,8 +349,9 @@ const check = (label, fn) => {
         const enqueues = fetchCalls.filter(c => c.url.endsWith('/api/downloads/enqueue'));
         assert.strictEqual(enqueues.length, enqueuesBefore + 1, 'expected exactly one enqueue');
         assert.strictEqual(enqueues[enqueues.length - 1].body.items.length, 1);
-        assert.strictEqual(enqueues[enqueues.length - 1].body.items[0].requestedSource, 'soulseek');
-        assert.strictEqual(enqueues[enqueues.length - 1].body.items[0].sourcePayload.remotePath, '/music/song.flac');
+        assert.strictEqual(enqueues[enqueues.length - 1].body.items[0].requestedSource, 'youtube');
+        assert.strictEqual(enqueues[enqueues.length - 1].body.items[0].sourceUrl,
+            'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
     });
 
     console.log(failures === 0 ? '\nGet Music UI checks passed.\n' : `\n${failures} UI check(s) failed.\n`);
