@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Listening History (Telemetry v2) - 2026-10-31
+
+First phase of the Albums, Artists and Home update. See
+[`MD Files/Engineering/HOME_AND_ALBUMS_PLAN.md`](MD%20Files/Engineering/HOME_AND_ALBUMS_PLAN.md).
+
+### Added
+
+- Every playback is now recorded as its own entry in a new `listening_events`
+  table: when it started and ended, milliseconds heard, track duration, how it
+  ended (completed, next, previous, selected, error, closed), where it was
+  started (library, search, playlist, and later album, artist and Home) and
+  the device type. A play counts after 30 seconds, or half of a track shorter
+  than a minute.
+- `POST /api/telemetry/playback` accepts cumulative, idempotent reports keyed
+  by a client-generated `play_id`. Duplicate, reordered or retried reports can
+  never double-count, and claimed time is capped by wall-clock time.
+- Plays made offline, or cut short by closing the app, wait in a small
+  local outbox and are delivered on the next launch or reconnect.
+- **Settings → Privacy → Clear Listening History** removes all events and
+  lifetime totals for the account (`DELETE /api/settings/privacy/history`).
+- The data export now includes `listening_events`.
+- `npm run test:telemetry`.
+
+### Changed
+
+- The player reports through the new `Static/home/js/telemetry.js` module
+  instead of 10-second chunks. `listening_telemetry` remains as the lifetime
+  per-song rollup and is updated from the new events, so existing stats keep
+  their history from before this release.
+- `POST /api/telemetry/listen` is deprecated and only kept for clients still
+  running a cached older player.
+
 ## [Unreleased] - YouTube Acquisition Removal - 2026-08-17
 
 ### Changed

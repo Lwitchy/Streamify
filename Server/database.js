@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const RT = require('./runtime');
+const ListeningHistory = require('./listeningHistory');
 
 // Ensure Database directories exist.
 // Paths come from the runtime module so the packaged desktop app can store
@@ -610,6 +611,32 @@ const HandleDatabase = {
                 UNIQUE(username, song_id)
             )
         `);
+        // Telemetry v2: one row per playback. listening_telemetry above stays as
+        // the lifetime per-song rollup (it predates timestamps, so its history
+        // cannot be converted into events) and is updated from these rows.
+        await runQuery(usersDb, `
+            CREATE TABLE IF NOT EXISTS listening_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                play_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                song_id INTEGER NOT NULL,
+                song_uid TEXT,
+                started_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                ended_at TEXT,
+                ms_played INTEGER NOT NULL DEFAULT 0,
+                duration_ms INTEGER,
+                end_reason TEXT CHECK (end_reason IS NULL OR end_reason IN ('completed', 'next', 'previous', 'selected', 'error', 'closed')),
+                source_type TEXT NOT NULL DEFAULT 'unknown',
+                source_id TEXT,
+                device TEXT NOT NULL DEFAULT 'web',
+                counted INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(username, play_id)
+            )
+        `);
+        await runQuery(usersDb, 'CREATE INDEX IF NOT EXISTS idx_listening_events_user_time ON listening_events(username, started_at)');
+        await runQuery(usersDb, 'CREATE INDEX IF NOT EXISTS idx_listening_events_user_song ON listening_events(username, song_id, started_at)');
+        await runQuery(usersDb, 'CREATE INDEX IF NOT EXISTS idx_listening_events_user_source ON listening_events(username, source_type, source_id, started_at)');
         console.log("[DB] Talking: Creating/Updating listening_telemetry table is done!");
     },
 
@@ -799,6 +826,7 @@ const HandleDatabase = {
                 await runQuery(usersDb, `INSERT OR IGNORE INTO reserved_usernames (username, reserved_at) VALUES (?, ?)`, [username, new Date().toISOString()]);
                 await runQuery(usersDb, `DELETE FROM sessions WHERE username = ?`, [username]);
                 await runQuery(usersDb, `DELETE FROM listening_telemetry WHERE username = ?`, [username]);
+                await runQuery(usersDb, `DELETE FROM listening_events WHERE username = ?`, [username]);
                 const result = await runQuery(usersDb, `DELETE FROM users WHERE username = ?`, [username]);
                 await runQuery(usersDb, 'COMMIT');
                 inTransaction = false;
@@ -3819,6 +3847,114 @@ const HandleDatabase = {
              last_listened_at = excluded.last_listened_at`,
             [username, songId, listenTimeDelta, playCountDelta, now]
         );
+    },
+
+    /**
+     * Telemetry v2: upsert one playback by (username, play_id) and roll the
+     * newly heard time into listening_telemetry. Runs as one transaction on the
+     * users connection, so concurrent heartbeats for the same play serialize.
+     * `report` is the normalized value from listeningHistory.normalizePlaybackReport.
+     */
+    recordPlaybackProgress: async (username, report, songUid = null, now = Date.now()) => {
+        return withDatabaseQueue(usersDb, async () => {
+            let inTransaction = false;
+            try {
+                await runQuery(usersDb, 'BEGIN IMMEDIATE');
+                inTransaction = true;
+
+                const existing = await getQuery(usersDb,
+                    'SELECT * FROM listening_events WHERE username = ? AND play_id = ?',
+                    [username, report.playId]);
+
+                // A finished playback is immutable; a retried final report is a no-op.
+                if (existing && (existing.ended_at || Number(existing.song_id) !== report.songId)) {
+                    await runQuery(usersDb, 'COMMIT');
+                    inTransaction = false;
+                    return { status: existing.ended_at ? 'already_ended' : 'song_mismatch', counted: Boolean(existing.counted) };
+                }
+
+                const nowIso = new Date(now).toISOString();
+                const msPlayed = ListeningHistory.resolveMsPlayed(existing, report, now);
+                const durationMs = report.durationMs || (existing && existing.duration_ms) || null;
+                const counted = ListeningHistory.isCountedPlay(msPlayed, durationMs);
+                const wasCounted = Boolean(existing && existing.counted);
+                const endedAt = report.ended ? nowIso : null;
+
+                if (existing) {
+                    await runQuery(usersDb, `
+                        UPDATE listening_events
+                        SET ms_played = ?, duration_ms = ?, updated_at = ?, ended_at = ?,
+                            end_reason = ?, counted = ?
+                        WHERE id = ?
+                    `, [msPlayed, durationMs, nowIso, endedAt, report.endReason, counted || wasCounted ? 1 : 0, existing.id]);
+                } else {
+                    await runQuery(usersDb, `
+                        INSERT INTO listening_events (
+                            play_id, username, song_id, song_uid, started_at, updated_at, ended_at,
+                            ms_played, duration_ms, end_reason, source_type, source_id, device, counted
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `, [
+                        report.playId, username, report.songId, songUid,
+                        new Date(report.startedAt).toISOString(), nowIso, endedAt,
+                        msPlayed, durationMs, report.endReason, report.sourceType,
+                        report.sourceId, report.device, counted ? 1 : 0
+                    ]);
+                }
+
+                const deltaMs = msPlayed - (existing ? Number(existing.ms_played) || 0 : 0);
+                const playDelta = counted && !wasCounted ? 1 : 0;
+                if (deltaMs > 0 || playDelta > 0) {
+                    await runQuery(usersDb, `
+                        INSERT INTO listening_telemetry (username, song_id, listen_time, play_count, last_listened_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(username, song_id) DO UPDATE SET
+                            listen_time = listen_time + excluded.listen_time,
+                            play_count = play_count + excluded.play_count,
+                            last_listened_at = excluded.last_listened_at
+                    `, [username, report.songId, Math.max(0, deltaMs) / 1000, playDelta, nowIso]);
+                }
+
+                await runQuery(usersDb, 'COMMIT');
+                inTransaction = false;
+                return { status: existing ? 'updated' : 'created', ms_played: msPlayed, counted: counted || wasCounted };
+            } catch (error) {
+                if (inTransaction) {
+                    try { await runQuery(usersDb, 'ROLLBACK'); } catch { /* preserve original error */ }
+                }
+                throw error;
+            }
+        });
+    },
+
+    getUserListeningEvents: async (username, { limit = null, since = null } = {}) => {
+        const params = [username];
+        let where = 'username = ?';
+        if (since) { where += ' AND started_at >= ?'; params.push(since); }
+        let sql = `SELECT play_id, song_id, song_uid, started_at, ended_at, ms_played, duration_ms,
+                          end_reason, source_type, source_id, device, counted
+                   FROM listening_events WHERE ${where} ORDER BY started_at DESC, id DESC`;
+        if (Number.isInteger(limit) && limit > 0) { sql += ' LIMIT ?'; params.push(limit); }
+        return await allQuery(usersDb, sql, params);
+    },
+
+    clearUserListeningHistory: async (username) => {
+        return withDatabaseQueue(usersDb, async () => {
+            let inTransaction = false;
+            try {
+                await runQuery(usersDb, 'BEGIN IMMEDIATE');
+                inTransaction = true;
+                const events = await runQuery(usersDb, 'DELETE FROM listening_events WHERE username = ?', [username]);
+                const totals = await runQuery(usersDb, 'DELETE FROM listening_telemetry WHERE username = ?', [username]);
+                await runQuery(usersDb, 'COMMIT');
+                inTransaction = false;
+                return { events: events.changes || 0, totals: totals.changes || 0 };
+            } catch (error) {
+                if (inTransaction) {
+                    try { await runQuery(usersDb, 'ROLLBACK'); } catch { /* preserve original error */ }
+                }
+                throw error;
+            }
+        });
     },
 
     getAllUserTelemetry: async (username) => {

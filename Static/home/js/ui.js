@@ -1788,6 +1788,22 @@ themeInputs.forEach(input => {
         });
     }
 
+    const clearHistoryBtn = document.getElementById('clear-history-btn');
+    if (clearHistoryBtn) {
+        clearHistoryBtn.addEventListener('click', async () => {
+            if (!window.confirm('Clear your entire listening history? Home recommendations and stats will start over.')) return;
+            clearHistoryBtn.disabled = true;
+            try {
+                await window.clearListeningHistory();
+                showToast('Listening history cleared.', 'success');
+            } catch (err) {
+                showToast(err.message || 'Failed to clear listening history', 'error');
+            } finally {
+                clearHistoryBtn.disabled = false;
+            }
+        });
+    }
+
     /* --- Discord Rich Presence --- */
 
     const discordRpcToggle = document.getElementById('discord-rpc-toggle');

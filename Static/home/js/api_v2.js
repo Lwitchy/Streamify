@@ -232,6 +232,10 @@ function renderSongList(songs, listContainer, options = {}) {
     }));
     currentPlaylist = renderedPlaylist;
     shuffledPlaylist = buildPlaylistOrder(currentPlaylist.length);
+    currentPlaybackContext = options.playbackContext || {
+        type: window.StreamifyOfflineMode ? 'offline' : 'library',
+        id: null
+    };
 
     let downloadedIds = null;
     const markDownloaded = row => {
@@ -3425,6 +3429,7 @@ function performSearch(query) {
                 }));
                 currentPlaylist = renderedPlaylist;
                 shuffledPlaylist = buildPlaylistOrder(currentPlaylist.length);
+                currentPlaybackContext = { type: 'search', id: null };
                 currentPlaylist.forEach((song, index) => {
                     const cover = safeImageURL(song.cover, COVER_PLACEHOLDER);
                     const title = escapeHTML(song.title);
@@ -4269,6 +4274,7 @@ async function renderPlaylistDetail(playlistId) {
         }
         window.currentPlaylistId = canonicalPlaylistId;
         window.currentPlaylistShareId = playlist.share_id || null;
+        currentPlaybackContext = { type: 'playlist', id: canonicalPlaylistId };
 
         // Update URL hash to use share_id for privacy if we're currently showing a numeric ID
         if (playlist.share_id && window.location.hash === `#playlist-${playlist.id}`) {
@@ -5583,24 +5589,18 @@ window.fetchDmRequests = fetchDmRequests;
 window.respondDmRequest = respondDmRequest;
 window.initDmSocketListeners = initDmSocketListeners;
 
-// Telemetry
-async function reportTelemetry(songId, listenDuration, isPlay) {
-    if (!songId || listenDuration <= 0) return;
-    try {
-        await fetch(window.API_BASE_URL + '/api/telemetry/listen', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                song_id: songId,
-                listen_duration: listenDuration,
-                play_count_delta: isPlay ? 1 : 0
-            })
-        });
-    } catch (e) {
-        console.error("Telemetry report failed:", e);
-    }
+// Listening history is reported by telemetry.js (window.StreamifyListening).
+
+async function clearListeningHistory() {
+    const res = await fetch(window.API_BASE_URL + '/api/settings/privacy/history', {
+        method: 'DELETE',
+        credentials: 'include'
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to clear listening history');
+    return data;
 }
-window.reportTelemetry = reportTelemetry;
+window.clearListeningHistory = clearListeningHistory;
 
 async function setAnalyticsEnabled(enabled) {
     try {

@@ -1430,6 +1430,19 @@
                                 style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
                                 <i class='bx bx-cloud-download'></i> Request Data Export
                             </button>
+
+                            <h4 style="margin: 25px 0 10px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                <i class='bx bx-history' style="color: var(--accent);"></i>
+                                Listening History
+                            </h4>
+                            <p style="color: #b3b3b3; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">
+                                Your history powers Home, your top artists and your stats. Clearing it removes every
+                                recorded play and listening total for your account. This cannot be undone.
+                            </p>
+                            <button id="clear-history-btn" class="btn btn-outline"
+                                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <i class='bx bx-trash'></i> Clear Listening History
+                            </button>
                         </div>
                     </div>
 
@@ -2258,20 +2271,21 @@
          It powers live download progress. Loaded before the page scripts so
          window.io exists by the time downloads.js connects. -->
     <script src="/socket.io/socket.io.js"></script>
-    <script src="/Static/home/js/config.js?v=4.22"></script>
+    <script src="/Static/home/js/config.js?v=4.23"></script>
     <script src="/Static/vendor/cropperjs/cropper.min.js?v=4.8"></script>
     <script src="/Static/home/js/offline.js?v=4.38"></script>
+    <script src="/Static/home/js/telemetry.js?v=1.0"></script>
     <!-- Must load before player.js: loadSong() and syncPlaybackUI() call into
          window.StreamifyDiscord as soon as playback starts. -->
     <script src="/Static/home/js/discord.js?v=4.33"></script>
     <!-- Must load before ui.js: activateSettingsTab() calls into
          window.StreamifyUpdates when the Updates pane is opened. -->
     <script src="/Static/home/js/updates.js?v=4.46"></script>
-    <script src="/Static/home/js/player.js?v=4.44"></script>
+    <script src="/Static/home/js/player.js?v=4.45"></script>
     <script src="/Static/home/js/lyrics.js?v=1.5"></script>
-    <script src="/Static/home/js/api_v2.js?v=4.42"></script>
+    <script src="/Static/home/js/api_v2.js?v=4.43"></script>
     <script src="/Static/home/js/downloads.js?v=4.44"></script>
-    <script src="/Static/home/js/ui.js?v=4.51"></script>
+    <script src="/Static/home/js/ui.js?v=4.52"></script>
 </body>
 
 </html>

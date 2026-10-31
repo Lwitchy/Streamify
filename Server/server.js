@@ -13,6 +13,7 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 
 const HandleDatabase = require('./database');
+const ListeningHistory = require('./listeningHistory');
 const Media = require('./media');
 const AIMetadata = require('./aiMetadata');
 const MetadataProviders = require('./metadataProviders');
@@ -1793,11 +1794,16 @@ app.get('/api/settings/privacy/export', requireLogin, async (req, res) => {
         const rawTelemetry = await HandleDatabase.getAllUserTelemetry(req.user);
         const stats = await HandleDatabase.getUserTelemetryStats(req.user);
 
+        const listeningEvents = await HandleDatabase.getUserListeningEvents(req.user);
+
         const payload = {
             username: req.user,
             exported_at: new Date().toISOString(),
             stats: stats,
-            telemetry: rawTelemetry
+            // Lifetime per-song totals (includes listening from before v2 history).
+            telemetry: rawTelemetry,
+            // One entry per playback, newest first.
+            listening_events: listeningEvents
         };
 
         res.setHeader('Content-disposition', 'attachment; filename=streamify_telemetry_export.json');
@@ -1809,7 +1815,48 @@ app.get('/api/settings/privacy/export', requireLogin, async (req, res) => {
     }
 });
 
-// API: Telemetry Update
+// API: Clear listening history (events and lifetime totals)
+app.delete('/api/settings/privacy/history', requireLogin, async (req, res) => {
+    try {
+        const removed = await HandleDatabase.clearUserListeningHistory(req.user);
+        res.json({ success: true, removed });
+    } catch (err) {
+        console.error('[CLEAR HISTORY]', err);
+        res.status(500).json({ error: "Failed to clear listening history" });
+    }
+});
+
+// API: Telemetry v2 playback report.
+// The client sends one report per heartbeat (cumulative ms_played) and a final
+// report with ended=true. Reports are idempotent per play_id; see
+// listeningHistory.js for the validation and clamping rules.
+app.post('/api/telemetry/playback', requireLogin, async (req, res) => {
+    try {
+        const { value: report, error } = ListeningHistory.normalizePlaybackReport(req.body);
+        if (error) return res.status(400).json({ error });
+
+        const userRow = await HandleDatabase.getUser(req.user);
+        if (!userRow || userRow.allow_analytics === 0) {
+            return res.json({ success: true, ignored: true });
+        }
+
+        const song = await HandleDatabase.getSong(report.songId);
+        // A song deleted after an offline play is not an error for the client;
+        // there is simply nothing to attribute the listening to any more.
+        if (!song) return res.json({ success: true, ignored: true });
+        if (!canAccessSong(song, req.user)) return res.status(403).json({ error: "Access Denied" });
+
+        const result = await HandleDatabase.recordPlaybackProgress(req.user, report, song.song_uid || null);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('[TELEMETRY]', err);
+        res.status(500).json({ error: "Failed to record playback" });
+    }
+});
+
+// API: Telemetry Update (v1, deprecated)
+// Kept so a client still running a cached pre-v2 player keeps counting. It
+// only updates lifetime totals; it does not create listening history.
 app.post('/api/telemetry/listen', requireLogin, async (req, res) => {
     try {
         const { song_id, listen_duration } = req.body;

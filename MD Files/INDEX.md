@@ -27,6 +27,7 @@ tools can find them in their conventional locations.
 | [`Engineering/PLAYER_TRANSITION_PERFORMANCE.md`](Engineering/PLAYER_TRANSITION_PERFORMANCE.md) | Retained desktop player, FLIP shell motion, lyrics scheduling, startup optimizations, memory tradeoff, and Liquid Glass performance contract |
 | [`Engineering/FINDINGS.md`](Engineering/FINDINGS.md) | Desktop and mobile conversion findings captured during the Electron work |
 | [`Engineering/RELEASING.md`](Engineering/RELEASING.md) | How to cut a GitHub release that installed copies auto-update from: required assets, the draft flow, and failure modes |
+| [`Engineering/HOME_AND_ALBUMS_PLAN.md`](Engineering/HOME_AND_ALBUMS_PLAN.md) | Plan and status for listening history v2, albums, artist pages, Liked Songs and Home |
 
 ### History
 
@@ -42,6 +43,7 @@ MD Files/
 |-- Engineering/
 |   |-- DISCORD_RPC.md
 |   |-- FINDINGS.md
+|   |-- HOME_AND_ALBUMS_PLAN.md
 |   |-- PLAYER_TRANSITION_PERFORMANCE.md
 |   |-- POLISHING_UPDATE.md
 |   |-- RELEASING.md

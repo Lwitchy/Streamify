@@ -58,23 +58,20 @@ if (dedicatedImg) dedicatedImg.src = COVER_PLACEHOLDER;
 let canSeek = false;
 let lastWidgetUpdateTime = 0;
 
-// Telemetry state
+// Listening history (telemetry v2, see telemetry.js).
+// telemetrySongId is also used to find the offline copy when streaming fails.
 let telemetrySongId = null;
 let lastTimeUpdateValue = 0;
-let accumulatedTelemetryTime = 0;
-let totalTelemetryTime = 0;
-let hasCountedPlay = false;
+// Why the playback in progress is about to be replaced: next | previous |
+// selected | error. Consumed by loadSong() when the next track starts.
+let pendingPlaybackEndReason = null;
 
-function flushTelemetry() {
-    if (accumulatedTelemetryTime > 0 && telemetrySongId) {
-        const isPlay = totalTelemetryTime >= 30 && !hasCountedPlay;
-        if (isPlay) hasCountedPlay = true;
+function listening() {
+    return window.StreamifyListening || null;
+}
 
-        if (typeof window.reportTelemetry === 'function') {
-            window.reportTelemetry(telemetrySongId, accumulatedTelemetryTime, isPlay);
-        }
-    }
-    accumulatedTelemetryTime = 0;
+function setPendingPlaybackEndReason(reason) {
+    pendingPlaybackEndReason = reason;
 }
 
 /* ========== MARQUEE LOGIC ========== */
@@ -157,11 +154,11 @@ function getQualityBadgeHTML(song) {
 }
 
 function loadSong(song) {
-    flushTelemetry();
+    const endReason = pendingPlaybackEndReason || 'selected';
+    pendingPlaybackEndReason = null;
+    if (listening()) listening().start(song.id, activePlaybackContext, endReason);
     telemetrySongId = song.id;
-    hasCountedPlay = false;
     lastTimeUpdateValue = 0;
-    totalTelemetryTime = 0;
 
     playerTitle.textContent = song.title;
     playerArtist.textContent = song.artist; // No badge in mini player
@@ -447,6 +444,8 @@ function _playSongFromPlaylist(index, pl, sh) {
 function playSongAtIndex(index) {
     if (index < 0 || index >= currentPlaylist.length) return;
     // Freeze the current view as the active playback context
+    setPendingPlaybackEndReason('selected');
+    activePlaybackContext = { ...currentPlaybackContext };
     activePlaylist = [...currentPlaylist];
     activeShuffledPlaylist = [...shuffledPlaylist];
     _playSongFromPlaylist(index, activePlaylist, activeShuffledPlaylist);
@@ -470,6 +469,7 @@ function nextSong() {
             else return false;
         } else { currentIndex++; }
     }
+    setPendingPlaybackEndReason('next');
     _playSongFromPlaylist(getCurrentRealIndex(), activePlaylist, activeShuffledPlaylist);
     return true;
 }
@@ -477,6 +477,7 @@ function nextSong() {
 function prevSong() {
     if (activePlaylist.length === 0) return;
     if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+    setPendingPlaybackEndReason('previous');
 
     if (currentIndex > 0) {
         currentIndex--;
@@ -582,12 +583,15 @@ btnRepeat.addEventListener('click', toggleRepeat);
 /* ========== AUDIO EVENTS ========== */
 
 audio.addEventListener('ended', () => {
-    flushTelemetry();
     if (repeatMode === 2) {
+        // Each loop of repeat-one is its own playback in the history.
+        if (listening()) listening().restart('completed');
+        lastTimeUpdateValue = 0;
         audio.currentTime = 0;
         playSong();
-    } else if (!nextSong()) {
-        syncPlaybackUI(false);
+    } else {
+        if (listening()) listening().end('completed');
+        if (!nextSong()) syncPlaybackUI(false);
     }
 });
 
@@ -599,22 +603,28 @@ audio.addEventListener('pause', () => {
     syncPlaybackUI(false);
     stopDesktopLyricsSync();
 });
+function failCurrentPlayback() {
+    if (listening()) listening().end('error');
+    if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
+}
+
 audio.addEventListener('error', () => {
     syncPlaybackUI(false);
     if (window.OfflineStore && telemetrySongId) {
         window.OfflineStore.getOfflineSong(telemetrySongId).then(cachedSong => {
             if (cachedSong) {
                 console.log('[PLAYBACK] Streaming audio error, falling back to offline copy');
+                setPendingPlaybackEndReason('error');
                 loadSong(cachedSong);
                 playSong();
                 return;
             }
-            if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
+            failCurrentPlayback();
         }).catch(() => {
-            if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
+            failCurrentPlayback();
         });
     } else {
-        if (audio.currentSrc || audio.src) showToast('This song could not be played.', 'error');
+        failCurrentPlayback();
     }
 });
 
@@ -622,6 +632,7 @@ const fmt = t => { const m = Math.floor(t / 60), s = Math.floor(t % 60); return 
 
 audio.addEventListener('loadedmetadata', () => {
     canSeek = true;
+    if (listening()) listening().setDuration(audio.duration);
     if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration))
         durTimeEl.textContent = fmt(audio.duration);
 });
@@ -664,25 +675,14 @@ audio.addEventListener('seeked', () => {
 });
 audio.addEventListener('ratechange', startDesktopLyricsSync);
 
-window.addEventListener('beforeunload', () => {
-    flushTelemetry();
-});
-
 audio.addEventListener('timeupdate', e => {
     const { duration, currentTime } = e.srcElement;
 
-    // Telemetry time accumulation
+    // Listening time: only normal forward playback counts (not seeks).
     if (!audio.paused && currentTime > lastTimeUpdateValue && (currentTime - lastTimeUpdateValue) < 2) {
-        // Accumulate delta if playback is normal (not seeking backwards, not seeking far forward)
-        const delta = currentTime - lastTimeUpdateValue;
-        accumulatedTelemetryTime += delta;
-        totalTelemetryTime += delta;
+        if (listening()) listening().addPlayed(currentTime - lastTimeUpdateValue);
     }
     lastTimeUpdateValue = currentTime;
-
-    if (accumulatedTelemetryTime >= 10) {
-        flushTelemetry();
-    }
 
     // Prevent background timeupdate from overriding slider while scrubbing or seeking
     if (isScrubbing || isSeekingPending) return;

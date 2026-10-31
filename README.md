@@ -13,7 +13,7 @@ Streamify is your own self-hosted music streaming app built with Node.js. Think 
 *   **Lyrics Support**: Fetch and sync lyrics seamlessly using the LRCLIB API.
 *   **Smart Auto Enrich**: Owner-reviewed local, text-registry, or optional AcoustID fingerprint matching for missing metadata and covers.
 *   **User Profiles & Privacy**: Custom avatars, banners, account-scoped playlists, history, and offline storage.
-*   **Basic Telemetry**: We track your listening habits locally to generate stats on your favorite tracks. This data is private and can be exported anytime.
+*   **Listening History**: Every playback is recorded on your own server (how long you listened, how it ended, and where you started it) to power stats and Home. It stays private to your account, can be turned off, exported as JSON, or cleared at any time.
 *   **Responsive UI**: Supports desktop and mobile layouts and can be installed as a PWA in a secure context.
 
 ## Tech Stack
