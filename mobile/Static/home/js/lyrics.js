@@ -880,6 +880,11 @@ function renderLyrics() {
                 }
             };
             lineEl.addEventListener('click', activateLine);
+            // Touch: don't leave the tapped line focused (iOS can then show a
+            // caret / selection handles on it). Keyboard focus is unaffected.
+            lineEl.addEventListener('touchend', () => {
+                setTimeout(() => { if (document.activeElement === lineEl) lineEl.blur(); }, 0);
+            }, { passive: true });
             lineEl.addEventListener('keydown', event => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
                 event.preventDefault();

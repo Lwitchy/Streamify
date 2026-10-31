@@ -422,7 +422,10 @@ function safeImageURL(value, fallback = '') {
     // Relative paths in mobile shell should resolve to server origin if available
     const base = window.API_BASE_URL ? window.API_BASE_URL.replace(/\/+$/, '') : '';
     let target = value;
-    if (base && (target.startsWith('/Static/covers/') || target.startsWith('/Static/avatars/') || target.startsWith('/Static/banners/'))) {
+    // Uploaded media lives on the server, not in the app bundle. Keep this list
+    // in sync with MEDIA_DIRS in Scripts/sync-mobile.js (artists/ was missing,
+    // so artist photos 404'd inside the iOS app).
+    if (base && (/^\/Static\/(covers|avatars|banners|artists)\//.test(target) || target.startsWith('/api/'))) {
         target = base + target;
     }
 

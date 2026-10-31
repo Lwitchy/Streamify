@@ -1,6 +1,6 @@
 // Bump this whenever cached app-shell assets change. Old shell caches are
 // removed during activation so clients cannot retain stale CSS or JavaScript.
-const CACHE_NAME = 'streamify-app-shell-v109';
+const CACHE_NAME = 'streamify-app-shell-v111';
 const MEDIA_CACHE_PREFIX = 'streamify-media-cache-';
 const OFFLINE_STATE_CACHE_NAME = 'streamify-offline-state-v1';
 const ACTIVE_USER_STATE_URL = '/__streamify_offline_state__/active-user';
@@ -22,7 +22,7 @@ const APP_SHELL = [
   '/Static/home/css/profile.css?v=4.10',
   '/Static/home/css/toasts.css?v=4.8',
 '/Static/home/css/home_mobile.css?v=4.31',
-  '/Static/home/css/mobile_app.css?v=1.1',
+  '/Static/home/css/mobile_app.css?v=1.3',
   '/Static/vendor/boxicons/boxicons.min.css?v=4.8',
   '/Static/vendor/boxicons/fonts/boxicons.eot',
   '/Static/vendor/boxicons/fonts/boxicons.woff2',
@@ -38,14 +38,14 @@ const APP_SHELL = [
   '/Static/home/js/experiments.js?v=4.36',
 '/Static/home/js/theme.js?v=4.36',
   '/Static/vendor/cropperjs/cropper.min.css?v=4.8',
-  '/Static/home/js/config.js?v=4.23',
+  '/Static/home/js/config.js?v=4.24',
   '/Static/vendor/cropperjs/cropper.min.js?v=4.8',
   '/Static/home/js/offline.js?v=4.38',
   '/Static/home/js/telemetry.js?v=1.0',
   '/Static/home/js/discord.js?v=4.33',
   '/Static/home/js/updates.js?v=4.46',
   '/Static/home/js/player.js?v=4.48',
-  '/Static/home/js/lyrics.js?v=1.5',
+  '/Static/home/js/lyrics.js?v=1.6',
   '/Static/home/js/api_v2.js?v=4.45',
   '/Static/home/js/albums.js?v=1.4',
   '/Static/home/js/likes.js?v=1.0',

@@ -378,6 +378,32 @@
     }
 }
 
+/* No text selection inside the player on touch devices. A long-press or a
+   swipe on the lyrics started an iOS text selection; the highlight was hidden
+   by the faded/blurred lines but the caret and drag handle were drawn in the
+   tint colour - the stray purple bars. Editor fields stay editable. */
+@media (max-width: 900px) {
+    #player-section,
+    #player-section * {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+    }
+
+    #player-section input,
+    #player-section textarea,
+    #player-section [contenteditable="true"] {
+        -webkit-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
+    }
+
+    .lyrics-content:not(.lyrics-editing) .lyric-line {
+        caret-color: transparent;
+        outline: none;
+    }
+}
+
 /* 6. Lyrics on phones / tablets ---------------------------------------------
    Desktop got the Apple Music-style depth (blur + scale + fade around the
    sung line); phones only had a colour change. Same model here, tuned for a
@@ -514,6 +540,45 @@
         transition: opacity 0.2s linear, color 0.2s linear;
         transform: none !important;
         filter: none !important;
+    }
+}
+
+/* iOS WebKit: no filters on lyric lines.
+   Animating filter: blur() on text that also contains transformed / masked
+   word spans (word-sync) inside a masked scroller makes WebKit flash
+   coloured slivers at line edges - the purple bars that blinked in and out
+   as lines changed. Depth is carried by opacity + scale alone here (a touch
+   more contrast between steps to make up for the missing blur). */
+@media (max-width: 900px) {
+    html.is-ios .lyrics-content .lyric-line,
+    html.is-ios .lyrics-content .lyric-line.word-synced.active,
+    html.is-ios .lyrics-content .lyric-pre-enter {
+        filter: none !important;
+        will-change: auto;
+    }
+
+    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line {
+        transition:
+            opacity var(--m-lyric-dur) var(--m-lyric-ease),
+            transform var(--m-lyric-dur) var(--m-lyric-ease),
+            translate 560ms var(--m-lyric-ease),
+            color 0.3s ease;
+    }
+
+    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-1"],
+    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="1"] {
+        opacity: 0.38;
+    }
+
+    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-2"],
+    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="2"] {
+        opacity: 0.27;
+    }
+
+    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-3"],
+    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="3"],
+    html.is-ios .lyrics-content:not(.lyrics-editing) .lyric-line.lyric-line-far {
+        opacity: 0.2;
     }
 }
 
