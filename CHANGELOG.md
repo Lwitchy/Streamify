@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Albums - 2026-10-31
+
+Second phase of the Albums, Artists and Home update. See
+[`MD Files/Engineering/HOME_AND_ALBUMS_PLAN.md`](MD%20Files/Engineering/HOME_AND_ALBUMS_PLAN.md).
+
+### Added
+
+- **Your Library → Albums**: a cover grid of every album in your library,
+  next to the existing song list. The chosen tab is remembered per device.
+- **Album pages** (`#album-<id>`): cover, album artist, year, song count and
+  length, Play, Shuffle and Download, with tracks in disc and track order.
+  Compilations are labelled and credited to "Various Artists".
+- Album names in library, search and playlist rows link to their album.
+- Search results include matching albums.
+- `GET /api/albums` and `GET /api/albums/:uid`; library, search and playlist
+  song payloads now include `album_uid`.
+- Songs are grouped by album artist tag, by folder for untagged compilations,
+  or by lead artist, so "feat." credits never split an album.
+- `npm run test:albums`.
+
+### Changed
+
+- Track numbers, disc numbers, album artist and the compilation flag are now
+  read from tags on upload and on scan. Songs indexed before this release are
+  read once in the background after the first start.
+- The album index rebuilds itself whenever song metadata changes (scan,
+  upload, edit, Smart Auto Enrich, delete); nothing needs a manual refresh.
+
 ## [Unreleased] - Listening History (Telemetry v2) - 2026-10-31
 
 First phase of the Albums, Artists and Home update. See

@@ -1,6 +1,6 @@
 # Albums, Artists, Liked Songs and Home
 
-Status: Phase 1 implemented (2026-10-31). Phases 2-4 planned.
+Status: Phases 1-2 implemented (2026-10-31). Phases 3-4 planned.
 
 This update ships as a main release, not behind an experiment switch. Home
 is personal: every section is computed from the signed-in user's own
@@ -54,20 +54,54 @@ listening only, with no cross-user "popular on this server" data.
 5. Turn off analytics, play, and check that no rows are added. Clear history and
    check that both tables are empty for the user.
 
-## Phase 2 - Albums
+## Phase 2 - Albums - DONE
 
-- Add `album_artist`, `track_number`, `disc_number`, `album_uid` to `songs`;
-  backfill from `metadata_provenance` embedded evidence; write directly on
-  scan/upload from then on.
-- Derived `albums` table (`album_uid`, title, album artist, year, cover,
-  track count, total duration), rebuilt after scans and metadata edits.
-  Grouping: same `release_uid` when identified, else normalized
-  (album artist || artist) + album title. "Unknown Album" never groups;
-  "Various Artists" / compilation tag marks compilations.
-- `GET /api/albums`, `GET /api/albums/:uid` (disc, track, title order;
-  `canAccessSong` applies).
-- Library gets Songs / Albums tabs; album page reuses the playlist layout;
-  album names in song rows link to the album; Download album.
+- `songs` gained derived columns `album_uid`, `album_artist`, `track_number`,
+  `disc_number`; a derived `albums` table (`album_uid`, title, album artist,
+  year, compilation flag, song count, first-added time) sits beside them.
+  Nothing edits these directly. Edit the song (title, album, tags) instead.
+- Grouping rules live in `Server/albums.js` (unit tested):
+  - no album for blank, "Unknown Album" or "Single";
+  - album artist tag → group by (album artist, title);
+  - folder songs without one → group by (folder, title). Album artist is the
+    lead artist of at least half the tracks, otherwise "Various Artists";
+  - everything else → (lead artist, title). "feat./ft." credits are stripped,
+    but "&" and "," are not, so "Simon & Garfunkel" stays one artist;
+  - groups that resolve to the same (album artist, title) merge;
+  - `album_uid` = SHA-1 of that final key (20 hex chars), so it is stable
+    across rebuilds and can be used in URLs.
+- Track and disc numbers prefer the Smart Auto Enrich release, then tags
+  (`metadata_provenance`: locked > manual > smart-auto > embedded > album-tags).
+  Year prefers the identified release year.
+- Freshness: any write to `songs`, `metadata_provenance`,
+  `song_identifications`, `releases` or `release_tracks` marks the index dirty
+  inside `runQuery`. Readers call `HandleDatabase.ensureAlbumsFresh()`, which
+  rebuilds once (single-flight) and writes only rows that changed. No code path
+  needs to remember to refresh albums.
+- Tags for older songs: `backfillAlbumTagEvidence()` runs once in the
+  background after start-up (`system_config.album_tag_backfill_v1`). Folder songs
+  get full `embedded` evidence, as a rescan would record; uploads get an
+  `album-tags` source. New uploads record `album-tags` at upload time.
+- API: `GET /api/albums`, `GET /api/albums/:uid`, and `albums` in
+  `GET /api/search`. Library, search and playlist song payloads include
+  `album_uid`. Counts, duration and cover are per user: only tracks that
+  `canAccessSong` allows are included, and an album with none returns 404.
+- UI (`Static/home/js/albums.js`): Songs / Albums tabs in Your Library (the
+  chosen tab is remembered per device), album grid with hover play, album page
+  (`#album-<uid>`) with Play, Shuffle and Download, multi-disc track labels
+  (`2-05`). Album names in every song row link to the album. Search shows
+  matching albums. Album playback reports `source_type = 'album'`.
+
+### Manual verification
+
+1. Open Your Library → Albums. Tagged folders appear once each; a mixed-artist
+   folder shows as "Various Artists" with the Compilation label.
+2. Open an album: tracks are in disc/track order, Play starts track 1, and
+   Shuffle turns shuffle on and starts a random track.
+3. Click an album name in a song row (library, search, playlist). The album opens,
+   and Back returns to where you came from.
+4. Edit a song's album name, then reload Albums. It moves to the new album.
+5. Phone width: two-column grid, centred album header, play buttons visible.
 
 ## Phase 3 - Artists and Liked Songs
 

@@ -2046,6 +2046,7 @@ themeInputs.forEach(input => {
     const searchSection = document.getElementById('search-section');
     const profileDetailSection = document.getElementById('profile-detail-section');
     const playlistDetailSection = document.getElementById('playlist-detail-section');
+    const albumDetailSection = document.getElementById('album-detail-section');
     const playerSection = document.getElementById('player-section'); // Added player section reference
     const dmSection = null;
 
@@ -2101,7 +2102,7 @@ themeInputs.forEach(input => {
         if (window.currentActiveView !== 'downloads' && window.StreamifyDownloads) {
             window.StreamifyDownloads.close();
         }
-        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection];
+        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection, albumDetailSection];
         if (!document.body.classList.contains('desktop-player-overlay-enabled')) routedSections.push(playerSection);
         routedSections.forEach(sec => {
             if (sec) { sec.classList.add('hidden'); sec.classList.remove('fade-in-animate'); }
@@ -2160,6 +2161,7 @@ themeInputs.forEach(input => {
             libraryLink.classList.add('active');
             showSection(trendingSection);
             fetchLibrary();
+            if (window.StreamifyAlbums) window.StreamifyAlbums.onLibraryShown();
             document.title = "Streamify | Library";
         });
     }
@@ -3120,6 +3122,7 @@ themeInputs.forEach(input => {
         // entrance animation starts, so the animation cannot be invalidated
         // halfway through by the library response.
         showSection(trendingSection);
+        if (window.StreamifyAlbums) window.StreamifyAlbums.onLibraryShown();
         return true;
     }
 
@@ -3163,6 +3166,14 @@ themeInputs.forEach(input => {
             } else if (hash === '#about') {
                 // The Beta Info page is gone; keep old bookmarks working.
                 if (libraryLink) libraryLink.click();
+                return;
+            } else if (hash.startsWith('#album-')) {
+                const albumUid = hash.slice('#album-'.length);
+                if (typeof window.navigateToAlbum === 'function' && /^[a-f0-9]{20}$/.test(albumUid)) {
+                    window.navigateToAlbum(albumUid, { fromHistory: true });
+                } else if (libraryLink) {
+                    libraryLink.click();
+                }
                 return;
             } else if (hash.startsWith('#playlist-')) {
                 const pid = hash.replace('#playlist-', '');

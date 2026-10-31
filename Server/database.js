@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const RT = require('./runtime');
 const ListeningHistory = require('./listeningHistory');
+const Albums = require('./albums');
 
 // Ensure Database directories exist.
 // Paths come from the runtime module so the packaged desktop app can store
@@ -84,8 +85,24 @@ const serializeTransaction = (db, transaction) => async (...args) => {
     return await withDatabaseQueue(db, () => transaction(...args));
 };
 
+// --- Album index change tracking ---------------------------------------------
+// Albums are derived from songs (see albums.js). Instead of hooking every code
+// path that can change a song, any write to the tables that feed grouping marks
+// the index dirty, and readers call ensureAlbumsFresh() before using it. Writes
+// made by the rebuild itself run inside albumRebuildContext and do not count.
+const albumRebuildContext = new AsyncLocalStorage();
+const ALBUM_SOURCE_WRITE = /^\s*(?:INSERT|UPDATE|DELETE|REPLACE)\b[\s\S]*?\b(?:songs|metadata_provenance|song_identifications|release_tracks|releases)\b/i;
+let albumIndexDirty = true;
+let albumRebuildPromise = null;
+
+const noteAlbumSourceWrite = (db, query) => {
+    if (albumIndexDirty || db !== musicDb || albumRebuildContext.getStore()) return;
+    if (ALBUM_SOURCE_WRITE.test(query)) albumIndexDirty = true;
+};
+
 // Helper for Promises
 const runQuery = (db, query, params = []) => {
+    noteAlbumSourceWrite(db, query);
     return withDatabaseQueue(db, () => new Promise((resolve, reject) => {
         db.run(query, params, function (err) {
             if (err) reject(err);
@@ -1062,7 +1079,13 @@ const HandleDatabase = {
             // can reach, so anything that needs a publicly fetchable cover -
             // Discord Rich Presence today - reads this instead and avoids a
             // fresh provider lookup. NULL means "unknown", not "no cover".
-            ['cover_source_url', 'TEXT']
+            ['cover_source_url', 'TEXT'],
+            // Album grouping (derived by rebuildAlbums from the album title,
+            // tags and Smart Auto Enrich identity; never edited directly).
+            ['album_uid', 'TEXT'],
+            ['album_artist', 'TEXT'],
+            ['track_number', 'INTEGER'],
+            ['disc_number', 'INTEGER']
         ];
         for (const [column, definition] of migrations) {
             if (!columnNames.includes(column)) {
@@ -1156,6 +1179,7 @@ const HandleDatabase = {
         await HandleDatabase.reconcileSongPathKeys();
         await runQuery(musicDb, "CREATE UNIQUE INDEX IF NOT EXISTS idx_songs_song_uid ON songs(song_uid)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_uploaded_by ON songs(uploaded_by)");
+        await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_album_uid ON songs(album_uid)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_source ON songs(source)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_recording_uid ON songs(recording_uid)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_availability ON songs(availability)");
@@ -1276,6 +1300,189 @@ const HandleDatabase = {
             ORDER BY CASE WHEN s.song_uid = ? THEN 0 ELSE 1 END
             LIMIT 1
         `, [identifier, identifier, identifier]);
+    },
+
+    /* --- Albums ------------------------------------------------------------ */
+
+    createAlbumsTable: async () => {
+        await runQuery(musicDb, `
+            CREATE TABLE IF NOT EXISTS albums (
+                album_uid TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                album_artist TEXT NOT NULL,
+                year INTEGER,
+                is_compilation INTEGER NOT NULL DEFAULT 0,
+                song_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT NOT NULL
+            )
+        `);
+        await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(album_artist)');
+        albumIndexDirty = true;
+        console.log("[DB] Talking: Creating/Updating albums table is done!");
+    },
+
+    /**
+     * Recompute every song's album assignment and the albums table.
+     * Tag values come from metadata_provenance (locked first, then manual,
+     * Smart Auto Enrich, embedded tags); track and disc numbers prefer the
+     * identified release when Smart Auto Enrich has matched one.
+     */
+    rebuildAlbums: async () => albumRebuildContext.run(true, async () => {
+        albumIndexDirty = false;
+        const songs = await allQuery(musicDb, `
+            SELECT s.id, s.album, s.artist, s.source, s.filepath, s.year, s.created_at,
+                   s.album_uid, s.album_artist, s.track_number, s.disc_number,
+                   rt.track_number AS release_track_number, rt.disc_number AS release_disc_number,
+                   rel.release_year AS release_year
+            FROM songs s
+            LEFT JOIN song_identifications si ON si.song_id = s.id AND si.is_current = 1
+            LEFT JOIN release_tracks rt ON rt.release_track_uid = si.release_track_uid
+            LEFT JOIN releases rel ON rel.release_uid = si.release_uid
+        `);
+        const provenanceRows = await allQuery(musicDb, `
+            SELECT song_id, field_name, value_json, source, is_locked
+            FROM metadata_provenance
+            WHERE field_name IN ('album_artist', 'track_number', 'disc_number', 'compilation')
+        `);
+
+        const sourceRank = source => {
+            const name = String(source || '');
+            if (name === 'manual') return 4;
+            if (name.startsWith('smart-auto')) return 3;
+            if (name === 'embedded') return 2;
+            if (name === 'album-tags') return 1;
+            return 0;
+        };
+        const tags = new Map();
+        for (const row of provenanceRows) {
+            const rank = (row.is_locked ? 10 : 0) + sourceRank(row.source);
+            const fields = tags.get(row.song_id) || {};
+            const current = fields[row.field_name];
+            if (!current || rank > current.rank) {
+                fields[row.field_name] = { rank, value: parseMetadataValue(row.value_json) };
+            }
+            tags.set(row.song_id, fields);
+        }
+        const tagValue = (songId, field) => {
+            const fields = tags.get(songId);
+            return fields && fields[field] ? fields[field].value : null;
+        };
+
+        const { assignments, albums } = Albums.groupAlbums(songs.map(song => ({
+            ...song,
+            albumArtistTag: tagValue(song.id, 'album_artist'),
+            trackNumber: song.release_track_number || tagValue(song.id, 'track_number'),
+            discNumber: song.release_disc_number || tagValue(song.id, 'disc_number'),
+            releaseYear: song.release_year,
+            compilationTag: tagValue(song.id, 'compilation') === true
+        })));
+
+        const now = new Date().toISOString();
+        let changedSongs = 0;
+        await withDatabaseQueue(musicDb, async () => {
+            let inTransaction = false;
+            try {
+                await runQuery(musicDb, 'BEGIN IMMEDIATE');
+                inTransaction = true;
+                for (const song of songs) {
+                    const next = assignments.get(song.id) || {
+                        album_uid: null, album_artist: null, track_number: null, disc_number: null
+                    };
+                    if (
+                        (song.album_uid || null) === next.album_uid &&
+                        (song.album_artist || null) === next.album_artist &&
+                        (song.track_number || null) === next.track_number &&
+                        (song.disc_number || null) === next.disc_number
+                    ) continue;
+                    await runQuery(musicDb, `
+                        UPDATE songs SET album_uid = ?, album_artist = ?, track_number = ?, disc_number = ?
+                        WHERE id = ?
+                    `, [next.album_uid, next.album_artist, next.track_number, next.disc_number, song.id]);
+                    changedSongs += 1;
+                }
+
+                const existing = await allQuery(musicDb, 'SELECT album_uid FROM albums');
+                for (const row of existing) {
+                    if (!albums.has(row.album_uid)) {
+                        await runQuery(musicDb, 'DELETE FROM albums WHERE album_uid = ?', [row.album_uid]);
+                    }
+                }
+                for (const album of albums.values()) {
+                    await runQuery(musicDb, `
+                        INSERT INTO albums (album_uid, title, album_artist, year, is_compilation, song_count, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(album_uid) DO UPDATE SET
+                            title = excluded.title,
+                            album_artist = excluded.album_artist,
+                            year = excluded.year,
+                            is_compilation = excluded.is_compilation,
+                            song_count = excluded.song_count,
+                            created_at = excluded.created_at,
+                            updated_at = CASE
+                                WHEN albums.title IS excluded.title AND albums.album_artist IS excluded.album_artist
+                                 AND albums.year IS excluded.year AND albums.song_count IS excluded.song_count
+                                THEN albums.updated_at ELSE excluded.updated_at END
+                    `, [album.album_uid, album.title, album.album_artist, album.year,
+                        album.is_compilation, album.song_count, album.created_at, now]);
+                }
+                await runQuery(musicDb, 'COMMIT');
+                inTransaction = false;
+            } catch (error) {
+                albumIndexDirty = true;
+                if (inTransaction) {
+                    try { await runQuery(musicDb, 'ROLLBACK'); } catch { /* preserve original error */ }
+                }
+                throw error;
+            }
+        });
+        return { albums: albums.size, changedSongs };
+    }),
+
+    /** Rebuild the album index if any song data changed since the last build. */
+    ensureAlbumsFresh: async () => {
+        while (albumIndexDirty || albumRebuildPromise) {
+            if (!albumRebuildPromise) {
+                albumRebuildPromise = HandleDatabase.rebuildAlbums()
+                    .finally(() => { albumRebuildPromise = null; });
+            }
+            await albumRebuildPromise;
+        }
+    },
+
+    markAlbumsDirty: () => { albumIndexDirty = true; },
+
+    getAlbums: async () => {
+        return await allQuery(musicDb, 'SELECT * FROM albums');
+    },
+
+    getAlbum: async (albumUid) => {
+        return await getQuery(musicDb, 'SELECT * FROM albums WHERE album_uid = ?', [albumUid]);
+    },
+
+    getAlbumSongs: async (albumUid) => {
+        return await allQuery(musicDb, `
+            SELECT s.*, si.release_uid AS identified_release_uid,
+                   si.release_track_uid AS identified_release_track_uid,
+                   si.artist_credit_json AS identity_artist_credit_json,
+                   si.method AS identification_method, si.source AS identification_source,
+                   si.confidence AS identification_confidence
+            FROM songs s
+            LEFT JOIN song_identifications si ON si.song_id = s.id AND si.is_current = 1
+            WHERE s.album_uid = ? AND COALESCE(s.availability, 'available') = 'available'
+        `, [albumUid]);
+    },
+
+    /** Songs that have never had their tags recorded (scanned before tag capture, or uploaded). */
+    getSongsWithoutTagEvidence: async () => {
+        return await allQuery(musicDb, `
+            SELECT s.id, s.filepath, s.source FROM songs s
+            WHERE COALESCE(s.availability, 'available') = 'available'
+              AND NOT EXISTS (
+                SELECT 1 FROM metadata_provenance mp
+                WHERE mp.song_id = s.id AND mp.source IN ('embedded', 'album-tags')
+              )
+        `);
     },
 
     getAllSongs: async ({ includeUnavailable = false } = {}) => {
@@ -3297,7 +3504,7 @@ const HandleDatabase = {
     getPlaylistSongs: async (playlistId) => {
         return await allQuery(
             musicDb,
-             `SELECT ps.*, s.song_uid, s.recording_uid, s.songname, s.artist, s.album,
+             `SELECT ps.*, s.song_uid, s.recording_uid, s.songname, s.artist, s.album, s.album_uid,
                      s.genre, s.year, s.duration, s.duration_ms, s.filepath, s.cover_path,
                      s.uploaded_by, s.is_private, s.bitrate, s.source, s.metadata_status,
                      s.metadata_revision, s.metadata_source, s.availability,

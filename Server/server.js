@@ -14,6 +14,7 @@ const compression = require('compression');
 
 const HandleDatabase = require('./database');
 const ListeningHistory = require('./listeningHistory');
+const Albums = require('./albums');
 const Media = require('./media');
 const AIMetadata = require('./aiMetadata');
 const MetadataProviders = require('./metadataProviders');
@@ -238,6 +239,7 @@ function initializeServer() {
             await HandleDatabase.createSongsTable();
             await HandleDatabase.createDiscordArtworkCacheTable();
             await HandleDatabase.createMetadataTables();
+            await HandleDatabase.createAlbumsTable();
             await HandleDatabase.createSessionsTable();
             await HandleDatabase.createTelemetryTable();
             await HandleDatabase.createPlaylistsTable();
@@ -261,6 +263,10 @@ function initializeServer() {
             }
             // Requeues Soulseek transfers interrupted by a crash or restart.
             await Downloads.resume();
+            await HandleDatabase.ensureAlbumsFresh();
+            // Older songs were indexed before track numbers and album artist
+            // tags were recorded. Read them once in the background.
+            backfillAlbumTagEvidence().catch(error => console.error('[ALBUMS] Tag backfill failed:', error));
             console.log("[INIT] Database initialization complete.");
         })();
     }
@@ -537,6 +543,7 @@ function embeddedMetadataEvidence(common, format, durationMs) {
     add('track_total', common.track && common.track.of);
     add('disc_number', common.disk && common.disk.no);
     add('disc_total', common.disk && common.disk.of);
+    add('compilation', common.compilation === true ? true : undefined);
     add('composer', metadataValues(common.composer));
     add('conductor', metadataValues(common.conductor));
     add('lyricist', metadataValues(common.lyricist));
@@ -606,6 +613,109 @@ function saveEmbeddedPicture(picture, songUid) {
     const destination = path.join(RT.paths.covers, filename);
     if (!fs.existsSync(destination)) fs.writeFileSync(destination, picture.data);
     return `/Static/covers/${filename}`;
+}
+
+/* --- Albums ---------------------------------------------------------------- */
+
+const ALBUM_TAG_BACKFILL_KEY = 'album_tag_backfill_v1';
+
+async function backfillAlbumTagEvidence() {
+    if (await HandleDatabase.getSystemConfigValue(ALBUM_TAG_BACKFILL_KEY) === 'done') return;
+    const songs = await HandleDatabase.getSongsWithoutTagEvidence();
+    let recorded = 0;
+    for (const song of songs) {
+        const fullPath = path.isAbsolute(song.filepath)
+            ? song.filepath
+            : path.resolve(RT.DATA_ROOT, song.filepath);
+        try {
+            if (!fs.existsSync(fullPath)) continue;
+            const parsed = await mm.parseFile(fullPath, { duration: false, skipCovers: true });
+            const common = parsed.common || {};
+            if (song.source === 'folder') {
+                const format = parsed.format || {};
+                const durationMs = Number.isFinite(format.duration) ? Math.round(format.duration * 1000) : 0;
+                const evidence = embeddedMetadataEvidence(common, format, durationMs);
+                await HandleDatabase.replaceMetadataProvenance(song.id, evidence.provenance, 'embedded');
+            } else {
+                await HandleDatabase.replaceMetadataProvenance(song.id, Albums.albumTagEvidence(common), 'album-tags');
+            }
+            recorded += 1;
+        } catch (error) {
+            console.warn(`[ALBUMS] Could not read tags for song ${song.id}: ${error.message}`);
+        }
+        // Yield between files so playback and API requests stay responsive.
+        await new Promise(resolve => setImmediate(resolve));
+    }
+    await HandleDatabase.updateSystemConfig(ALBUM_TAG_BACKFILL_KEY, 'done');
+    if (recorded > 0) {
+        console.log(`[ALBUMS] Recorded album tags for ${recorded} song(s).`);
+        await HandleDatabase.ensureAlbumsFresh();
+    }
+}
+
+/** The song shape every list view (library, search, album) receives. */
+function librarySongPayload(s) {
+    const filePath = s.filepath || '';
+    return {
+        id: s.id,
+        ...songIdentityContract(s),
+        name: s.songname || 'Unknown Track',
+        artist: s.artist || 'Unknown Artist',
+        album: s.album || 'Single',
+        album_uid: s.album_uid || null,
+        album_artist: s.album_artist || null,
+        track_number: s.track_number || null,
+        disc_number: s.disc_number || null,
+        duration: Media.formatDuration(s.duration),
+        cover: resolveSongCover(s),
+        uploaded_by: s.uploaded_by,
+        is_private: s.is_private === 'public' ? 'public' : 'private',
+        bitrate: s.bitrate,
+        extension: path.extname(filePath).toLowerCase()
+    };
+}
+
+/**
+ * Albums as one user sees them: only tracks they can access count, and the
+ * cover comes from the first such track (in album order) that has artwork.
+ */
+function summarizeAlbumsForUser(albumRows, songs, username) {
+    const tracksByAlbum = new Map();
+    for (const song of songs) {
+        if (!song.album_uid || song.hidden_from_library || !canAccessSong(song, username)) continue;
+        if (!tracksByAlbum.has(song.album_uid)) tracksByAlbum.set(song.album_uid, []);
+        tracksByAlbum.get(song.album_uid).push(song);
+    }
+    const summaries = [];
+    for (const album of albumRows) {
+        const tracks = tracksByAlbum.get(album.album_uid);
+        if (!tracks || tracks.length === 0) continue;
+        tracks.sort(Albums.compareAlbumTracks);
+        let cover = null;
+        for (const track of tracks) {
+            cover = resolveSongCover(track);
+            if (cover) break;
+        }
+        const durationSeconds = tracks.reduce((sum, track) => sum + (Number(track.duration) || 0), 0);
+        summaries.push({
+            album_uid: album.album_uid,
+            title: album.title,
+            artist: album.album_artist,
+            year: album.year || null,
+            is_compilation: Boolean(album.is_compilation),
+            track_count: tracks.length,
+            duration_seconds: durationSeconds,
+            cover,
+            added_at: album.created_at || null,
+            tracks
+        });
+    }
+    return summaries;
+}
+
+function albumSummaryPayload(summary) {
+    const { tracks, ...rest } = summary;
+    return rest;
 }
 
 function syncMusicDirectory() {
@@ -2355,7 +2465,13 @@ app.get('/api/users', requireLogin, async (req, res) => {
 // API: search
 app.get('/api/search', requireLogin, async (req, res) => {
     const queryStr = (req.query.q || '').toLowerCase();
-    if (!queryStr) return res.json({ users: [], songs: [] });
+    if (!queryStr) return res.json({ users: [], songs: [], albums: [] });
+
+    try {
+        await HandleDatabase.ensureAlbumsFresh();
+    } catch (error) {
+        console.error('[ALBUMS] Rebuild failed:', error);
+    }
 
     // Songs
     const allSongs = await HandleDatabase.getAllSongs();
@@ -2365,24 +2481,22 @@ app.get('/api/search', requireLogin, async (req, res) => {
         return String(s.songname || '').toLowerCase().includes(queryStr) ||
             String(s.artist || '').toLowerCase().includes(queryStr) ||
             String(s.album || '').toLowerCase().includes(queryStr);
-    }).map(s => {
-        const filePath = s.filepath || '';
-        return {
-            id: s.id,
-            ...songIdentityContract(s),
-            name: s.songname || 'Unknown Track',
-            artist: s.artist || 'Unknown Artist',
-            album: s.album || 'Single',
-            duration: Media.formatDuration(s.duration),
-            cover: resolveSongCover(s),
-            uploaded_by: s.uploaded_by,
-            is_private: s.is_private === 'public' ? 'public' : 'private',
-            bitrate: s.bitrate,
-            extension: path.extname(filePath).toLowerCase()
-        }
-    });
+    }).map(librarySongPayload);
 
-    res.json({ users: [], songs: matchingSongs });
+    let matchingAlbums = [];
+    try {
+        const albumRows = (await HandleDatabase.getAlbums()).filter(album =>
+            String(album.title || '').toLowerCase().includes(queryStr) ||
+            String(album.album_artist || '').toLowerCase().includes(queryStr));
+        matchingAlbums = summarizeAlbumsForUser(albumRows, allSongs, req.user)
+            .map(albumSummaryPayload)
+            .sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' }))
+            .slice(0, 12);
+    } catch (error) {
+        console.error('[ALBUMS] Search failed:', error);
+    }
+
+    res.json({ users: [], songs: matchingSongs, albums: matchingAlbums });
 });
 
 // API: search mentions (lightweight)
@@ -2465,23 +2579,59 @@ app.post('/api/config/music-directories', requireRole(['Owner']), async (req, re
 
 // API: library
 app.get('/api/library', requireLogin, async (req, res) => {
+    try {
+        await HandleDatabase.ensureAlbumsFresh();
+    } catch (error) {
+        // Albums are an enhancement here; the song list must still load.
+        console.error('[ALBUMS] Rebuild failed:', error);
+    }
     const allSongs = await HandleDatabase.getAllSongs();
-    const library = allSongs.filter(s => !s.hidden_from_library && canAccessSong(s, req.user)).map(s => {
-        return {
-            id: s.id,
-            ...songIdentityContract(s),
-            name: s.songname,
-            artist: s.artist,
-            album: s.album,
-            duration: Media.formatDuration(s.duration),
-            cover: resolveSongCover(s),
-            uploaded_by: s.uploaded_by,
-            is_private: s.is_private === 'public' ? 'public' : 'private',
-            bitrate: s.bitrate,
-            extension: path.extname(s.filepath).toLowerCase()
-        }
-    });
+    const library = allSongs
+        .filter(s => !s.hidden_from_library && canAccessSong(s, req.user))
+        .map(librarySongPayload);
     res.json(library);
+});
+
+// API: albums in the user's library
+app.get('/api/albums', requireLogin, async (req, res) => {
+    try {
+        await HandleDatabase.ensureAlbumsFresh();
+        const [albumRows, songs] = await Promise.all([
+            HandleDatabase.getAlbums(),
+            HandleDatabase.getAllSongs()
+        ]);
+        const albums = summarizeAlbumsForUser(albumRows, songs, req.user)
+            .map(albumSummaryPayload)
+            .sort((a, b) =>
+                String(a.artist).localeCompare(String(b.artist), undefined, { sensitivity: 'base' }) ||
+                (a.year || 0) - (b.year || 0) ||
+                String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' }));
+        res.json(albums);
+    } catch (error) {
+        console.error('[ALBUMS]', error);
+        res.status(500).json({ error: 'Failed to load albums' });
+    }
+});
+
+// API: one album and its tracks in album order
+app.get('/api/albums/:uid', requireLogin, async (req, res) => {
+    try {
+        const uid = String(req.params.uid || '');
+        if (!/^[a-f0-9]{20}$/.test(uid)) return res.status(400).json({ error: 'Invalid album' });
+        await HandleDatabase.ensureAlbumsFresh();
+        const album = await HandleDatabase.getAlbum(uid);
+        if (!album) return res.status(404).json({ error: 'Album not found' });
+        const songs = await HandleDatabase.getAlbumSongs(uid);
+        const [summary] = summarizeAlbumsForUser([album], songs, req.user);
+        if (!summary) return res.status(404).json({ error: 'Album not found' });
+        res.json({
+            album: albumSummaryPayload(summary),
+            tracks: summary.tracks.map(librarySongPayload)
+        });
+    } catch (error) {
+        console.error('[ALBUMS]', error);
+        res.status(500).json({ error: 'Failed to load album' });
+    }
 });
 
 // API: trending
@@ -3540,6 +3690,7 @@ app.get('/api/playlists/:id/songs', requireLogin, async (req, res) => {
                 name: s.songname,
                 artist: s.artist,
                 album: s.album,
+                album_uid: s.album_uid || null,
                 duration: Media.formatDuration(s.duration),
                 cover: resolveSongCover(s),
                 uploaded_by: s.uploaded_by,
@@ -3585,6 +3736,11 @@ app.get('/api/playlists/share/:shareId', async (req, res) => {
             }
         }
 
+        try {
+            await HandleDatabase.ensureAlbumsFresh();
+        } catch (albumError) {
+            console.error('[ALBUMS] Rebuild failed:', albumError);
+        }
         const songs = (await HandleDatabase.getPlaylistSongs(playlist.id))
             .filter(song => canAccessSong(song, user));
         let totalSeconds = 0;
@@ -3596,6 +3752,7 @@ app.get('/api/playlists/share/:shareId', async (req, res) => {
                 name: s.songname,
                 artist: s.artist,
                 album: s.album,
+                album_uid: s.album_uid || null,
                 duration: Media.formatDuration(s.duration),
                 cover: resolveSongCover(s),
                 uploaded_by: s.uploaded_by,

@@ -1198,3 +1198,49 @@
     -webkit-user-select: text !important;
     user-select: text !important;
 }
+
+/* --- Albums ---------------------------------------------------------------- */
+.library-heading {
+    gap: 12px;
+}
+
+.album-grid,
+.album-grid--compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 14px;
+}
+
+.album-card {
+    padding: 6px;
+    margin: -6px;
+}
+
+/* Touch screens have no hover: keep the play button reachable. */
+.album-card-play {
+    opacity: 1;
+    transform: none;
+    width: 38px;
+    height: 38px;
+    font-size: 22px;
+}
+
+.album-hero {
+    flex-direction: column;
+    align-items: center;
+}
+
+.album-hero-meta {
+    align-items: center;
+    text-align: center;
+    width: 100%;
+}
+
+.album-hero-actions {
+    justify-content: center;
+}
+
+.album-hero-cover {
+    width: min(64vw, 240px);
+    height: min(64vw, 240px);
+    align-self: center;
+}

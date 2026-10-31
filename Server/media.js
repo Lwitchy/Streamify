@@ -7,6 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const HandleDatabase = require('./database');
 const RT = require('./runtime');
+const Albums = require('./albums');
 
 // Set ffmpeg path.
 // unpackPath() rewrites app.asar -> app.asar.unpacked when running inside a
@@ -325,6 +326,17 @@ const Media = {
             let aiEnriched = 0;
 
             await HandleDatabase.insertSong(title, artist, album, genre, duration, dbRelativePath, uploadedBy, visibility, fingerprint.youtube_id, fingerprint.file_hash, bitrate, source, year, aiEnriched, coverPath);
+
+            // Track numbers and album artist let the upload join its album.
+            try {
+                const inserted = await HandleDatabase.getSongByFilepath(dbRelativePath);
+                const albumTags = Albums.albumTagEvidence(metadata.common);
+                if (inserted && Object.keys(albumTags).length > 0) {
+                    await HandleDatabase.replaceMetadataProvenance(inserted.id, albumTags, 'album-tags');
+                }
+            } catch (tagError) {
+                console.warn('[ALBUMS] Could not record upload tags:', tagError.message);
+            }
             
             console.log(`Success! Saved to ${dbRelativePath} (${finalBytes} bytes)`);
             return dbRelativePath;

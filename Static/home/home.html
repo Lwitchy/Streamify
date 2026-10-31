@@ -10,15 +10,15 @@
     <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.45">
     <link rel="stylesheet" href="/Static/home/css/components.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.10">
-    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.48">
+    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.49">
     <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.52">
-    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.38">
+    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.40">
     <link rel="stylesheet" href="/Static/home/css/downloads.css?v=4.34">
     <link rel="stylesheet" href="/Static/home/css/profile.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/toasts.css?v=4.8">
 
     <!-- Mobile Overrides (Must be last) -->
-<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.26" media="(max-width: 768px)">
+<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.27" media="(max-width: 768px)">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -166,12 +166,25 @@
                     <!-- Songs injected here -->
                     <p style="padding:10px; color:#b3b3b3;">No songs found.</p>
                 </div>
+
+                <div class="search-albums-block hidden" id="search-albums-block">
+                    <h3 style="margin-top:30px; margin-bottom:10px; font-size: 1.2rem; color: #fff;">Albums</h3>
+                    <div class="album-grid album-grid--compact" id="search-albums-grid"></div>
+                </div>
             </section>
 
             <!-- Library Section (song list, hidden by default) -->
             <section class="trending hidden" id="trending-section">
                 <div class="library-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                    <h2 class="section-title" style="margin-bottom: 0;">Your Library</h2>
+                    <div class="library-heading">
+                        <h2 class="section-title" style="margin-bottom: 0;">Your Library</h2>
+                        <div class="library-tabs" role="tablist" aria-label="Library view">
+                            <button type="button" class="library-tab active" role="tab" id="library-tab-songs"
+                                data-library-tab="songs" aria-selected="true" aria-controls="trending-list">Songs</button>
+                            <button type="button" class="library-tab" role="tab" id="library-tab-albums"
+                                data-library-tab="albums" aria-selected="false" aria-controls="library-albums-grid" tabindex="-1">Albums</button>
+                        </div>
+                    </div>
                     <div class="library-section-actions" style="display: flex; gap: 8px;">
                         <button type="button" id="batch-ai-enrich-btn" class="manage-btn hidden" title="Review library metadata" aria-label="Open Smart Metadata Review">
                             <i class='bx bxs-magic-wand'></i>
@@ -214,6 +227,9 @@
                         <span></span>
                     </div>
                     <!-- Loaded via API -->
+                </div>
+                <div class="album-grid hidden" id="library-albums-grid" role="tabpanel" aria-labelledby="library-tab-albums">
+                    <!-- Album cards rendered by albums.js -->
                 </div>
             </section>
 
@@ -446,6 +462,49 @@
             </section>
 
             <!-- Playlist Detail Section (hidden by default) -->
+            <section class="playlist-detail-section album-detail-section hidden" id="album-detail-section" aria-labelledby="album-detail-title">
+                <div class="playlist-detail-header">
+                    <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-album-btn">
+                        <i class='bx bx-arrow-back'></i> Back
+                    </button>
+                    <div class="playlist-detail-actions">
+                        <button class="btn btn-outline btn-sm" id="download-album-btn" title="Download Album Offline">
+                            <i class='bx bx-cloud-download'></i> Download
+                        </button>
+                    </div>
+                </div>
+                <div class="playlist-detail-info album-hero">
+                    <div class="playlist-detail-cover album-hero-cover">
+                        <img id="album-detail-cover" alt="" decoding="async">
+                    </div>
+                    <div class="playlist-detail-meta album-hero-meta">
+                        <span class="album-hero-kind" id="album-detail-kind">Album</span>
+                        <h2 class="playlist-detail-name" id="album-detail-title">Album</h2>
+                        <p class="album-hero-artist" id="album-detail-artist"></p>
+                        <p class="playlist-detail-count" id="album-detail-meta"></p>
+                        <div class="album-hero-actions">
+                            <button type="button" class="album-play-btn" id="album-play-btn" aria-label="Play album">
+                                <i class='bx bx-play'></i> Play
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm album-shuffle-btn" id="album-shuffle-btn" aria-label="Shuffle album">
+                                <i class='bx bx-shuffle'></i> Shuffle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="song-list" id="album-tracks-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                        <span></span>
+                    </div>
+                </div>
+            </section>
+
             <section class="playlist-detail-section hidden" id="playlist-detail-section">
                 <div class="playlist-detail-header">
                     <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-playlist-btn">
@@ -1036,7 +1095,7 @@
                             <fieldset class="theme-picker lyrics-option-group">
                                 <legend>Enhanced lyrics</legend>
 
-                                <div class="appearance-setting-row">
+                                <div class="appearance-setting-row has-segmented">
                                     <div class="appearance-setting-copy">
                                         <span class="appearance-setting-label" id="lyrics-size-label">Text size</span>
                                     </div>
@@ -1047,7 +1106,7 @@
                                     </div>
                                 </div>
 
-                                <div class="appearance-setting-row">
+                                <div class="appearance-setting-row has-segmented">
                                     <div class="appearance-setting-copy">
                                         <span class="appearance-setting-label" id="lyrics-glow-label">Glow</span>
                                         <p>Soft light around the line being sung.</p>
@@ -2283,9 +2342,10 @@
     <script src="/Static/home/js/updates.js?v=4.46"></script>
     <script src="/Static/home/js/player.js?v=4.45"></script>
     <script src="/Static/home/js/lyrics.js?v=1.5"></script>
-    <script src="/Static/home/js/api_v2.js?v=4.43"></script>
+    <script src="/Static/home/js/api_v2.js?v=4.44"></script>
+    <script src="/Static/home/js/albums.js?v=1.0"></script>
     <script src="/Static/home/js/downloads.js?v=4.44"></script>
-    <script src="/Static/home/js/ui.js?v=4.52"></script>
+    <script src="/Static/home/js/ui.js?v=4.53"></script>
 </body>
 
 </html>

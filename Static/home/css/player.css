@@ -3488,9 +3488,20 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
     border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
 }
 
+.lyrics-segmented {
+    align-items: center;
+    align-self: center;
+}
+
+/* modals.css gives every settings label display:block + an 8px bottom
+   margin + uppercase text; undo that so the pills sit centered. */
+.settings-pane .lyrics-segmented label,
 .lyrics-segmented label {
     position: relative;
+    display: block;
     margin: 0;
+    padding: 0;
+    line-height: 1;
     cursor: pointer;
 }
 
@@ -3500,9 +3511,14 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
     pointer-events: none;
 }
 
+.settings-pane .lyrics-segmented span,
 .lyrics-segmented span {
-    display: inline-block;
-    padding: 6px 12px;
+    display: block;
+    /* Trim the font's built-in space above/below the letters so the label
+       is optically centered in the pill (Chromium 133+, i.e. Electron 43). */
+    text-box: trim-both cap alphabetic;
+    padding: 9px 13px;
+    line-height: 1;
     border-radius: 999px;
     color: var(--text-secondary, rgba(255, 255, 255, 0.65));
     font-size: 12px;
@@ -3523,6 +3539,13 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
 }
 
 .lyrics-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 118px;
+    box-sizing: border-box;
+    text-align: center;
     margin-bottom: 16px;
     padding: 22px 20px;
     border-radius: 14px;
@@ -3601,7 +3624,17 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
 }
 
 @media (max-width: 600px) {
-    .lyrics-option-group .appearance-setting-row {
+    /* Only rows with a 3-way choice wrap; switches stay on the right. */
+    .lyrics-option-group .appearance-setting-row.has-segmented {
         flex-wrap: wrap;
     }
+
+    .lyrics-option-group .appearance-setting-row.has-segmented .lyrics-segmented {
+        margin-left: auto;
+    }
+}
+
+/* A label with no description under it shouldn't keep its bottom gap. */
+.settings-pane .lyrics-option-group .appearance-setting-copy > .appearance-setting-label:only-child {
+    margin: 0;
 }

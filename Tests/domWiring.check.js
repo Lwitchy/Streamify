@@ -18,6 +18,7 @@ const html = read('Static/home/home.html');
 const sw = read('Static/sw.js');
 
 const scripts = [
+    'Static/home/js/albums.js',
     'Static/home/js/downloads.js',
     'Static/home/js/ui.js',
     'Static/home/js/updates.js'
