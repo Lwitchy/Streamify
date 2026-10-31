@@ -219,6 +219,7 @@ function loadSong(song) {
 
     // Track the currently playing song ID for cross-tab highlighting
     window.currentlyPlayingSongId = song.id || null;
+    window.dispatchEvent(new CustomEvent('streamifytrackchange', { detail: { songId: window.currentlyPlayingSongId } }));
 
     // Start the authenticated media request before secondary lyric work.
     try { audio.load(); } catch (e) { /* ignore */ }

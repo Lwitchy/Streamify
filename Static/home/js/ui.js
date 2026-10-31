@@ -919,6 +919,7 @@ themeInputs.forEach(input => {
             if (appCache.user && appCache.user.role === 'Owner') loadMusicDirectories();
         } else if (targetTab.dataset.tab === 'metadata' && isOwnerRole) {
             loadMetadataSettings();
+            if (window.StreamifyArtists) window.StreamifyArtists.loadPhotoSetting();
         } else if (targetTab.dataset.tab === 'downloads' && isOwnerRole) {
             loadDownloadSettings();
         } else if (targetTab.dataset.tab === 'discord') {
@@ -2047,6 +2048,9 @@ themeInputs.forEach(input => {
     const profileDetailSection = document.getElementById('profile-detail-section');
     const playlistDetailSection = document.getElementById('playlist-detail-section');
     const albumDetailSection = document.getElementById('album-detail-section');
+    const artistDetailSection = document.getElementById('artist-detail-section');
+    const likedSongsSection = document.getElementById('liked-songs-section');
+    const likedSongsLink = document.getElementById('liked-songs-link');
     const playerSection = document.getElementById('player-section'); // Added player section reference
     const dmSection = null;
 
@@ -2102,7 +2106,7 @@ themeInputs.forEach(input => {
         if (window.currentActiveView !== 'downloads' && window.StreamifyDownloads) {
             window.StreamifyDownloads.close();
         }
-        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection, albumDetailSection];
+        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection, albumDetailSection, artistDetailSection, likedSongsSection];
         if (!document.body.classList.contains('desktop-player-overlay-enabled')) routedSections.push(playerSection);
         routedSections.forEach(sec => {
             if (sec) { sec.classList.add('hidden'); sec.classList.remove('fade-in-animate'); }
@@ -2121,7 +2125,7 @@ themeInputs.forEach(input => {
                 setThemeColor(DEFAULT_THEME_COLOR);
             }
         }
-        [libraryLink, downloadsLink, uploadLink].forEach(l => l && l.classList.remove('active'));
+        [libraryLink, downloadsLink, uploadLink, likedSongsLink].forEach(l => l && l.classList.remove('active'));
         document.querySelectorAll('.sidebar-playlist-link').forEach(l => l.classList.remove('active'));
         // Reset edit modes on view switch to prevent stale UI state
         if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode) {
@@ -3166,6 +3170,18 @@ themeInputs.forEach(input => {
             } else if (hash === '#about') {
                 // The Beta Info page is gone; keep old bookmarks working.
                 if (libraryLink) libraryLink.click();
+                return;
+            } else if (hash === '#liked') {
+                if (typeof window.navigateToLiked === 'function') window.navigateToLiked({ fromHistory: true });
+                else if (libraryLink) libraryLink.click();
+                return;
+            } else if (hash.startsWith('#artist-')) {
+                const artistUid = hash.slice('#artist-'.length);
+                if (typeof window.navigateToArtist === 'function' && /^[a-f0-9]{20}$/.test(artistUid)) {
+                    window.navigateToArtist(artistUid, { fromHistory: true });
+                } else if (libraryLink) {
+                    libraryLink.click();
+                }
                 return;
             } else if (hash.startsWith('#album-')) {
                 const albumUid = hash.slice('#album-'.length);

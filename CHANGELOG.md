@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Artists & Liked Songs - 2026-10-31
+
+Third phase of the Albums, Artists and Home update. See
+[`MD Files/Engineering/HOME_AND_ALBUMS_PLAN.md`](MD%20Files/Engineering/HOME_AND_ALBUMS_PLAN.md).
+
+### Added
+
+- **Liked Songs**: a heart on every song row and in the mini and full-screen
+  players, and a Liked Songs page in the sidebar with Play, Shuffle and
+  Download. Likes are personal to each account.
+- **Artist pages** (`#artist-<id>`) with the artist's photo, your most-played
+  songs, their albums, and albums they appear on. Artist names in song rows
+  and album pages link to them.
+- **Your Library → Artists** tab.
+- Artist photos: uploaded by the Owner or an Admin on the artist page, or
+  looked up automatically on Deezer (only the artist name is sent; photos
+  are stored on your server). Without a photo, the artist's album covers are
+  shown. The lookup can be turned off in **Settings → Metadata**.
+- `GET /api/artists`, `GET /api/artists/:uid`, `POST|DELETE
+  /api/artists/:uid/image`, `GET|POST /api/settings/artist-images`,
+  `GET /api/likes`, `GET /api/likes/ids`, `PUT|DELETE /api/likes/:songId`.
+
+### Changed
+
+- Back buttons on album, artist and Liked Songs pages now retrace the path you
+  took (e.g. album → artist → album).
+- Song rows on desktop are slightly wider on the right to fit the heart.
+
 ## [Unreleased] - Albums - 2026-10-31
 
 Second phase of the Albums, Artists and Home update. See

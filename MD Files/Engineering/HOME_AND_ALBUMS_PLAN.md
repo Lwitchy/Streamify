@@ -1,6 +1,6 @@
 # Albums, Artists, Liked Songs and Home
 
-Status: Phases 1-2 implemented (2026-10-31). Phases 3-4 planned.
+Status: Phases 1-3 implemented (2026-10-31). Phase 4 planned.
 
 This update ships as a main release, not behind an experiment switch. Home
 is personal: every section is computed from the signed-in user's own
@@ -103,14 +103,65 @@ listening only, with no cross-user "popular on this server" data.
 4. Edit a song's album name, then reload Albums. It moves to the new album.
 5. Phone width: two-column grid, centred album header, play buttons visible.
 
-## Phase 3 - Artists and Liked Songs
+## Phase 3 - Artists and Liked Songs - DONE
 
-- Artist pages with an artist image: header image, top tracks (from the
-  user's history), albums, appears-on. Image source order: owner upload, then
-  a provider image fetched once and cached under `Static/artists/`, then a
-  fallback built from album covers.
-- `user_likes` (per user, per song) and a Liked Songs collection with its
-  own `source_type = 'liked'`. Retire the shared `songs.is_favorite`.
+### Liked Songs
+
+- `song_likes(username, song_id, liked_at)` in music.db (cascade on song
+  delete; removed with the user's other data). `songs.is_favorite` was never
+  read and is now officially unused.
+- `GET /api/likes` (newest first), `GET /api/likes/ids`,
+  `PUT|DELETE /api/likes/:songId` (PUT checks `canAccessSong`).
+- Client `Static/home/js/likes.js`: an in-memory ID set drives every heart
+  (`data-like-song` on rows, `data-like-current` in the mini and full-screen
+  players). Changes show immediately and roll back if the server refuses. The
+  Liked Songs page is `#liked`, with the sidebar entry under Your Library, and
+  reports `source_type = 'liked'`. On phones, row hearts are hidden to keep a
+  single action per row, and liking happens from the player.
+
+### Artists
+
+- Rules in `Server/artists.js` (unit tested). A song's artist is its lead
+  artist (`Albums.primaryArtist`, with "feat." credits removed);
+  `artist_uid` = SHA-1 of the normalized name (20 hex chars).
+  "Unknown/Various Artists" never get a page.
+- Derived columns: `songs.artist_uid`, `albums.album_artist_uid`, both set
+  by `rebuildAlbums` (same dirty tracking as albums).
+- `GET /api/artists` and `GET /api/artists/:uid`. The detail response has:
+  - tracks ranked by the user's own plays, then listening time, then the newest
+    album (the page shows the top 5 with "Show all");
+  - albums where they are the album artist;
+  - "Appears On" albums where they lead a track but are not the album artist.
+- Artist photos (`artist_images` table, files in `<data>/Static/artists/`):
+  1. Owner/Admin upload (`POST|DELETE /api/artists/:uid/image`, JPG/PNG,
+     cropped to 800x800). Uploads are never replaced automatically.
+  2. Deezer artist search (public API, no key; only the name is sent). It
+     needs an exact normalized name match, and the most-followed match wins.
+     Deezer's blank silhouette is ignored. The image is downloaded through
+     `AIMetadata.downloadFile` (`*.dzcdn.net` added to the trusted hosts).
+     "Nothing found" is cached for 30 days, and network errors back off for 1 hour.
+     The list endpoint queues lookups in the background. A first visit to an
+     artist page waits up to 6 s for one.
+  3. Client fallback: a 2x2 mosaic of the artist's album covers, or initials.
+- Owner switch: Settings → Metadata → **Download artist photos**
+  (`system_config.artist_images_online`, default on).
+- Client `Static/home/js/artists.js`: Artists tab in Your Library, artist
+  page `#artist-<uid>` with a blurred photo backdrop, Play/Shuffle
+  (`source_type = 'artist'`). Artist names in song rows and album headers
+  link to the artist.
+- Back buttons on album, artist and Liked Songs pages share one origin stack
+  (`window.StreamifyNav`), so album → artist → album → Back → Back retraces
+  the path. Opening Your Library clears it.
+
+### Manual verification
+
+1. Like songs from rows and from the player. Liked Songs lists them newest first,
+   and unliking removes them.
+2. Your Library → Artists. Photos appear after a few seconds, if online photos
+   are on. Artists without a photo show their album covers.
+3. Open an artist: Songs/Popular, Albums and Appears On are filled in, and
+   Change photo works for the Owner.
+4. Turn off Download artist photos. New artists stay on the cover mosaic.
 
 ## Phase 4 - Home
 

@@ -73,6 +73,7 @@ const paths = {
     uploads: path.join(DATA_ROOT, 'MusicLibrary', 'uploads'),
     temp: path.join(DATA_ROOT, 'MusicLibrary', 'Temp'),
     covers: path.join(DATA_ROOT, 'Static', 'covers'),
+    artists: path.join(DATA_ROOT, 'Static', 'artists'),
     avatars: path.join(DATA_ROOT, 'Static', 'avatars'),
     banners: path.join(DATA_ROOT, 'Static', 'banners'),
 
@@ -94,7 +95,7 @@ const paths = {
 function ensureDirectories() {
     const required = [
         paths.usersDb, paths.musicDb, paths.backups,
-        paths.uploads, paths.temp, paths.covers, paths.avatars, paths.banners,
+        paths.uploads, paths.temp, paths.covers, paths.artists, paths.avatars, paths.banners,
     ];
     for (const dir of required) {
         try {

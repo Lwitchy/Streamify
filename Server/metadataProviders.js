@@ -14,7 +14,9 @@ const DEFAULT_TOTAL_TIMEOUT_MS = 18_000;
 const PROVIDER_SETTINGS = Object.freeze({
     musicbrainz: { intervalMs: 1000, attempts: 3, cacheTtlMs: 6 * 60 * 60 * 1000 },
     apple: { intervalMs: 3000, attempts: 2, cacheTtlMs: 2 * 60 * 60 * 1000 },
-    acoustid: { intervalMs: 1000, attempts: 3, cacheTtlMs: 24 * 60 * 60 * 1000 }
+    acoustid: { intervalMs: 1000, attempts: 3, cacheTtlMs: 24 * 60 * 60 * 1000 },
+    // Artist photos only (artists.js). Public API, no account or key.
+    deezer: { intervalMs: 1000, attempts: 2, cacheTtlMs: 24 * 60 * 60 * 1000 }
 });
 
 function cloneJson(value) {
@@ -880,8 +882,17 @@ function providerStatusOnly(result) {
     };
 }
 
+/** Raw Deezer artist search; artists.js decides which result (if any) matches. */
+async function searchDeezerArtist(name, options = {}) {
+    const query = cleanQueryValue(name);
+    if (!query) return { status: 'no_match', detail: 'empty_query', data: null };
+    const parameters = new URLSearchParams({ q: query, limit: '10' });
+    return (options.requestJson || requestJson)('deezer', `https://api.deezer.com/search/artist?${parameters.toString()}`, options);
+}
+
 module.exports = {
     searchMusicBrainz,
+    searchDeezerArtist,
     lookupMusicBrainzRecording,
     searchMusicBrainzIdentifier,
     searchApple,

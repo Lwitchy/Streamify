@@ -1244,3 +1244,43 @@
     height: min(64vw, 240px);
     align-self: center;
 }
+
+/* --- Liked Songs & Artists ------------------------------------------------- */
+/* Rows keep their single download button on phones; like from the player. */
+.song-row .row-like-btn {
+    display: none !important;
+}
+
+.artist-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 14px;
+}
+
+.artist-card {
+    padding: 8px;
+    margin: -8px;
+}
+
+.artist-hero {
+    flex-direction: column;
+    text-align: center;
+    padding: 24px 16px;
+    gap: 18px;
+}
+
+.artist-hero-image {
+    width: min(56vw, 220px);
+}
+
+.artist-hero-meta {
+    align-items: center;
+    width: 100%;
+}
+
+.artist-detail-section {
+    padding: 16px;
+}
+
+.artist-block-title {
+    font-size: 19px;
+}

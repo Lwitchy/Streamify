@@ -24,7 +24,7 @@
     "test:discord": "node --test Tests/discordPresence.test.js Tests/discordArtwork.test.js",
     "test:updater": "node --test Tests/updater.test.js",
     "test:telemetry": "node --test Tests/listeningHistory.test.js",
-    "test:albums": "node --test Tests/albums.test.js",
+    "test:albums": "node --test Tests/albums.test.js Tests/artists.test.js",
     "test:downloads-ui": "node --test Tests/downloadSources.test.js && node Tests/downloadsUi.check.js",
     "test:downloads": "node Tests/downloadEngine.manual.js",
     "test:downloads-security": "node Tests/downloadSecurity.manual.js",

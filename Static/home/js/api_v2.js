@@ -211,8 +211,23 @@ function albumCellHTML(albumName, albumUid) {
     return `<span class="song-album-cell"><a href="#album-${albumUid}" class="song-album-link" data-album-uid="${albumUid}">${label}</a></span>`;
 }
 
+// Artist line under a song title: a link to the artist page when known.
+function artistLineHTML(artistName, artistUid, compact = false) {
+    const style = compact ? 'font-size:12px;' : 'font-size: 12px;';
+    const label = escapeHTML(artistName || '');
+    if (!artistUid || !/^[a-f0-9]{20}$/.test(String(artistUid))) return `<div style="${style}">${label}</div>`;
+    return `<div style="${style}"><a href="#artist-${artistUid}" class="song-artist-link" data-artist-uid="${artistUid}">${label}</a></div>`;
+}
+
+function likeButtonHTML(songId) {
+    return window.StreamifyLikes ? window.StreamifyLikes.rowButtonHTML(songId) : '';
+}
+
+// True when a click/key landed on a control inside a row (album or artist
+// link, heart) that has its own handler and must not also start playback.
 function isAlbumLinkEvent(event) {
-    return Boolean(event && event.target && event.target.closest && event.target.closest('.song-album-link'));
+    return Boolean(event && event.target && event.target.closest &&
+        event.target.closest('.song-album-link, .song-artist-link, .row-like-btn'));
 }
 
 function renderSongList(songs, listContainer, options = {}) {
@@ -237,6 +252,7 @@ function renderSongList(songs, listContainer, options = {}) {
         artist: s.artist || 'Unknown Artist',
         album: s.album || 'Single',
         album_uid: s.album_uid || null,
+        artist_uid: s.artist_uid || null,
         track_number: s.track_number || null,
         disc_number: s.disc_number || null,
         cover: s.cover,
@@ -314,7 +330,8 @@ function renderSongList(songs, listContainer, options = {}) {
             : `<i class='bx bx-globe' style="font-size:14px;color:var(--text-secondary);margin-left:6px;opacity:0.5;" title="Public"></i>`;
 
         const indexText = escapeHTML(typeof indexLabel === 'function' ? indexLabel(song, index) : String(index + 1));
-        row.innerHTML = `<div class="index-cell"><div class="select-indicator"></div><span class="row-index-number">${indexText}</span></div><div class="song-info"><img alt="cover" class="song-cover-img" loading="lazy" decoding="async"><div><div class="song-title-row">${title}</div><div style="font-size: 12px;">${artist}</div></div></div>${albumCellHTML(song.album, song.album_uid)}<span>${uploadedBy}</span><span>${safeDuration}${visibilityIcon}</span><div class="edit-btn-container">
+        row.innerHTML = `<div class="index-cell"><div class="select-indicator"></div><span class="row-index-number">${indexText}</span></div><div class="song-info"><img alt="cover" class="song-cover-img" loading="lazy" decoding="async"><div><div class="song-title-row">${title}</div>${artistLineHTML(song.artist, song.artist_uid)}</div></div>${albumCellHTML(song.album, song.album_uid)}<span>${uploadedBy}</span><span>${safeDuration}${visibilityIcon}</span><div class="edit-btn-container">
+            ${likeButtonHTML(song.id)}
             <button type="button" class="row-download-btn" aria-label="Download ${title}"><i class='bx bx-download'></i></button>
             ${canEdit ? `<button type="button" class="row-edit-btn" title="Edit song metadata" aria-label="Edit ${title}"><i class='bx bx-edit-alt'></i></button>` : ''}
         </div>`;
@@ -3443,6 +3460,7 @@ function performSearch(query) {
                     artist: s.artist || 'Unknown Artist',
                     album: s.album || 'Single',
                     album_uid: s.album_uid || null,
+                    artist_uid: s.artist_uid || null,
                     cover: s.cover,
                     uploaded_by: s.uploaded_by || 'Unknown',
                     duration: s.duration,
@@ -3466,7 +3484,7 @@ function performSearch(query) {
                     row.tabIndex = 0;
                     row.setAttribute('role', 'button');
                     row.setAttribute('aria-label', `Play ${song.title} by ${song.artist}`);
-                    row.innerHTML = `<div class="index-cell"><div class="select-indicator"></div><span class="row-index-number">${index + 1}</span></div><div class="song-info"><img alt="cover" loading="lazy" decoding="async"><div><div class="song-title-row">${title}</div><div style="font-size:12px;">${artist}</div></div></div>${albumCellHTML(song.album, song.album_uid)}<span>${uploadedBy}</span><span>${duration}</span><div class="edit-btn-container"></div>`;
+                    row.innerHTML = `<div class="index-cell"><div class="select-indicator"></div><span class="row-index-number">${index + 1}</span></div><div class="song-info"><img alt="cover" loading="lazy" decoding="async"><div><div class="song-title-row">${title}</div>${artistLineHTML(song.artist, song.artist_uid, true)}</div></div>${albumCellHTML(song.album, song.album_uid)}<span>${uploadedBy}</span><span>${duration}</span><div class="edit-btn-container">${likeButtonHTML(song.id)}</div>`;
                     row.querySelector('img').src = cover;
                     row.onclick = event => {
                         if (isAlbumLinkEvent(event)) return;
@@ -4433,6 +4451,7 @@ async function renderPlaylistDetail(playlistId) {
             artist: s.artist || 'Unknown Artist',
             album: s.album || 'Single',
             album_uid: s.album_uid || null,
+            artist_uid: s.artist_uid || null,
             cover: s.cover,
             uploaded_by: s.uploaded_by || 'Unknown',
             duration: s.duration,
@@ -4469,13 +4488,14 @@ async function renderPlaylistDetail(playlistId) {
                     <img alt="cover" class="song-cover-img" loading="lazy" decoding="async">
                     <div>
                         <div class="song-title-row">${title}</div>
-                        <div style="font-size: 12px;">${artist}</div>
+                        ${artistLineHTML(song.artist, song.artist_uid)}
                     </div>
                 </div>
                 ${albumCellHTML(song.album, song.album_uid)}
                 <span>${uploadedBy}</span>
                 <span>${duration}</span>
                 <div class="edit-btn-container song-row-actions">
+                    ${likeButtonHTML(song.id)}
                     <button type="button" class="row-download-btn" aria-label="Download ${title}"><i class='bx bx-download'></i></button>
                     <button type="button" class="playlist-remove-song-btn row-edit-btn" title="Remove from playlist" aria-label="Remove ${title} from playlist">
                         <i class='bx bx-x'></i>

@@ -15,6 +15,7 @@ const compression = require('compression');
 const HandleDatabase = require('./database');
 const ListeningHistory = require('./listeningHistory');
 const Albums = require('./albums');
+const Artists = require('./artists');
 const Media = require('./media');
 const AIMetadata = require('./aiMetadata');
 const MetadataProviders = require('./metadataProviders');
@@ -664,6 +665,7 @@ function librarySongPayload(s) {
         album: s.album || 'Single',
         album_uid: s.album_uid || null,
         album_artist: s.album_artist || null,
+        artist_uid: s.artist_uid || null,
         track_number: s.track_number || null,
         disc_number: s.disc_number || null,
         duration: Media.formatDuration(s.duration),
@@ -701,6 +703,7 @@ function summarizeAlbumsForUser(albumRows, songs, username) {
             album_uid: album.album_uid,
             title: album.title,
             artist: album.album_artist,
+            album_artist_uid: album.album_artist_uid || null,
             year: album.year || null,
             is_compilation: Boolean(album.is_compilation),
             track_count: tracks.length,
@@ -716,6 +719,184 @@ function summarizeAlbumsForUser(albumRows, songs, username) {
 function albumSummaryPayload(summary) {
     const { tracks, ...rest } = summary;
     return rest;
+}
+
+/* --- Artists ---------------------------------------------------------------- */
+
+function artistImagesOnline() {
+    return !(app.locals.config && app.locals.config.artist_images_online === false);
+}
+
+function resolveArtistImage(record) {
+    if (!record || !record.image_file) return null;
+    const filename = path.basename(String(record.image_file));
+    if (!/^[a-f0-9]{20}-[a-f0-9]{8}\.jpg$/.test(filename)) return null;
+    const fullPath = path.join(RT.paths.artists, filename);
+    if (!fs.existsSync(fullPath)) return null;
+    return `/Static/artists/${encodeURIComponent(filename)}`;
+}
+
+function removeArtistImageFile(record) {
+    if (!record || !record.image_file) return;
+    const filename = path.basename(String(record.image_file));
+    try { fs.unlinkSync(path.join(RT.paths.artists, filename)); } catch { /* already gone */ }
+}
+
+function newArtistImageFilename(artistUid) {
+    return `${artistUid}-${crypto.randomBytes(4).toString('hex')}.jpg`;
+}
+
+const artistImageLookups = new Map();      // artist_uid -> in-flight promise
+const artistImageBackoff = new Map();      // artist_uid -> retry-after time (provider/network errors)
+const artistImageQueue = new Map();        // artist_uid -> name, for background lookups
+let artistImageWorkerRunning = false;
+
+/**
+ * Find and cache a photo for one artist from Deezer. Uploaded photos are never
+ * replaced. "Nothing found" is remembered for IMAGE_RETRY_MS; network errors
+ * back off for an hour without writing anything.
+ */
+function lookupArtistImage(artistUid, name) {
+    if (!artistImagesOnline() || Artists.isPlaceholderArtist(name)) return Promise.resolve(null);
+    if ((artistImageBackoff.get(artistUid) || 0) > Date.now()) return Promise.resolve(null);
+    if (artistImageLookups.has(artistUid)) return artistImageLookups.get(artistUid);
+
+    const work = (async () => {
+        const existing = await HandleDatabase.getArtistImage(artistUid);
+        if (!Artists.needsImageLookup(existing)) return existing;
+
+        const response = await MetadataProviders.searchDeezerArtist(name);
+        if (response.status !== 'ok' && response.status !== 'no_match') {
+            artistImageBackoff.set(artistUid, Date.now() + 60 * 60 * 1000);
+            return existing || null;
+        }
+        const match = response.status === 'ok' ? Artists.pickDeezerArtist(response.data, name) : null;
+        if (!match) {
+            await HandleDatabase.saveArtistImage({ artistUid, name, source: 'none' });
+            return HandleDatabase.getArtistImage(artistUid);
+        }
+
+        const filename = newArtistImageFilename(artistUid);
+        const saved = await AIMetadata.downloadFile(match.pictureUrl, path.join(RT.paths.artists, filename));
+        if (!saved) {
+            artistImageBackoff.set(artistUid, Date.now() + 60 * 60 * 1000);
+            return existing || null;
+        }
+        // An upload may have landed while we were downloading; it wins.
+        const current = await HandleDatabase.getArtistImage(artistUid);
+        if (current && current.source === 'upload') {
+            try { fs.unlinkSync(path.join(RT.paths.artists, filename)); } catch { /* ignore */ }
+            return current;
+        }
+        await HandleDatabase.saveArtistImage({
+            artistUid, name, imageFile: filename, source: 'deezer',
+            sourceUrl: match.pictureUrl, sourceId: match.id
+        });
+        removeArtistImageFile(current);
+        return HandleDatabase.getArtistImage(artistUid);
+    })().catch(error => {
+        console.warn(`[ARTISTS] Photo lookup failed for "${name}": ${error.message}`);
+        artistImageBackoff.set(artistUid, Date.now() + 60 * 60 * 1000);
+        return null;
+    }).finally(() => artistImageLookups.delete(artistUid));
+
+    artistImageLookups.set(artistUid, work);
+    return work;
+}
+
+function queueArtistImageLookups(entries) {
+    if (!artistImagesOnline()) return;
+    for (const { artist_uid: uid, name } of entries) {
+        if (!artistImageQueue.has(uid)) artistImageQueue.set(uid, name);
+    }
+    if (artistImageWorkerRunning || artistImageQueue.size === 0) return;
+    artistImageWorkerRunning = true;
+    (async () => {
+        try {
+            while (artistImageQueue.size > 0 && artistImagesOnline()) {
+                const [uid, name] = artistImageQueue.entries().next().value;
+                artistImageQueue.delete(uid);
+                await lookupArtistImage(uid, name);
+            }
+        } finally {
+            artistImageWorkerRunning = false;
+        }
+    })();
+}
+
+/**
+ * Artists as one user sees them, built from the songs and albums they can
+ * access. Returns Map<artist_uid, { artist_uid, name, tracks, albums, appearsOn }>.
+ */
+function buildArtistIndex(songs, albumSummaries, username) {
+    const index = new Map();
+    const spellings = new Map();
+    const ensure = (uid, name) => {
+        if (!index.has(uid)) index.set(uid, { artist_uid: uid, name, tracks: [], albums: [], appearsOn: [] });
+        if (!spellings.has(uid)) spellings.set(uid, new Map());
+        const counts = spellings.get(uid);
+        counts.set(name, (counts.get(name) || 0) + 1);
+        return index.get(uid);
+    };
+
+    for (const song of songs) {
+        if (!song.artist_uid || song.hidden_from_library || !canAccessSong(song, username)) continue;
+        ensure(song.artist_uid, Albums.primaryArtist(song.artist)).tracks.push(song);
+    }
+    for (const album of albumSummaries) {
+        const ownerUid = album.album_artist_uid;
+        if (ownerUid) ensure(ownerUid, album.artist).albums.push(album);
+        const featured = new Set(album.tracks.map(track => track.artist_uid).filter(Boolean));
+        for (const uid of featured) {
+            if (uid !== ownerUid && index.has(uid)) index.get(uid).appearsOn.push(album);
+        }
+    }
+    for (const [uid, entry] of index) {
+        let best = entry.name;
+        let bestCount = 0;
+        for (const [name, count] of spellings.get(uid)) {
+            if (count > bestCount) { best = name; bestCount = count; }
+        }
+        entry.name = best;
+    }
+    return index;
+}
+
+async function loadArtistIndex(username) {
+    await HandleDatabase.ensureAlbumsFresh();
+    const [albumRows, songs, imageRows] = await Promise.all([
+        HandleDatabase.getAlbums(),
+        HandleDatabase.getAllSongs(),
+        HandleDatabase.getArtistImages()
+    ]);
+    const albumSummaries = summarizeAlbumsForUser(albumRows, songs, username);
+    const images = new Map(imageRows.map(row => [row.artist_uid, row]));
+    return { index: buildArtistIndex(songs, albumSummaries, username), images };
+}
+
+function artistFallbackCovers(entry) {
+    const covers = [];
+    for (const album of entry.albums.concat(entry.appearsOn)) {
+        if (album.cover && !covers.includes(album.cover)) covers.push(album.cover);
+        if (covers.length === 4) return covers;
+    }
+    for (const track of entry.tracks) {
+        const cover = resolveSongCover(track);
+        if (cover && !covers.includes(cover)) covers.push(cover);
+        if (covers.length === 4) break;
+    }
+    return covers;
+}
+
+function artistSummaryPayload(entry, imageRecord) {
+    return {
+        artist_uid: entry.artist_uid,
+        name: entry.name,
+        image: resolveArtistImage(imageRecord),
+        fallback_covers: artistFallbackCovers(entry),
+        song_count: entry.tracks.length,
+        album_count: entry.albums.length
+    };
 }
 
 function syncMusicDirectory() {
@@ -2610,6 +2791,187 @@ app.get('/api/albums', requireLogin, async (req, res) => {
     } catch (error) {
         console.error('[ALBUMS]', error);
         res.status(500).json({ error: 'Failed to load albums' });
+    }
+});
+
+// API: artists in the user's library
+app.get('/api/artists', requireLogin, async (req, res) => {
+    try {
+        const { index, images } = await loadArtistIndex(req.user);
+        const artists = [...index.values()]
+            .map(entry => artistSummaryPayload(entry, images.get(entry.artist_uid)))
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        queueArtistImageLookups([...index.values()].filter(entry =>
+            Artists.needsImageLookup(images.get(entry.artist_uid))));
+        res.json(artists);
+    } catch (error) {
+        console.error('[ARTISTS]', error);
+        res.status(500).json({ error: 'Failed to load artists' });
+    }
+});
+
+// API: one artist - popular tracks (from the user's own listening), albums, appears on
+app.get('/api/artists/:uid', requireLogin, async (req, res) => {
+    try {
+        const uid = String(req.params.uid || '');
+        if (!Artists.ARTIST_UID_PATTERN.test(uid)) return res.status(400).json({ error: 'Invalid artist' });
+        const { index, images } = await loadArtistIndex(req.user);
+        const entry = index.get(uid);
+        if (!entry) return res.status(404).json({ error: 'Artist not found' });
+
+        let imageRecord = images.get(uid);
+        if (Artists.needsImageLookup(imageRecord)) {
+            // Give a first visit a moment to fetch the photo; never block for long.
+            const lookup = lookupArtistImage(uid, entry.name);
+            imageRecord = await Promise.race([lookup, new Promise(resolve => setTimeout(() => resolve(imageRecord), 6000))]) || imageRecord;
+        }
+
+        const telemetry = await HandleDatabase.getAllUserTelemetry(req.user);
+        const stats = new Map(telemetry.map(row => [row.song_id, {
+            play_count: Number(row.play_count) || 0,
+            listen_time: Number(row.listen_time) || 0
+        }]));
+        const ranked = Artists.rankPopularTracks(entry.tracks, stats);
+        const userRow = req.userRow || await HandleDatabase.getUser(req.user);
+        const role = userRow && userRow.role;
+
+        res.json({
+            artist: {
+                ...artistSummaryPayload(entry, imageRecord),
+                image_source: imageRecord && imageRecord.image_file ? imageRecord.source : null,
+                can_edit_image: role === 'Owner' || role === 'Admin'
+            },
+            tracks: ranked.map(track => ({
+                ...librarySongPayload(track),
+                play_count: (stats.get(track.id) || {}).play_count || 0
+            })),
+            albums: entry.albums.map(albumSummaryPayload)
+                .sort((a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCompare(b.title)),
+            appears_on: entry.appearsOn.map(albumSummaryPayload)
+                .sort((a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCompare(b.title))
+        });
+    } catch (error) {
+        console.error('[ARTISTS]', error);
+        res.status(500).json({ error: 'Failed to load artist' });
+    }
+});
+
+const uploadArtistImage = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 8 * 1024 * 1024 }
+});
+
+// API: set an artist photo (Owner/Admin). Replaces any downloaded photo.
+app.post('/api/artists/:uid/image', requireRole(['Owner', 'Admin']), avatarUploadLimiter, uploadArtistImage.single('image'), async (req, res) => {
+    try {
+        const uid = String(req.params.uid || '');
+        if (!Artists.ARTIST_UID_PATTERN.test(uid)) return res.status(400).json({ error: 'Invalid artist' });
+        if (!req.file) return res.status(400).json({ error: 'No file.' });
+        const head = req.file.buffer.subarray(0, 8);
+        const isJPEG = head[0] === 0xff && head[1] === 0xd8;
+        const isPNG = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e;
+        if (!isJPEG && !isPNG) return res.status(400).json({ error: 'Only JPG or PNG images are supported.' });
+
+        const { index } = await loadArtistIndex(req.user);
+        const entry = index.get(uid);
+        if (!entry) return res.status(404).json({ error: 'Artist not found' });
+
+        const image = await Jimp.read(req.file.buffer);
+        const width = image.bitmap && image.bitmap.width;
+        const height = image.bitmap && image.bitmap.height;
+        if (!width || !height || width * height > 25_000_000) return res.status(400).json({ error: 'Image is too large.' });
+        image.cover({ w: 800, h: 800 });
+        const filename = newArtistImageFilename(uid);
+        await image.write(path.join(RT.paths.artists, filename));
+
+        const previous = await HandleDatabase.getArtistImage(uid);
+        await HandleDatabase.saveArtistImage({ artistUid: uid, name: entry.name, imageFile: filename, source: 'upload' });
+        removeArtistImageFile(previous);
+        res.json({ success: true, image: resolveArtistImage({ image_file: filename }) });
+    } catch (error) {
+        console.error('[ARTISTS] Upload failed:', error);
+        res.status(500).json({ error: 'Failed to save artist photo' });
+    }
+});
+
+// API: remove an artist photo (Owner/Admin). An online photo may be fetched again.
+app.delete('/api/artists/:uid/image', requireRole(['Owner', 'Admin']), async (req, res) => {
+    try {
+        const uid = String(req.params.uid || '');
+        if (!Artists.ARTIST_UID_PATTERN.test(uid)) return res.status(400).json({ error: 'Invalid artist' });
+        const previous = await HandleDatabase.getArtistImage(uid);
+        removeArtistImageFile(previous);
+        await HandleDatabase.deleteArtistImage(uid);
+        artistImageBackoff.delete(uid);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[ARTISTS] Remove failed:', error);
+        res.status(500).json({ error: 'Failed to remove artist photo' });
+    }
+});
+
+// API: Owner switch for downloading artist photos from Deezer
+app.get('/api/settings/artist-images', requireRole(['Owner']), (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ online: artistImagesOnline() });
+});
+
+app.post('/api/settings/artist-images', requireRole(['Owner']), async (req, res) => {
+    const online = req.body && req.body.online;
+    if (typeof online !== 'boolean') return res.status(400).json({ error: 'Invalid setting' });
+    await HandleDatabase.updateSystemConfig('artist_images_online', JSON.stringify(online));
+    app.locals.config.artist_images_online = online;
+    if (!online) artistImageQueue.clear();
+    res.json({ success: true, online });
+});
+
+/* --- Liked Songs --- */
+
+app.get('/api/likes', requireLogin, async (req, res) => {
+    try {
+        await HandleDatabase.ensureAlbumsFresh();
+        const songs = (await HandleDatabase.getLikedSongs(req.user))
+            .filter(song => canAccessSong(song, req.user))
+            .map(song => ({ ...librarySongPayload(song), liked_at: song.liked_at }));
+        res.json(songs);
+    } catch (error) {
+        console.error('[LIKES]', error);
+        res.status(500).json({ error: 'Failed to load liked songs' });
+    }
+});
+
+app.get('/api/likes/ids', requireLogin, async (req, res) => {
+    try {
+        res.json(await HandleDatabase.getLikedSongIds(req.user));
+    } catch (error) {
+        console.error('[LIKES]', error);
+        res.status(500).json({ error: 'Failed to load liked songs' });
+    }
+});
+
+app.put('/api/likes/:songId', requireLogin, async (req, res) => {
+    try {
+        const songId = Number(req.params.songId);
+        if (!Number.isSafeInteger(songId) || songId <= 0) return res.status(400).json({ error: 'Invalid song' });
+        const song = await HandleDatabase.getSong(songId);
+        if (!song || !canAccessSong(song, req.user)) return res.status(404).json({ error: 'Song not found' });
+        await HandleDatabase.likeSong(req.user, songId);
+        res.json({ success: true, liked: true });
+    } catch (error) {
+        console.error('[LIKES]', error);
+        res.status(500).json({ error: 'Failed to like song' });
+    }
+});
+
+app.delete('/api/likes/:songId', requireLogin, async (req, res) => {
+    try {
+        const songId = Number(req.params.songId);
+        if (!Number.isSafeInteger(songId) || songId <= 0) return res.status(400).json({ error: 'Invalid song' });
+        await HandleDatabase.unlikeSong(req.user, songId);
+        res.json({ success: true, liked: false });
+    } catch (error) {
+        console.error('[LIKES]', error);
+        res.status(500).json({ error: 'Failed to unlike song' });
     }
 });
 

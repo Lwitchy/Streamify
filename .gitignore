@@ -24,6 +24,7 @@ Static/avatars/*
 
 Static/covers/*
 !Static/covers/.gitkeep
+Static/artists/*
 
 Static/banners/*
 !Static/banners/.gitkeep

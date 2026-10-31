@@ -20,13 +20,13 @@
     let detailAbort = null;
     let currentAlbum = null;
     let currentTracks = [];
-    let returnTo = null;
 
     const $ = id => document.getElementById(id);
 
     function readSavedTab() {
         try {
-            return localStorage.getItem(TAB_KEY) === 'albums' ? 'albums' : 'songs';
+            const saved = localStorage.getItem(TAB_KEY);
+            return saved === 'albums' || saved === 'artists' ? saved : 'songs';
         } catch (e) {
             return 'songs';
         }
@@ -82,30 +82,35 @@
     }
 
     /**
-     * Play tracks as an album without disturbing the list on screen: the
-     * visible view's queue is swapped out only for the synchronous call that
-     * snapshots the playback context, then put back.
+     * Play a list of tracks (an album, an artist, Liked Songs) without
+     * disturbing the list on screen: the visible view's queue is swapped out
+     * only for the synchronous call that snapshots the playback context, then
+     * put back - unless the list on screen is the one being played.
+     * `context` is the listening-history source, e.g. { type: 'album', id }.
      */
-    function playTracks(tracks, albumUid, { shuffle = false } = {}) {
+    function playTracks(tracks, context, { shuffle = false, startIndex = null } = {}) {
         if (!Array.isArray(tracks) || tracks.length === 0) return;
+        if (typeof context === 'string') context = { type: 'album', id: context };
         const saved = {
             playlist: currentPlaylist,
             order: shuffledPlaylist,
             context: currentPlaybackContext
         };
-        const viewingThisAlbum = window.currentActiveView === 'album' && currentAlbum && currentAlbum.album_uid === albumUid;
+        const viewingThis = Boolean(currentPlaybackContext && context &&
+            currentPlaybackContext.type === context.type &&
+            String(currentPlaybackContext.id) === String(context.id));
         try {
             currentPlaylist = tracks.map(toPlayable);
-            currentPlaybackContext = { type: 'album', id: albumUid };
+            currentPlaybackContext = { type: context.type, id: context.id === undefined ? null : context.id };
             if (shuffle && !isShuffle) {
                 toggleShuffle();
             } else {
                 shuffledPlaylist = buildPlaylistOrder(currentPlaylist.length);
             }
-            const start = isShuffle ? shuffledPlaylist[0] : 0;
+            const start = Number.isInteger(startIndex) ? startIndex : (isShuffle ? shuffledPlaylist[0] : 0);
             playSongAtIndex(start);
         } finally {
-            if (!viewingThisAlbum) {
+            if (!viewingThis) {
                 currentPlaylist = saved.playlist;
                 currentPlaybackContext = saved.context;
                 shuffledPlaylist = buildPlaylistOrder(currentPlaylist.length);
@@ -115,12 +120,12 @@
 
     async function playAlbum(albumUid, options = {}) {
         if (currentAlbum && currentAlbum.album_uid === albumUid && currentTracks.length > 0) {
-            playTracks(currentTracks, albumUid, options);
+            playTracks(currentTracks, { type: 'album', id: albumUid }, options);
             return;
         }
         try {
             const data = await fetchAlbum(albumUid);
-            playTracks(data.tracks, albumUid, options);
+            playTracks(data.tracks, { type: 'album', id: albumUid }, options);
         } catch (error) {
             showToast(isOffline() ? 'Albums are not available offline' : 'Could not play this album', 'error');
         }
@@ -229,12 +234,14 @@
     }
 
     function showLibraryTab(tab, { focus = false } = {}) {
-        libraryTab = tab === 'albums' ? 'albums' : 'songs';
+        libraryTab = tab === 'albums' || tab === 'artists' ? tab : 'songs';
         saveTab(libraryTab);
         const section = $('trending-section');
         const list = $('trending-list');
         const grid = $('library-albums-grid');
+        const artistGrid = $('library-artists-grid');
         const isAlbums = libraryTab === 'albums';
+        const isArtists = libraryTab === 'artists';
 
         document.querySelectorAll('.library-tab').forEach(button => {
             const active = button.dataset.libraryTab === libraryTab;
@@ -243,19 +250,22 @@
             button.tabIndex = active ? 0 : -1;
             if (active && focus) button.focus();
         });
-        if (section) section.classList.toggle('library-albums-active', isAlbums);
-        if (list) list.classList.toggle('hidden', isAlbums);
+        if (section) section.classList.toggle('library-albums-active', isAlbums || isArtists);
+        if (list) list.classList.toggle('hidden', isAlbums || isArtists);
         if (grid) grid.classList.toggle('hidden', !isAlbums);
-        if (isAlbums) {
+        if (artistGrid) artistGrid.classList.toggle('hidden', !isArtists);
+        if (isAlbums || isArtists) {
             if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode && typeof toggleLibraryEditMode === 'function') {
                 toggleLibraryEditMode();
             }
-            loadLibraryAlbums();
         }
+        if (isAlbums) loadLibraryAlbums();
+        if (isArtists && window.StreamifyArtists) window.StreamifyArtists.loadLibraryArtists();
     }
 
     /** Called by the router every time the library section is shown. */
     function onLibraryShown() {
+        originStack.length = 0;
         showLibraryTab(libraryTab);
     }
 
@@ -298,7 +308,12 @@
             currentTracks = tracks;
 
             $('album-detail-title').textContent = album.title;
-            $('album-detail-artist').textContent = album.artist;
+            const artistLine = $('album-detail-artist');
+            if (album.album_artist_uid) {
+                artistLine.innerHTML = `<a href="#artist-${escapeHTML(album.album_artist_uid)}" class="song-artist-link" data-artist-uid="${escapeHTML(album.album_artist_uid)}">${escapeHTML(album.artist)}</a>`;
+            } else {
+                artistLine.textContent = album.artist;
+            }
             $('album-detail-kind').textContent = album.is_compilation ? 'Compilation' : 'Album';
             $('album-detail-cover').src = coverURL(album.cover);
             $('album-detail-cover').alt = `${album.title} cover`;
@@ -338,15 +353,11 @@
      * Open an album page. `fromHistory` is set when the router is replaying a
      * URL (initial load, Back/Forward), so no new history entry is pushed.
      */
-    function navigateToAlbum(albumUid, { fromHistory = false } = {}) {
+    function navigateToAlbum(albumUid, { fromHistory = false, fromBack = false } = {}) {
         if (!UID_PATTERN.test(String(albumUid || ''))) return;
+        if (window.currentActiveView === 'album' && currentAlbum && currentAlbum.album_uid === albumUid && !fromHistory) return;
 
-        if (window.currentActiveView !== 'album') {
-            returnTo = {
-                view: window.currentActiveView || 'library',
-                playlistId: window.currentPlaylistShareId || window.currentPlaylistId || window.requestedPlaylistId || null
-            };
-        }
+        if (!fromBack) rememberOrigin();
         window.currentActiveView = 'album';
         if (!fromHistory && window.location.hash !== `#album-${albumUid}`) {
             try {
@@ -362,9 +373,52 @@
         renderAlbumDetail(albumUid);
     }
 
+    /* --- In-app Back ------------------------------------------------------
+     * Album, artist and Liked Songs pages each have a Back button. Each
+     * navigation into one of them remembers where it came from on a small
+     * stack, so album -> artist -> album -> Back -> Back works as expected.
+     * Opening Your Library clears the stack. */
+
+    const originStack = [];
+
+    function currentOrigin() {
+        const view = window.currentActiveView || 'library';
+        if (view === 'album') return currentAlbum ? { view, id: currentAlbum.album_uid } : null;
+        if (view === 'artist') {
+            const id = window.StreamifyArtists && window.StreamifyArtists.currentArtistUid();
+            return id ? { view, id } : null;
+        }
+        if (view === 'playlist') {
+            const id = window.currentPlaylistShareId || window.currentPlaylistId || window.requestedPlaylistId;
+            return id ? { view, id } : { view: 'library' };
+        }
+        if (view === 'search' || view === 'liked') return { view };
+        return { view: 'library' };
+    }
+
+    function rememberOrigin() {
+        const origin = currentOrigin();
+        if (!origin) return;
+        const last = originStack[originStack.length - 1];
+        if (last && last.view === origin.view && last.id === origin.id) return;
+        originStack.push(origin);
+        if (originStack.length > 20) originStack.shift();
+    }
+
     function goBack() {
-        const target = returnTo || { view: 'library' };
-        returnTo = null;
+        const target = originStack.pop() || { view: 'library' };
+        if (target.view === 'album' && target.id) {
+            navigateToAlbum(target.id, { fromBack: true });
+            return;
+        }
+        if (target.view === 'artist' && target.id && typeof window.navigateToArtist === 'function') {
+            window.navigateToArtist(target.id, { fromBack: true });
+            return;
+        }
+        if (target.view === 'liked' && window.StreamifyLikes) {
+            window.StreamifyLikes.navigateToLiked({ fromBack: true });
+            return;
+        }
         if (target.view === 'search') {
             const searchSection = $('search-section');
             const searchInput = $('gsearch');
@@ -376,8 +430,8 @@
                 return;
             }
         }
-        if (target.view === 'playlist' && target.playlistId && typeof window.navigateToPlaylist === 'function') {
-            window.navigateToPlaylist(target.playlistId);
+        if (target.view === 'playlist' && target.id && typeof window.navigateToPlaylist === 'function') {
+            window.navigateToPlaylist(target.id);
             return;
         }
         const libraryLink = $('library-link');
@@ -403,7 +457,9 @@
         button.addEventListener('keydown', event => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
             event.preventDefault();
-            showLibraryTab(libraryTab === 'songs' ? 'albums' : 'songs', { focus: true });
+            const tabs = ['songs', 'albums', 'artists'];
+            const step = event.key === 'ArrowRight' ? 1 : tabs.length - 1;
+            showLibraryTab(tabs[(tabs.indexOf(libraryTab) + step) % tabs.length], { focus: true });
         });
     });
 
@@ -418,11 +474,11 @@
 
     const playButton = $('album-play-btn');
     if (playButton) playButton.addEventListener('click', () => {
-        if (currentAlbum) playTracks(currentTracks, currentAlbum.album_uid);
+        if (currentAlbum) playTracks(currentTracks, { type: 'album', id: currentAlbum.album_uid });
     });
     const shuffleButton = $('album-shuffle-btn');
     if (shuffleButton) shuffleButton.addEventListener('click', () => {
-        if (currentAlbum) playTracks(currentTracks, currentAlbum.album_uid, { shuffle: true });
+        if (currentAlbum) playTracks(currentTracks, { type: 'album', id: currentAlbum.album_uid }, { shuffle: true });
     });
     const downloadButton = $('download-album-btn');
     if (downloadButton) downloadButton.addEventListener('click', () => {
@@ -434,12 +490,17 @@
     if (backButton) backButton.addEventListener('click', goBack);
 
     window.navigateToAlbum = navigateToAlbum;
+    window.StreamifyNav = Object.freeze({ rememberOrigin, goBack });
     window.StreamifyAlbums = Object.freeze({
         onLibraryShown,
         showLibraryTab,
         navigateToAlbum,
         renderSearchAlbums,
+        renderAlbumGrid,
         playAlbum,
+        playTracks,
+        coverURL,
+        formatTotalDuration,
         getLibraryTab: () => libraryTab
     });
 })();

@@ -6,6 +6,7 @@ const { AsyncLocalStorage } = require('async_hooks');
 const RT = require('./runtime');
 const ListeningHistory = require('./listeningHistory');
 const Albums = require('./albums');
+const Artists = require('./artists');
 
 // Ensure Database directories exist.
 // Paths come from the runtime module so the packaged desktop app can store
@@ -864,6 +865,7 @@ const HandleDatabase = {
         `, [username]);
         await runQuery(musicDb, `DELETE FROM playlists WHERE owner = ?`, [username]);
         await runQuery(lyricsDb, `DELETE FROM lyrics WHERE username = ?`, [username]);
+        await runQuery(musicDb, `DELETE FROM song_likes WHERE username = ?`, [username]);
     },
 
     updateUserRole: async (username, newRole) => {
@@ -1085,7 +1087,9 @@ const HandleDatabase = {
             ['album_uid', 'TEXT'],
             ['album_artist', 'TEXT'],
             ['track_number', 'INTEGER'],
-            ['disc_number', 'INTEGER']
+            ['disc_number', 'INTEGER'],
+            // Lead artist (see artists.js), derived by rebuildAlbums.
+            ['artist_uid', 'TEXT']
         ];
         for (const [column, definition] of migrations) {
             if (!columnNames.includes(column)) {
@@ -1180,6 +1184,7 @@ const HandleDatabase = {
         await runQuery(musicDb, "CREATE UNIQUE INDEX IF NOT EXISTS idx_songs_song_uid ON songs(song_uid)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_uploaded_by ON songs(uploaded_by)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_album_uid ON songs(album_uid)");
+        await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_artist_uid ON songs(artist_uid)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_source ON songs(source)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_recording_uid ON songs(recording_uid)");
         await runQuery(musicDb, "CREATE INDEX IF NOT EXISTS idx_songs_availability ON songs(availability)");
@@ -1318,6 +1323,37 @@ const HandleDatabase = {
             )
         `);
         await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(album_artist)');
+        const albumColumns = (await allQuery(musicDb, 'PRAGMA table_info(albums)')).map(column => column.name);
+        if (!albumColumns.includes('album_artist_uid')) {
+            await runQuery(musicDb, 'ALTER TABLE albums ADD COLUMN album_artist_uid TEXT');
+        }
+        await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_albums_artist_uid ON albums(album_artist_uid)');
+
+        // Artist photos survive album rebuilds, so they live in their own table.
+        await runQuery(musicDb, `
+            CREATE TABLE IF NOT EXISTS artist_images (
+                artist_uid TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                image_file TEXT,
+                source TEXT NOT NULL,
+                source_url TEXT,
+                source_id TEXT,
+                checked_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        `);
+
+        // Liked Songs: per user, per song.
+        await runQuery(musicDb, `
+            CREATE TABLE IF NOT EXISTS song_likes (
+                username TEXT NOT NULL,
+                song_id INTEGER NOT NULL,
+                liked_at TEXT NOT NULL,
+                PRIMARY KEY (username, song_id),
+                FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+            )
+        `);
+        await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_song_likes_user_time ON song_likes(username, liked_at)');
         albumIndexDirty = true;
         console.log("[DB] Talking: Creating/Updating albums table is done!");
     },
@@ -1332,7 +1368,7 @@ const HandleDatabase = {
         albumIndexDirty = false;
         const songs = await allQuery(musicDb, `
             SELECT s.id, s.album, s.artist, s.source, s.filepath, s.year, s.created_at,
-                   s.album_uid, s.album_artist, s.track_number, s.disc_number,
+                   s.album_uid, s.album_artist, s.track_number, s.disc_number, s.artist_uid,
                    rt.track_number AS release_track_number, rt.disc_number AS release_disc_number,
                    rel.release_year AS release_year
             FROM songs s
@@ -1389,16 +1425,19 @@ const HandleDatabase = {
                     const next = assignments.get(song.id) || {
                         album_uid: null, album_artist: null, track_number: null, disc_number: null
                     };
+                    const lead = Albums.primaryArtist(song.artist);
+                    const artistUid = Artists.isPlaceholderArtist(lead) ? null : Artists.artistUidFor(lead);
                     if (
                         (song.album_uid || null) === next.album_uid &&
                         (song.album_artist || null) === next.album_artist &&
                         (song.track_number || null) === next.track_number &&
-                        (song.disc_number || null) === next.disc_number
+                        (song.disc_number || null) === next.disc_number &&
+                        (song.artist_uid || null) === artistUid
                     ) continue;
                     await runQuery(musicDb, `
-                        UPDATE songs SET album_uid = ?, album_artist = ?, track_number = ?, disc_number = ?
+                        UPDATE songs SET album_uid = ?, album_artist = ?, track_number = ?, disc_number = ?, artist_uid = ?
                         WHERE id = ?
-                    `, [next.album_uid, next.album_artist, next.track_number, next.disc_number, song.id]);
+                    `, [next.album_uid, next.album_artist, next.track_number, next.disc_number, artistUid, song.id]);
                     changedSongs += 1;
                 }
 
@@ -1409,12 +1448,15 @@ const HandleDatabase = {
                     }
                 }
                 for (const album of albums.values()) {
+                    const albumArtistUid = Artists.isPlaceholderArtist(album.album_artist)
+                        ? null : Artists.artistUidFor(album.album_artist);
                     await runQuery(musicDb, `
-                        INSERT INTO albums (album_uid, title, album_artist, year, is_compilation, song_count, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO albums (album_uid, title, album_artist, year, is_compilation, song_count, created_at, updated_at, album_artist_uid)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(album_uid) DO UPDATE SET
                             title = excluded.title,
                             album_artist = excluded.album_artist,
+                            album_artist_uid = excluded.album_artist_uid,
                             year = excluded.year,
                             is_compilation = excluded.is_compilation,
                             song_count = excluded.song_count,
@@ -1424,7 +1466,7 @@ const HandleDatabase = {
                                  AND albums.year IS excluded.year AND albums.song_count IS excluded.song_count
                                 THEN albums.updated_at ELSE excluded.updated_at END
                     `, [album.album_uid, album.title, album.album_artist, album.year,
-                        album.is_compilation, album.song_count, album.created_at, now]);
+                        album.is_compilation, album.song_count, album.created_at, now, albumArtistUid]);
                 }
                 await runQuery(musicDb, 'COMMIT');
                 inTransaction = false;
@@ -1471,6 +1513,74 @@ const HandleDatabase = {
             LEFT JOIN song_identifications si ON si.song_id = s.id AND si.is_current = 1
             WHERE s.album_uid = ? AND COALESCE(s.availability, 'available') = 'available'
         `, [albumUid]);
+    },
+
+    /* --- Artists ----------------------------------------------------------- */
+
+    getArtistImage: async (artistUid) => {
+        return await getQuery(musicDb, 'SELECT * FROM artist_images WHERE artist_uid = ?', [artistUid]);
+    },
+
+    getArtistImages: async () => {
+        return await allQuery(musicDb, 'SELECT * FROM artist_images');
+    },
+
+    saveArtistImage: async ({ artistUid, name, imageFile = null, source, sourceUrl = null, sourceId = null }) => {
+        const now = new Date().toISOString();
+        return await runQuery(musicDb, `
+            INSERT INTO artist_images (artist_uid, name, image_file, source, source_url, source_id, checked_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(artist_uid) DO UPDATE SET
+                name = excluded.name,
+                image_file = excluded.image_file,
+                source = excluded.source,
+                source_url = excluded.source_url,
+                source_id = excluded.source_id,
+                checked_at = excluded.checked_at,
+                updated_at = excluded.updated_at
+        `, [artistUid, name, imageFile, source, sourceUrl, sourceId === null ? null : String(sourceId), now, now]);
+    },
+
+    deleteArtistImage: async (artistUid) => {
+        return await runQuery(musicDb, 'DELETE FROM artist_images WHERE artist_uid = ?', [artistUid]);
+    },
+
+    /* --- Liked Songs ------------------------------------------------------- */
+
+    likeSong: async (username, songId) => {
+        return await runQuery(musicDb, `
+            INSERT OR IGNORE INTO song_likes (username, song_id, liked_at) VALUES (?, ?, ?)
+        `, [username, songId, new Date().toISOString()]);
+    },
+
+    unlikeSong: async (username, songId) => {
+        return await runQuery(musicDb, 'DELETE FROM song_likes WHERE username = ? AND song_id = ?', [username, songId]);
+    },
+
+    getLikedSongIds: async (username) => {
+        const rows = await allQuery(musicDb, 'SELECT song_id FROM song_likes WHERE username = ?', [username]);
+        return rows.map(row => row.song_id);
+    },
+
+    /** Liked songs, newest like first, with the same columns as getAllSongs. */
+    getLikedSongs: async (username) => {
+        return await allQuery(musicDb, `
+            SELECT s.*, l.liked_at,
+                   si.release_uid AS identified_release_uid,
+                   si.release_track_uid AS identified_release_track_uid,
+                   si.artist_credit_json AS identity_artist_credit_json,
+                   si.method AS identification_method, si.source AS identification_source,
+                   si.confidence AS identification_confidence
+            FROM song_likes l
+            JOIN songs s ON s.id = l.song_id
+            LEFT JOIN song_identifications si ON si.song_id = s.id AND si.is_current = 1
+            WHERE l.username = ? AND COALESCE(s.availability, 'available') = 'available'
+            ORDER BY l.liked_at DESC
+        `, [username]);
+    },
+
+    deleteUserLikes: async (username) => {
+        return await runQuery(musicDb, 'DELETE FROM song_likes WHERE username = ?', [username]);
     },
 
     /** Songs that have never had their tags recorded (scanned before tag capture, or uploaded). */

@@ -12,13 +12,13 @@
     <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/player.css?v=4.49">
     <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.52">
-    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.40">
+    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.41">
     <link rel="stylesheet" href="/Static/home/css/downloads.css?v=4.34">
     <link rel="stylesheet" href="/Static/home/css/profile.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/toasts.css?v=4.8">
 
     <!-- Mobile Overrides (Must be last) -->
-<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.27" media="(max-width: 768px)">
+<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.28" media="(max-width: 768px)">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -67,6 +67,12 @@
                         <a href="#" id="library-link">
                             <i class='bx bx-library'></i>
                             <span>Your Library</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" id="liked-songs-link">
+                            <i class='bx bxs-heart'></i>
+                            <span>Liked Songs</span>
                         </a>
                     </li>
                     <li class="owner-only-nav hidden">
@@ -183,6 +189,8 @@
                                 data-library-tab="songs" aria-selected="true" aria-controls="trending-list">Songs</button>
                             <button type="button" class="library-tab" role="tab" id="library-tab-albums"
                                 data-library-tab="albums" aria-selected="false" aria-controls="library-albums-grid" tabindex="-1">Albums</button>
+                            <button type="button" class="library-tab" role="tab" id="library-tab-artists"
+                                data-library-tab="artists" aria-selected="false" aria-controls="library-artists-grid" tabindex="-1">Artists</button>
                         </div>
                     </div>
                     <div class="library-section-actions" style="display: flex; gap: 8px;">
@@ -230,6 +238,9 @@
                 </div>
                 <div class="album-grid hidden" id="library-albums-grid" role="tabpanel" aria-labelledby="library-tab-albums">
                     <!-- Album cards rendered by albums.js -->
+                </div>
+                <div class="artist-grid hidden" id="library-artists-grid" role="tabpanel" aria-labelledby="library-tab-artists">
+                    <!-- Artist cards rendered by artists.js -->
                 </div>
             </section>
 
@@ -462,6 +473,104 @@
             </section>
 
             <!-- Playlist Detail Section (hidden by default) -->
+            <section class="artist-detail-section hidden" id="artist-detail-section" aria-labelledby="artist-detail-name">
+                <div class="playlist-detail-header">
+                    <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-artist-btn">
+                        <i class='bx bx-arrow-back'></i> Back
+                    </button>
+                    <div class="playlist-detail-actions hidden" id="artist-photo-actions">
+                        <input type="file" id="artist-photo-input" accept="image/jpeg,image/png" hidden>
+                        <button class="btn btn-outline btn-sm" id="artist-photo-change" title="Upload a photo for this artist">
+                            <i class='bx bx-camera'></i> Change photo
+                        </button>
+                        <button class="btn btn-outline btn-sm btn-danger-outline hidden" id="artist-photo-remove" title="Remove this artist's photo">
+                            <i class='bx bx-trash'></i> Remove photo
+                        </button>
+                    </div>
+                </div>
+                <div class="artist-hero" id="artist-hero">
+                    <div class="artist-image artist-hero-image" id="artist-detail-image"></div>
+                    <div class="artist-hero-meta">
+                        <span class="album-hero-kind">Artist</span>
+                        <h2 class="artist-hero-name" id="artist-detail-name">Artist</h2>
+                        <p class="playlist-detail-count" id="artist-detail-meta"></p>
+                        <div class="album-hero-actions">
+                            <button type="button" class="album-play-btn" id="artist-play-btn" aria-label="Play artist">
+                                <i class='bx bx-play'></i> Play
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm album-shuffle-btn" id="artist-shuffle-btn" aria-label="Shuffle artist">
+                                <i class='bx bx-shuffle'></i> Shuffle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="artist-block hidden" id="artist-popular-block">
+                    <h3 class="artist-block-title" id="artist-popular-title">Popular</h3>
+                    <div class="song-list" id="artist-tracks-list">
+                        <div class="song-row header-row"
+                            style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                            <span>#</span>
+                            <span>Title</span>
+                            <span>Album</span>
+                            <span>Uploaded By</span>
+                            <span><i class='bx bx-time'></i></span>
+                            <span></span>
+                        </div>
+                    </div>
+                    <button type="button" class="artist-tracks-toggle hidden" id="artist-tracks-toggle">Show all</button>
+                </div>
+                <div class="artist-block hidden" id="artist-albums-block">
+                    <h3 class="artist-block-title">Albums</h3>
+                    <div class="album-grid album-grid--compact" id="artist-albums-grid"></div>
+                </div>
+                <div class="artist-block hidden" id="artist-appears-block">
+                    <h3 class="artist-block-title">Appears On</h3>
+                    <div class="album-grid album-grid--compact" id="artist-appears-grid"></div>
+                </div>
+            </section>
+
+            <section class="playlist-detail-section album-detail-section liked-songs-section hidden" id="liked-songs-section" aria-labelledby="liked-detail-title">
+                <div class="playlist-detail-header">
+                    <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-liked-btn">
+                        <i class='bx bx-arrow-back'></i> Back
+                    </button>
+                    <div class="playlist-detail-actions">
+                        <button class="btn btn-outline btn-sm" id="download-liked-btn" title="Download Liked Songs Offline">
+                            <i class='bx bx-cloud-download'></i> Download
+                        </button>
+                    </div>
+                </div>
+                <div class="playlist-detail-info album-hero">
+                    <div class="playlist-detail-cover album-hero-cover liked-cover" aria-hidden="true">
+                        <i class='bx bxs-heart'></i>
+                    </div>
+                    <div class="playlist-detail-meta album-hero-meta">
+                        <span class="album-hero-kind">Playlist</span>
+                        <h2 class="playlist-detail-name" id="liked-detail-title">Liked Songs</h2>
+                        <p class="playlist-detail-count" id="liked-detail-meta"></p>
+                        <div class="album-hero-actions">
+                            <button type="button" class="album-play-btn" id="liked-play-btn" aria-label="Play Liked Songs">
+                                <i class='bx bx-play'></i> Play
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm album-shuffle-btn" id="liked-shuffle-btn" aria-label="Shuffle Liked Songs">
+                                <i class='bx bx-shuffle'></i> Shuffle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="song-list" id="liked-tracks-list">
+                    <div class="song-row header-row"
+                        style="cursor: default; background: transparent; color: #b3b3b3; border-bottom: 1px solid #333; margin-bottom: 10px;">
+                        <span>#</span>
+                        <span>Title</span>
+                        <span>Album</span>
+                        <span>Uploaded By</span>
+                        <span><i class='bx bx-time'></i></span>
+                        <span></span>
+                    </div>
+                </div>
+            </section>
+
             <section class="playlist-detail-section album-detail-section hidden" id="album-detail-section" aria-labelledby="album-detail-title">
                 <div class="playlist-detail-header">
                     <button class="btn btn-outline btn-sm playlist-back-btn" id="back-from-album-btn">
@@ -608,6 +717,8 @@
                                 <h2 id="dedicated-player-title">Select a Song</h2>
                                 <h3 id="dedicated-player-artist">...</h3>
                             </div>
+                            <button type="button" class="player-like-btn dedicated-like-btn" id="dedicated-like-btn" data-like-current
+                                aria-label="Save to Liked Songs" aria-pressed="false" disabled><i class='bx bx-heart'></i></button>
                         </div>
 
                         <div class="dedicated-progress-container">
@@ -761,6 +872,8 @@
                 <div class="track-name" id="player-title">Select a Song</div>
                 <div class="track-artist" id="player-artist">...</div>
             </div>
+            <button type="button" class="player-like-btn" id="player-like-btn" data-like-current
+                aria-label="Save to Liked Songs" aria-pressed="false" disabled><i class='bx bx-heart'></i></button>
         </div>
         <div class="player-center">
             <div class="player-controls">
@@ -1379,6 +1492,19 @@
                                 <button type="submit" class="btn" data-save-metadata>Save changes</button>
                             </div>
                         </form>
+
+                        <div class="artist-photo-setting">
+                            <div>
+                                <strong style="display: block; font-size: 14px; margin-bottom: 4px;">Download artist photos</strong>
+                                <span style="font-size: 12px; color: #888;">Look up a photo for each artist on Deezer. Only the
+                                    artist's name is sent, and photos are saved on this server. Photos you upload on an artist
+                                    page are always kept.</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="artist-photos-online-toggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
                     </div>
 
                     <!-- Downloads Tab (Owner only) -->
@@ -2340,12 +2466,14 @@
     <!-- Must load before ui.js: activateSettingsTab() calls into
          window.StreamifyUpdates when the Updates pane is opened. -->
     <script src="/Static/home/js/updates.js?v=4.46"></script>
-    <script src="/Static/home/js/player.js?v=4.45"></script>
+    <script src="/Static/home/js/player.js?v=4.46"></script>
     <script src="/Static/home/js/lyrics.js?v=1.5"></script>
-    <script src="/Static/home/js/api_v2.js?v=4.44"></script>
-    <script src="/Static/home/js/albums.js?v=1.0"></script>
+    <script src="/Static/home/js/api_v2.js?v=4.45"></script>
+    <script src="/Static/home/js/albums.js?v=1.1"></script>
+    <script src="/Static/home/js/likes.js?v=1.0"></script>
+    <script src="/Static/home/js/artists.js?v=1.0"></script>
     <script src="/Static/home/js/downloads.js?v=4.44"></script>
-    <script src="/Static/home/js/ui.js?v=4.53"></script>
+    <script src="/Static/home/js/ui.js?v=4.54"></script>
 </body>
 
 </html>

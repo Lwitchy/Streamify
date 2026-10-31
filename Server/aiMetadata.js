@@ -21,6 +21,8 @@ function isTrustedCoverUrl(url) {
         if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return false;
         if (parsed.port && parsed.port !== '443') return false;
         return host === 'mzstatic.com' || host.endsWith('.mzstatic.com') ||
+            // Deezer's image CDN: artist photos (artists.js).
+            host === 'dzcdn.net' || host.endsWith('.dzcdn.net') ||
             host === 'coverartarchive.org' || host.endsWith('.coverartarchive.org') ||
             host === 'archive.org' || host.endsWith('.archive.org');
     } catch {
