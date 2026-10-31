@@ -1558,7 +1558,7 @@ const HandleDatabase = {
     },
 
     getLikedSongIds: async (username) => {
-        const rows = await allQuery(musicDb, 'SELECT song_id FROM song_likes WHERE username = ?', [username]);
+        const rows = await allQuery(musicDb, 'SELECT song_id FROM song_likes WHERE username = ? ORDER BY liked_at DESC', [username]);
         return rows.map(row => row.song_id);
     },
 

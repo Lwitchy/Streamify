@@ -365,6 +365,8 @@
         loadLibraryArtists,
         navigateToArtist,
         loadPhotoSetting,
+        fillArtistImage,
+        renderArtistGrid,
         currentArtistUid: () => (currentArtist ? currentArtist.artist_uid : null)
     });
 })();

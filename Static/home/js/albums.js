@@ -392,7 +392,7 @@
             const id = window.currentPlaylistShareId || window.currentPlaylistId || window.requestedPlaylistId;
             return id ? { view, id } : { view: 'library' };
         }
-        if (view === 'search' || view === 'liked') return { view };
+        if (view === 'search' || view === 'liked' || view === 'home') return { view };
         return { view: 'library' };
     }
 
@@ -413,6 +413,10 @@
         }
         if (target.view === 'artist' && target.id && typeof window.navigateToArtist === 'function') {
             window.navigateToArtist(target.id, { fromBack: true });
+            return;
+        }
+        if (target.view === 'home' && typeof window.navigateToHome === 'function') {
+            window.navigateToHome();
             return;
         }
         if (target.view === 'liked' && window.StreamifyLikes) {
@@ -490,7 +494,7 @@
     if (backButton) backButton.addEventListener('click', goBack);
 
     window.navigateToAlbum = navigateToAlbum;
-    window.StreamifyNav = Object.freeze({ rememberOrigin, goBack });
+    window.StreamifyNav = Object.freeze({ rememberOrigin, goBack, reset: () => { originStack.length = 0; } });
     window.StreamifyAlbums = Object.freeze({
         onLibraryShown,
         showLibraryTab,

@@ -1,6 +1,6 @@
 # Albums, Artists, Liked Songs and Home
 
-Status: Phases 1-3 implemented (2026-10-31). Phase 4 planned.
+Status: All four phases implemented (2026-10-31).
 
 This update ships as a main release, not behind an experiment switch. Home
 is personal: every section is computed from the signed-in user's own
@@ -163,13 +163,47 @@ listening only, with no cross-user "popular on this server" data.
    Change photo works for the Owner.
 4. Turn off Download artist photos. New artists stay on the cover mosaic.
 
-## Phase 4 - Home
+## Phase 4 - Home - DONE
 
-- Sidebar entry above Your Library; `#home` becomes the default route.
-- `GET /api/home` returns `{ sections: [{ id, title, type, items }] }`,
-  cached about 60 s per user; the client renders sections generically.
-- Sections (hidden when empty): Jump back in, Your top artists (30 days),
-  On repeat (14 days), Recently played, Recently added, Your top albums,
-  Liked Songs, Rediscover (heavily played, not in 60+ days).
-- New accounts: Recently added + random albums. Offline: downloaded only.
-  Mobile: horizontally scrolling rows.
+- Sidebar **Home** above Your Library. `/home` with no hash, `#home`, the
+  logo and the old in-app "go home" paths (`#home-link`) all open Home.
+  `#library` still opens the library directly.
+- `GET /api/home` (cached per user for 20 s; cleared when likes change or
+  history is cleared; `?refresh=1` bypasses it) returns
+  `{ has_history, sections: [{ id, title, subtitle?, type, items }] }`, where
+  `type` is `tiles`, `songs`, `albums` or `artists`. Sections without items
+  are omitted.
+- Rules live in `Server/home.js` (pure, unit tested). Inputs are 120 days of
+  `listening_events`, lifetime `listening_telemetry`, likes, playlists and the
+  user's accessible library. Sections, in order:
+  1. **Jump back in** (tiles, up to 8): the album / artist / playlist /
+     Liked Songs you last played from. Library and search plays count as the
+     song's album. Padded to 6 with Liked Songs, your playlists and the newest
+     albums.
+  2. **Recently played**: the last 20 distinct songs.
+  3. **Your top artists**: listening time over the last 30 days (all-time when
+     that window is empty). Missing photos are queued for lookup.
+  4. **On repeat**: songs with 2+ counted plays in the last 14 days.
+  5. **Your top albums**: listening time over the last 90 days.
+  6. **From your Liked Songs**: the 15 newest likes.
+  7. **Rediscover**: 3+ lifetime plays, not played in 60+ days.
+  8. **Recently added**: the newest albums (or songs, if there are no albums).
+  9. **Albums you haven't played yet** / **Albums to start with**: a
+     per-user shuffle that changes once a day.
+- Client `Static/home/js/homepage.js`:
+  - a greeting by local time;
+  - tiles in a 2-column grid on phones;
+  - shelves as horizontal rows with arrow buttons on desktop and swipe on phones;
+  - "Show all" links to Liked Songs and the Albums/Artists tabs.
+  - Playing a song card queues that shelf with `source_type = 'home'`, `source_id` = the section id.
+  - Offline, Home shows downloaded songs.
+
+### Manual verification
+
+1. Open the app at `/home`. Home opens, and the greeting matches the time of day.
+2. On a fresh account, Jump back in, Recently added and Albums to start with
+   are shown, along with the hint to start listening.
+3. Play a few songs from an album, an artist page and Liked Songs. After about
+   20 s, Home shows them in Jump back in, Recently played and Your top artists.
+4. Like or unlike a song, and Home updates on the next visit.
+5. Go offline. Home lists downloaded songs and they play.

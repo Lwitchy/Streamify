@@ -8,6 +8,7 @@ Streamify is your own self-hosted music streaming app built with Node.js. Think 
 
 *   **User Authentication**: Secure logins and sessions so nobody hijacks your account.
 *   **Music Library**: Read your tracks from a configured local directory, organize them, and build your collection.
+*   **Home**: A personal start page built from your own listening: jump back into recent albums and artists, recently played, your top artists and albums, what you have on repeat, and favourites to rediscover.
 *   **Albums**: Your songs are grouped into albums automatically from their tags (album, album artist, track and disc numbers), with album pages, compilations and album results in search.
 *   **Artists & Liked Songs**: Artist pages with photos (uploaded or fetched from Deezer, optional), your most-played songs per artist, and a personal Liked Songs collection.
 *   **Playlists**: Curate your own custom playlists and share them with friends.

@@ -2049,6 +2049,7 @@ themeInputs.forEach(input => {
     const playlistDetailSection = document.getElementById('playlist-detail-section');
     const albumDetailSection = document.getElementById('album-detail-section');
     const artistDetailSection = document.getElementById('artist-detail-section');
+    const homeSection = document.getElementById('home-section');
     const likedSongsSection = document.getElementById('liked-songs-section');
     const likedSongsLink = document.getElementById('liked-songs-link');
     const playerSection = document.getElementById('player-section'); // Added player section reference
@@ -2106,7 +2107,7 @@ themeInputs.forEach(input => {
         if (window.currentActiveView !== 'downloads' && window.StreamifyDownloads) {
             window.StreamifyDownloads.close();
         }
-        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection, albumDetailSection, artistDetailSection, likedSongsSection];
+        const routedSections = [trendingSection, downloadsSection, uploadSection, searchSection, profileDetailSection, playlistDetailSection, albumDetailSection, artistDetailSection, likedSongsSection, homeSection];
         if (!document.body.classList.contains('desktop-player-overlay-enabled')) routedSections.push(playerSection);
         routedSections.forEach(sec => {
             if (sec) { sec.classList.add('hidden'); sec.classList.remove('fade-in-animate'); }
@@ -2125,7 +2126,7 @@ themeInputs.forEach(input => {
                 setThemeColor(DEFAULT_THEME_COLOR);
             }
         }
-        [libraryLink, downloadsLink, uploadLink, likedSongsLink].forEach(l => l && l.classList.remove('active'));
+        [homeLink, libraryLink, downloadsLink, uploadLink, likedSongsLink].forEach(l => l && l.classList.remove('active'));
         document.querySelectorAll('.sidebar-playlist-link').forEach(l => l.classList.remove('active'));
         // Reset edit modes on view switch to prevent stale UI state
         if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode) {
@@ -3071,7 +3072,7 @@ themeInputs.forEach(input => {
         const params = new URLSearchParams(window.location.search);
         if (params.has('playlist') || path.startsWith('/profile/')) return false;
         if (!isHomeOrRootRoute(path)) return false;
-        return !hash || hash === '#library' || hash === '#feed' || hash === '#people';
+        return hash === '#library' || hash === '#feed' || hash === '#people';
     }
 
     async function preloadInitialLibraryVisuals(songs) {
@@ -3171,6 +3172,10 @@ themeInputs.forEach(input => {
                 // The Beta Info page is gone; keep old bookmarks working.
                 if (libraryLink) libraryLink.click();
                 return;
+            } else if (hash === '#home') {
+                if (typeof window.navigateToHome === 'function') window.navigateToHome({ fromHistory: true });
+                else if (libraryLink) libraryLink.click();
+                return;
             } else if (hash === '#liked') {
                 if (typeof window.navigateToLiked === 'function') window.navigateToLiked({ fromHistory: true });
                 else if (libraryLink) libraryLink.click();
@@ -3225,11 +3230,10 @@ themeInputs.forEach(input => {
                 }
             }
         } else {
-            // Default to the personal library on /home, root, or Capacitor mobile app launch
-            if (libraryLink && isHomeOrRootRoute(path)) {
-                if (trendingSection && trendingSection.classList.contains('hidden')) {
-                    libraryLink.click();
-                }
+            // Default to Home on /home, root, or Capacitor mobile app launch
+            if (isHomeOrRootRoute(path) && homeSection && homeSection.classList.contains('hidden')) {
+                if (typeof window.navigateToHome === 'function') window.navigateToHome({ fromHistory: !window.location.hash });
+                else if (libraryLink) libraryLink.click();
             }
         }
 

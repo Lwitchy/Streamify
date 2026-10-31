@@ -20,6 +20,7 @@ const sw = read('Static/sw.js');
 const scripts = [
     'Static/home/js/albums.js',
     'Static/home/js/artists.js',
+    'Static/home/js/homepage.js',
     'Static/home/js/likes.js',
     'Static/home/js/downloads.js',
     'Static/home/js/ui.js',
@@ -38,7 +39,7 @@ const warn = message => console.log(`  WARN  ${message}`);
  * failing the build on pre-existing debt.
  */
 const KNOWN_LEGACY_IDS = new Set([
-    'notification-menu', 'home-link', 'people-link', 'upload-link',
+    'notification-menu', 'people-link', 'upload-link',
     'post-btn', 'compose-textarea', 'add-photo-btn', 'feed-photo-upload',
     'compose-photo-preview', 'compose-photo-img', 'remove-photo-btn',
     'feed-crop-modal', 'feed-crop-image', 'save-feed-crop-btn',

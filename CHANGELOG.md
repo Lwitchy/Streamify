@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Home - 2026-10-31
+
+Final phase of the Albums, Artists and Home update. See
+[`MD Files/Engineering/HOME_AND_ALBUMS_PLAN.md`](MD%20Files/Engineering/HOME_AND_ALBUMS_PLAN.md).
+
+### Added
+
+- **Home**, the new landing page, is personal to each account. It shows:
+  - Jump back in (the albums, artists, playlists and Liked Songs you were last
+    playing from)
+  - Recently played
+  - Your top artists
+  - On repeat
+  - Your top albums
+  - From your Liked Songs
+  - Rediscover
+  - Recently added
+  - Albums you haven't played yet
+- Home is built from your own listening history, likes and library only.
+- `GET /api/home`.
+- `npm run test:home`.
+
+### Changed
+
+- Streamify now opens on Home instead of Your Library. `#library` links still
+  open the library directly.
+
 ## [Unreleased] - Artists & Liked Songs - 2026-10-31
 
 Third phase of the Albums, Artists and Home update. See

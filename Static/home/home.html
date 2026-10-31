@@ -12,13 +12,13 @@
     <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/player.css?v=4.49">
     <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.52">
-    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.41">
+    <link rel="stylesheet" href="/Static/home/css/library.css?v=4.42">
     <link rel="stylesheet" href="/Static/home/css/downloads.css?v=4.34">
     <link rel="stylesheet" href="/Static/home/css/profile.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/toasts.css?v=4.8">
 
     <!-- Mobile Overrides (Must be last) -->
-<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.28" media="(max-width: 768px)">
+<link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.29" media="(max-width: 768px)">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -63,6 +63,12 @@
         <div class="sidebar-scroll-area">
             <nav class="sidebar-nav">
                 <ul>
+                    <li>
+                        <a href="#" id="home-link">
+                            <i class='bx bx-home-alt-2'></i>
+                            <span>Home</span>
+                        </a>
+                    </li>
                     <li>
                         <a href="#" id="library-link">
                             <i class='bx bx-library'></i>
@@ -153,6 +159,12 @@
 
         <!-- Content Container -->
         <div class="content-container">
+
+            <!-- Home Section (personal landing page, hidden until routed) -->
+            <section class="home-section hidden" id="home-section" aria-labelledby="home-greeting">
+                <h2 class="home-greeting" id="home-greeting">Welcome</h2>
+                <div class="home-sections" id="home-sections"></div>
+            </section>
 
             <!-- Search Section (Hidden by default) -->
             <section class="search-section hidden" id="search-section">
@@ -2469,11 +2481,12 @@
     <script src="/Static/home/js/player.js?v=4.46"></script>
     <script src="/Static/home/js/lyrics.js?v=1.5"></script>
     <script src="/Static/home/js/api_v2.js?v=4.45"></script>
-    <script src="/Static/home/js/albums.js?v=1.1"></script>
+    <script src="/Static/home/js/albums.js?v=1.2"></script>
     <script src="/Static/home/js/likes.js?v=1.0"></script>
-    <script src="/Static/home/js/artists.js?v=1.0"></script>
+    <script src="/Static/home/js/artists.js?v=1.1"></script>
+    <script src="/Static/home/js/homepage.js?v=1.0"></script>
     <script src="/Static/home/js/downloads.js?v=4.44"></script>
-    <script src="/Static/home/js/ui.js?v=4.54"></script>
+    <script src="/Static/home/js/ui.js?v=4.55"></script>
 </body>
 
 </html>

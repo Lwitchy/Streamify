@@ -16,6 +16,7 @@ const HandleDatabase = require('./database');
 const ListeningHistory = require('./listeningHistory');
 const Albums = require('./albums');
 const Artists = require('./artists');
+const Home = require('./home');
 const Media = require('./media');
 const AIMetadata = require('./aiMetadata');
 const MetadataProviders = require('./metadataProviders');
@@ -871,7 +872,93 @@ async function loadArtistIndex(username) {
     ]);
     const albumSummaries = summarizeAlbumsForUser(albumRows, songs, username);
     const images = new Map(imageRows.map(row => [row.artist_uid, row]));
-    return { index: buildArtistIndex(songs, albumSummaries, username), images };
+    return { index: buildArtistIndex(songs, albumSummaries, username), images, songs, albumSummaries };
+}
+
+/* --- Home -------------------------------------------------------------------- */
+
+const HOME_CACHE_MS = 20 * 1000;
+const homeCache = new Map(); // username -> { at, payload }
+
+function invalidateHome(username) {
+    if (username) homeCache.delete(username);
+    else homeCache.clear();
+}
+
+function homeTilePayload(tile, context) {
+    if (tile.kind === 'album') {
+        const album = context.albums.get(tile.id);
+        if (!album) return null;
+        return { kind: 'album', id: album.album_uid, title: album.title, subtitle: album.artist, image: album.cover };
+    }
+    if (tile.kind === 'artist') {
+        const entry = context.index.get(tile.id);
+        if (!entry) return null;
+        const summary = artistSummaryPayload(entry, context.images.get(tile.id));
+        return { kind: 'artist', id: entry.artist_uid, title: entry.name, subtitle: 'Artist', image: summary.image, covers: summary.fallback_covers };
+    }
+    if (tile.kind === 'playlist') {
+        const playlist = context.playlists.get(tile.id);
+        if (!playlist) return null;
+        return {
+            kind: 'playlist', id: String(playlist.id), title: playlist.name, subtitle: 'Playlist',
+            image: Media.resolveCover('playlist_' + playlist.id)
+        };
+    }
+    if (tile.kind === 'liked') {
+        const count = context.likedCount;
+        return { kind: 'liked', id: null, title: 'Liked Songs', subtitle: `${count} ${count === 1 ? 'song' : 'songs'}`, image: null };
+    }
+    return null;
+}
+
+async function buildHomePayload(username) {
+    const { index, images, songs: allSongs, albumSummaries } = await loadArtistIndex(username);
+    const since = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString();
+    const [events, telemetry, likedIds, playlistRows] = await Promise.all([
+        HandleDatabase.getUserListeningEvents(username, { since, limit: 5000 }),
+        HandleDatabase.getAllUserTelemetry(username),
+        HandleDatabase.getLikedSongIds(username),
+        HandleDatabase.getPlaylistsByUser(username)
+    ]);
+
+    const songs = new Map();
+    for (const song of allSongs) {
+        if (!song.hidden_from_library && canAccessSong(song, username)) songs.set(song.id, song);
+    }
+    const albums = new Map(albumSummaries.map(album => [album.album_uid, album]));
+    const playlists = new Map(playlistRows.map(playlist => [String(playlist.id), playlist]));
+    const totals = new Map(telemetry.map(row => [row.song_id, row]));
+
+    const result = Home.buildHomeSections({
+        now: Date.now(),
+        events,
+        totals,
+        songs,
+        albums,
+        artists: new Set(index.keys()),
+        likedSongIds: likedIds,
+        playlists,
+        username
+    });
+
+    const context = { albums, index, images, playlists, likedCount: likedIds.filter(id => songs.has(id)).length };
+    const sections = result.sections.map(section => {
+        let items;
+        if (section.type === 'songs') items = section.items.map(id => librarySongPayload(songs.get(id)));
+        else if (section.type === 'albums') items = section.items.map(uid => albumSummaryPayload(albums.get(uid)));
+        else if (section.type === 'artists') items = section.items.map(uid => artistSummaryPayload(index.get(uid), images.get(uid)));
+        else items = section.items.map(tile => homeTilePayload(tile, context)).filter(Boolean);
+        return { ...section, items };
+    }).filter(section => section.items.length > 0);
+
+    // Fetch photos for artists shown on Home that do not have one yet.
+    queueArtistImageLookups(sections
+        .filter(section => section.type === 'artists')
+        .flatMap(section => section.items)
+        .filter(item => !item.image && Artists.needsImageLookup(images.get(item.artist_uid))));
+
+    return { generated_at: new Date().toISOString(), has_history: result.has_history, sections };
 }
 
 function artistFallbackCovers(entry) {
@@ -2110,6 +2197,7 @@ app.get('/api/settings/privacy/export', requireLogin, async (req, res) => {
 app.delete('/api/settings/privacy/history', requireLogin, async (req, res) => {
     try {
         const removed = await HandleDatabase.clearUserListeningHistory(req.user);
+        invalidateHome(req.user);
         res.json({ success: true, removed });
     } catch (err) {
         console.error('[CLEAR HISTORY]', err);
@@ -2794,6 +2882,23 @@ app.get('/api/albums', requireLogin, async (req, res) => {
     }
 });
 
+// API: the personal Home page
+app.get('/api/home', requireLogin, async (req, res) => {
+    try {
+        const cached = homeCache.get(req.user);
+        if (cached && Date.now() - cached.at < HOME_CACHE_MS && req.query.refresh !== '1') {
+            return res.json(cached.payload);
+        }
+        const payload = await buildHomePayload(req.user);
+        homeCache.set(req.user, { at: Date.now(), payload });
+        res.set('Cache-Control', 'no-store');
+        res.json(payload);
+    } catch (error) {
+        console.error('[HOME]', error);
+        res.status(500).json({ error: 'Failed to load Home' });
+    }
+});
+
 // API: artists in the user's library
 app.get('/api/artists', requireLogin, async (req, res) => {
     try {
@@ -2956,6 +3061,7 @@ app.put('/api/likes/:songId', requireLogin, async (req, res) => {
         const song = await HandleDatabase.getSong(songId);
         if (!song || !canAccessSong(song, req.user)) return res.status(404).json({ error: 'Song not found' });
         await HandleDatabase.likeSong(req.user, songId);
+        invalidateHome(req.user);
         res.json({ success: true, liked: true });
     } catch (error) {
         console.error('[LIKES]', error);
@@ -2968,6 +3074,7 @@ app.delete('/api/likes/:songId', requireLogin, async (req, res) => {
         const songId = Number(req.params.songId);
         if (!Number.isSafeInteger(songId) || songId <= 0) return res.status(400).json({ error: 'Invalid song' });
         await HandleDatabase.unlikeSong(req.user, songId);
+        invalidateHome(req.user);
         res.json({ success: true, liked: false });
     } catch (error) {
         console.error('[LIKES]', error);
