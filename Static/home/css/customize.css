@@ -603,7 +603,14 @@ body.player-section-active .beat-glow--app {
     display: none;
 }
 
-/* --- Progress bar: played part in the player color, glowing tip ---------- */
+/* --- Progress bar: played part in the player color ---------------------- */
+.progress-bar,
+.dedicated-progress-bar {
+    background: rgb(var(--player-accent-rgb));
+}
+
+/* Glowing tip that follows the playhead: optional, off by default
+   (Settings > Appearance > Player > Glowing progress bar) */
 :root.fx-progress-glow .progress-bar,
 :root.fx-progress-glow .dedicated-progress-bar {
     --level: 0;

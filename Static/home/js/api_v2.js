@@ -252,6 +252,7 @@ function renderSongList(songs, listContainer, options = {}) {
 
     const header = listContainer.querySelector('.header-row');
     listContainer.replaceChildren(...(header ? [header] : []));
+    listContainer._renderedFrom = null; // see markLibraryRendered()
 
     const renderToken = {};
     songListRenderTokens.set(listContainer, renderToken);
@@ -3265,6 +3266,15 @@ function fetchTrending(forceRefresh = false) {
 
 let _fetchLibrarySeq = 0;
 
+/* Remembers which song array the library list shows. Any other render into
+   the list (edit mode, offline songs, filters) goes through renderSongList,
+   which clears the mark, so the next visit rebuilds. */
+function markLibraryRendered(list, songs) {
+    if (!list) return;
+    list._renderedFrom = songs;
+    list._renderedFirst = list.querySelector('.song-row:not(.header-row)');
+}
+
 function fetchLibrary(forceRefresh = false, options = {}) {
     const list = document.getElementById('trending-list'); // Streamify codebase calls the library list 'trending-list'.
     const shouldRender = options.render !== false;
@@ -3279,7 +3289,16 @@ function fetchLibrary(forceRefresh = false, options = {}) {
 
     const now = Date.now();
     if (!forceRefresh && appCache.library && (now - appCache.libraryTime < CACHE_DURATION)) {
-        if (shouldRender) renderSongList(appCache.library, list, renderOptions);
+        // Same cached list still on screen (switching back to Library):
+        // keep the rows instead of rebuilding them - rebuilt cover images
+        // flash on iOS. Only the playing-song mark needs refreshing.
+        if (shouldRender && list && list._renderedFrom === appCache.library &&
+            list._renderedFirst && list._renderedFirst.parentNode === list) {
+            highlightCurrentSong(list);
+        } else if (shouldRender) {
+            renderSongList(appCache.library, list, renderOptions);
+            markLibraryRendered(list, appCache.library);
+        }
         return Promise.resolve(appCache.library);
     }
     const seq = ++_fetchLibrarySeq;
@@ -3299,6 +3318,7 @@ function fetchLibrary(forceRefresh = false, options = {}) {
             appCache.libraryTime = Date.now();
             if (!shouldRender || window.currentActiveView !== 'library' || seq !== _fetchLibrarySeq) return songs;
             renderSongList(songs, list, renderOptions);
+            markLibraryRendered(list, songs);
             return songs;
         })
         .catch(err => {

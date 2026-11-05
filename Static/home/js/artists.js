@@ -126,14 +126,20 @@
         return card;
     }
 
+    /* Skips rebuilding identical cards on page switches (same reason as
+       renderAlbumGrid in albums.js: rebuilt images flash on iOS). */
     function renderArtistGrid(grid, artists, emptyText) {
+        const key = JSON.stringify(artists || []) + '|' + emptyText;
+        if (grid._renderKey === key && grid.firstElementChild && grid.firstElementChild === grid._renderFirst) return;
         if (!artists || artists.length === 0) {
             grid.innerHTML = `<p class="album-grid-message">${escapeHTML(emptyText)}</p>`;
-            return;
+        } else {
+            const fragment = document.createDocumentFragment();
+            artists.forEach(artist => fragment.appendChild(createArtistCard(artist)));
+            grid.replaceChildren(fragment);
         }
-        const fragment = document.createDocumentFragment();
-        artists.forEach(artist => fragment.appendChild(createArtistCard(artist)));
-        grid.replaceChildren(fragment);
+        grid._renderKey = key;
+        grid._renderFirst = grid.firstElementChild;
     }
 
     async function loadLibraryArtists() {

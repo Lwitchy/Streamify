@@ -323,7 +323,10 @@
             id: 'profile',
             label: 'Account',
             visible: Boolean(r),
-            rect: r ? { x: r.left, y: r.top, width: r.width, height: r.height } : { x: 0, y: 0, width: 0, height: 0 }
+            // 6px of slack all round so a tap on the pill's very edge still
+            // lands on the native button, not the old web dropdown.
+            rect: r ? { x: Math.max(0, r.left - 6), y: Math.max(0, r.top - 6), width: r.width + 12, height: r.height + 12 }
+                : { x: 0, y: 0, width: 0, height: 0 }
         };
         if (first) {
             payload.items = PROFILE_ITEMS.map(function (item) {
@@ -331,6 +334,26 @@
             });
         }
         plugin.setMenuButton(payload).catch(function () {});
+    }
+
+    /* Press feedback: the native button is invisible, so it reports finger
+       down / up and the web element under it shrinks a little (CSS
+       .native-pressed), springing back as the menu opens. */
+    function onMenuPress(event) {
+        if (!event) return;
+        var target = event.menu === 'profile' ? document.querySelector('.top-bar .user-pill')
+            : event.menu === 'page' ? moreButton : null;
+        if (target) target.classList.toggle('native-pressed', Boolean(event.pressed));
+    }
+
+    /* The web dropdown never opens in this mode (the native menu replaces
+       it), even if a tap lands on the pill around the native button. */
+    function blockWebProfileMenu(event) {
+        if (!active || typeof plugin.setMenuButton !== 'function') return;
+        var target = event.target;
+        if (!target || !target.closest || !target.closest('.top-bar .user-pill')) return;
+        event.preventDefault();
+        event.stopPropagation();
     }
 
     function onMenuAction(event) {
@@ -596,6 +619,8 @@
         Promise.resolve(plugin.addListener('tabSelected', onTabSelected)).then(function (handle) { listeners.push(handle); });
         Promise.resolve(plugin.addListener('layout', applyMetrics)).then(function (handle) { listeners.push(handle); });
         Promise.resolve(plugin.addListener('menuAction', onMenuAction)).then(function (handle) { listeners.push(handle); });
+        Promise.resolve(plugin.addListener('menuPress', onMenuPress)).then(function (handle) { listeners.push(handle); });
+        document.addEventListener('click', blockWebProfileMenu, true);
         if (PHONE.addEventListener) PHONE.addEventListener('change', queueSync);
         queueSync();
     }
@@ -611,6 +636,7 @@
         listeners = [];
         if (PHONE.removeEventListener) PHONE.removeEventListener('change', queueSync);
         document.removeEventListener('click', onMiniPlayerTap, true);
+        document.removeEventListener('click', blockWebProfileMenu, true);
         window.removeEventListener('resize', queueSync);
         unmountPlaylistsTab();
         unmountTopButtons();

@@ -3,8 +3,8 @@
  *
  *  - Pulse with the music: a soft glow in the player color behind the app and
  *    the full-screen player gets brighter and a touch bigger on every bass hit.
- *  - Glowing progress bar: the tip of the played part glows, following how
- *    loud the song is right now.
+ *  - Glowing progress bar (off by default): the tip of the played part
+ *    glows, following how loud the song is right now.
  *  - Player color: the accent used across the player, the playing row and the
  *    volume bar - picked from the cover (default), the theme, or the lyrics
  *    highlight color.
@@ -18,7 +18,7 @@
     'use strict';
 
     const STORAGE_KEY = 'streamify:player-fx:v1';
-    const DEFAULTS = Object.freeze({ pulse: true, progressGlow: true, color: 'cover' });
+    const DEFAULTS = Object.freeze({ pulse: true, progressGlow: false, color: 'cover' });
     const COLORS = ['cover', 'theme', 'lyrics'];
     const root = document.documentElement;
     const audioEl = document.getElementById('audio-player');
@@ -28,7 +28,8 @@
         try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch (e) { stored = null; }
         const prefs = { ...DEFAULTS, ...(stored && typeof stored === 'object' ? stored : {}) };
         prefs.pulse = prefs.pulse !== false;
-        prefs.progressGlow = prefs.progressGlow !== false;
+        // Off unless turned on (Settings > Appearance > Player).
+        prefs.progressGlow = prefs.progressGlow === true;
         if (!COLORS.includes(prefs.color)) prefs.color = DEFAULTS.color;
         return prefs;
     }

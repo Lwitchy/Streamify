@@ -15,8 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equalizer (never connected to the speakers), adapts to each song's
   loudness, and fades out when paused. Off on iPhone / iPad, where routing
   audio through Web Audio stops music when the screen locks.
-- **Glowing progress bar.** The played part takes the player color and its
-  tip glows with how loud the song is right now.
+- **Progress bar in the player color.** An optional glowing tip that
+  follows the playhead and swells with how loud the song is (Settings >
+  Appearance > Player > Glowing progress bar, off by default).
 - **Player color** (Settings > Appearance > Player): *From cover* (default,
   a vivid color picked from the album art), *Theme*, or *Lyrics color*. It
   drives the progress and volume bars, the playing song row, shuffle /

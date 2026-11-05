@@ -38,6 +38,8 @@ import Capacitor
  *   tabSelected { id, reselected }   user tapped a tab
  *   layout      { height, safeBottom, visible, glass }   size changed
  *   menuAction  { menu, item }       user picked a menu item
+ *   menuPress   { menu, pressed }    finger down / up on a menu button, so
+ *                                    the web element under it can animate
  */
 @objc(NativeTabBarPlugin)
 public class NativeTabBarPlugin: CAPPlugin, CAPBridgedPlugin, UITabBarDelegate {
@@ -285,10 +287,13 @@ public class NativeTabBarPlugin: CAPPlugin, CAPBridgedPlugin, UITabBarDelegate {
     }
 
     private func makeMenuButton(id: String, in host: UIView) -> UIButton {
-        let button = UIButton(type: .custom)
+        let button = PressReportingButton(type: .custom)
         button.backgroundColor = .clear
         button.showsMenuAsPrimaryAction = true
         button.accessibilityIdentifier = "native-menu-\(id)"
+        button.onPressChange = { [weak self] pressed in
+            self?.notifyListeners("menuPress", data: ["menu": id, "pressed": pressed])
+        }
         host.addSubview(button)
         menuButtons[id] = button
         return button
@@ -350,6 +355,18 @@ public class NativeTabBarPlugin: CAPPlugin, CAPBridgedPlugin, UITabBarDelegate {
             "visible": visible,
             "glass": Self.usesSystemGlass
         ]
+    }
+}
+
+/// Invisible menu button that reports press state (UIKit toggles
+/// isHighlighted on touch down / up / cancel and when its menu opens).
+final class PressReportingButton: UIButton {
+    var onPressChange: ((Bool) -> Void)?
+
+    override var isHighlighted: Bool {
+        didSet {
+            if isHighlighted != oldValue { onPressChange?(isHighlighted) }
+        }
     }
 }
 

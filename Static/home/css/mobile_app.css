@@ -895,8 +895,7 @@ html:not(.is-ios) .ios-only-setting {
         font-size: 13px;
     }
 
-    /* Mini player: one row (cover, title, like, play) with a hairline of
-       progress along the bottom, the same width as the tab bar (16px in from
+    /* Mini player: one row (cover, title, like, play), the same width as the tab bar (16px in from
        each edge, at most 520px) with even 8px padding all round. Tapping
        anywhere but its buttons opens the full player. */
     html.native-tabbar-on .music-player {
@@ -1018,25 +1017,9 @@ html:not(.is-ios) .ios-only-setting {
         display: none !important;
     }
 
-    /* Progress: a 2px line inside the card's bottom edge, display only */
+    /* No progress line on the card: progress lives in the full player */
     html.native-tabbar-on .music-player .progress-container {
-        position: absolute;
-        left: 16px;
-        right: 16px;
-        bottom: 3px;
-        width: auto;
-        height: 2px;
-        margin: 0;
-        pointer-events: none;
-    }
-
-    html.native-tabbar-on .music-player .progress-bar-wrapper {
-        height: 2px;
-        border-radius: 2px;
-    }
-
-    html.native-tabbar-on .music-player .progress-bar-wrapper::before {
-        display: none;
+        display: none !important;
     }
 
     /* Top bar: glass "‹" on detail pages (instead of the profile button)
@@ -1080,8 +1063,9 @@ html:not(.is-ios) .ios-only-setting {
         display: none;
     }
 
+    /* !important: .user-wrapper carries an inline display:flex */
     html.native-tabbar-on.native-page-detail .top-bar .user-wrapper {
-        display: none;
+        display: none !important;
     }
 
     /* Detail pages: the web header (Back + button row) moves to the top bar */
@@ -1228,15 +1212,23 @@ html:not(.is-ios) .ios-only-setting {
     }
 
     /* Artist: same feel - the header keeps its own blurred photo, minus
-       the card frame, running edge to edge */
+       the card frame, running edge to edge. Only the photo fades out (it
+       runs past the header and melts into the page); the name, count and
+       Play / Shuffle stay fully opaque. */
     html.native-tabbar-on .artist-detail-section .artist-hero {
         margin: 0 -28px 24px;
         padding: 12px 28px 8px;
         border: 0;
         border-radius: 0;
         background: transparent;
-        -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
-        mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+        overflow: visible;
+    }
+
+    html.native-tabbar-on .artist-detail-section .artist-hero::before {
+        inset: calc(-40px - var(--mobile-top-bar-height, 0px)) 0 -120px 0;
+        transform: none;
+        -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
+        mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
     }
 
     html.native-tabbar-on .artist-detail-section.artist-header-wide .artist-hero {
@@ -1269,6 +1261,32 @@ html:not(.is-ios) .ios-only-setting {
     html.native-tabbar-on #album-tracks-list .song-row > span:nth-child(5),
     html.native-tabbar-on #liked-tracks-list .song-row > span:nth-child(5),
     html.native-tabbar-on #artist-tracks-list .song-row > span:nth-child(5) {
+        display: none !important;
+    }
+
+    /* Press feedback for the top bar. The avatar and "⋯" sit under native
+       menu buttons, which report finger down / up (.native-pressed, set by
+       js/native_tabbar.js); "‹" is a plain web button, so :active. A quick
+       shrink, then a soft overshoot back as the menu opens. */
+    html.native-tabbar-on .top-bar .user-pill,
+    html.native-tabbar-on .native-top-btn {
+        transition:
+            transform 0.36s cubic-bezier(0.34, 1.56, 0.64, 1),
+            opacity 0.2s ease,
+            background-color 0.2s ease;
+    }
+
+    html.native-tabbar-on .top-bar .user-pill.native-pressed,
+    html.native-tabbar-on .native-top-btn.native-pressed,
+    html.native-tabbar-on .native-back-btn:active {
+        transform: scale(0.88);
+        opacity: 0.75;
+        transition-duration: 0.12s;
+    }
+
+    /* The old web dropdown never shows in this mode; the native menu still
+       uses its links (hidden links click fine). */
+    html.native-tabbar-on .top-bar .user-menu {
         display: none !important;
     }
 

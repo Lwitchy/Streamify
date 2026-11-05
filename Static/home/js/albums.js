@@ -195,15 +195,33 @@
         return card;
     }
 
+    /* Page switches re-show cached data. Rebuilding identical cards replaced
+       every <img>, which iOS then decoded again from blank - pages looked like
+       they reloaded each time. These skip the rebuild when the same data is
+       still on screen (the first card is still the one we put there). */
+    function alreadyRendered(container, key) {
+        return container._renderKey === key && container.firstElementChild &&
+            container.firstElementChild === container._renderFirst;
+    }
+
+    function markRendered(container, key) {
+        container._renderKey = key;
+        container._renderFirst = container.firstElementChild;
+    }
+
     function renderAlbumGrid(container, albums, emptyText) {
         if (!container) return;
+        const key = JSON.stringify(albums || []) + '|' + emptyText;
+        if (alreadyRendered(container, key)) return;
         if (!albums || albums.length === 0) {
             container.innerHTML = `<p class="album-grid-message">${escapeHTML(emptyText)}</p>`;
+            markRendered(container, key);
             return;
         }
         const fragment = document.createDocumentFragment();
         albums.forEach(album => fragment.appendChild(createAlbumCard(album)));
         container.replaceChildren(fragment);
+        markRendered(container, key);
     }
 
     function showGridMessage(container, text) {

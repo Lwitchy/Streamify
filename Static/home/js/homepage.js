@@ -233,6 +233,23 @@
         }
     }
 
+    /* Coming back to Home re-showed the cached page, then rebuilt it again
+       when the fresh copy arrived - twice per visit, every image re-decoded
+       (on iOS it looked like a reload). Only rebuild when the data changed
+       or the page content was replaced (offline view, loading hint). */
+    let renderedKey = null;
+    let renderedFirst = null;
+
+    function renderIfChanged(payload) {
+        const container = $('home-sections');
+        const key = JSON.stringify(payload);
+        if (container && key === renderedKey && container.firstElementChild &&
+            container.firstElementChild === renderedFirst) return;
+        renderPayload(payload);
+        renderedKey = key;
+        renderedFirst = container ? container.firstElementChild : null;
+    }
+
     async function render() {
         const seq = ++requestSeq;
         const greetingEl = $('home-greeting');
@@ -241,7 +258,7 @@
             renderOffline();
             return;
         }
-        if (cached) renderPayload(cached);
+        if (cached) renderIfChanged(cached);
         else $('home-sections').innerHTML = '<p class="home-hint">Loading…</p>';
         try {
             const response = await fetch(window.API_BASE_URL + '/api/home', { credentials: 'include' });
@@ -249,7 +266,7 @@
             const payload = await response.json();
             if (seq !== requestSeq || window.currentActiveView !== 'home') return;
             cached = payload;
-            renderPayload(payload);
+            renderIfChanged(payload);
         } catch (error) {
             console.error('[HOME]', error);
             if (seq !== requestSeq) return;

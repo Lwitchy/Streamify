@@ -151,6 +151,11 @@
         return null;
     }
 
+    function hiddenBackButton(section) {
+        var b = section && section.querySelector(BACK_SELECTOR);
+        return b && !b.disabled ? b : null;
+    }
+
     function blocked() {
         var body = document.body;
         if (!body) return true;
@@ -189,6 +194,13 @@
         var section = activeSection();
         if (!section) return;
         var back = visibleBackButton(section);
+        // With the native tab bar (js/native_tabbar.js) page Back buttons are
+        // hidden (the top bar's "‹" stands in) and there is no sidebar: the
+        // swipe uses the hidden Back button, or does nothing on tab pages.
+        if (document.documentElement.classList.contains('native-tabbar-on')) {
+            back = back || hiddenBackButton(section);
+            if (!back) return;
+        }
         g = { x0: t.clientX, y0: t.clientY, lastX: t.clientX, lastT: Date.now(), v: 0,
               section: section, back: back, mode: back ? 'back' : 'menu', active: false };
     }, { passive: true });
