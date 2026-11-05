@@ -41,6 +41,21 @@ jobs:
       - name: Sync Capacitor iOS Assets
         run: npm run mobile:sync
 
+      # The runner's default Xcode can be older than 26. Only the iOS 26 SDK
+      # gives system bars (the native tab bar) Liquid Glass, so pick the
+      # newest Xcode 26 installed. Without one the build still works and the
+      # app draws its own rounded tab bar instead.
+      - name: Select Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$XCODE" ]; then
+            sudo xcode-select -s "$XCODE/Contents/Developer"
+          else
+            echo "::warning::No Xcode 26 on this runner; building with the default Xcode (no Liquid Glass)."
+            ls -d /Applications/Xcode*.app || true
+          fi
+          xcodebuild -version
+
       - name: Build Xcode Archive
         run: |
           xcodebuild -version
