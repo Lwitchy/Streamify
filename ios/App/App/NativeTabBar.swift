@@ -26,9 +26,18 @@ import Capacitor
  *   hide()             slide the bar away (kept, so show() is instant)
  *   select({ id })     highlight a tab without firing an event
  *   remove()           take the bar out of the view hierarchy
+ *   setMenuButton({ id, rect: { x, y, width, height }, visible, label,
+ *                   title, items: [{ id, title, icon, destructive,
+ *                   confirm }] })
+ *        an invisible native button over a web element (rect in CSS px,
+ *        which are UIKit points here) that opens a real iOS menu - Liquid
+ *        Glass on iOS 26. Only for elements that don't scroll (top bar).
+ *        `confirm` asks first with an action sheet (e.g. Log out).
+ *   removeMenuButton({ id })
  * Events:
  *   tabSelected { id, reselected }   user tapped a tab
  *   layout      { height, safeBottom, visible, glass }   size changed
+ *   menuAction  { menu, item }       user picked a menu item
  */
 @objc(NativeTabBarPlugin)
 public class NativeTabBarPlugin: CAPPlugin, CAPBridgedPlugin, UITabBarDelegate {
@@ -38,7 +47,9 @@ public class NativeTabBarPlugin: CAPPlugin, CAPBridgedPlugin, UITabBarDelegate {
         CAPPluginMethod(name: "show", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "hide", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "select", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setMenuButton", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "removeMenuButton", returnType: CAPPluginReturnPromise)
     ]
 
     /// Where the bar is added: the root container (set by
@@ -51,6 +62,7 @@ public class NativeTabBarPlugin: CAPPlugin, CAPBridgedPlugin, UITabBarDelegate {
     private var visible = false
     private var lastReportedHeight: CGFloat = -1
     private let haptics = UISelectionFeedbackGenerator()
+    private var menuButtons: [String: UIButton] = [:]
 
     /// True only when this binary was built with the iOS 26 SDK *and* runs on
     /// iOS 26. An app built with an older Xcode keeps the old bar style even
@@ -104,9 +116,49 @@ public class NativeTabBarPlugin: CAPPlugin, CAPBridgedPlugin, UITabBarDelegate {
             self.tabBar?.removeFromSuperview()
             self.tabBar = nil
             self.tabIds = []
+            self.menuButtons.values.forEach { $0.removeFromSuperview() }
+            self.menuButtons = [:]
             self.selectedId = nil
             self.visible = false
             self.lastReportedHeight = -1
+            call.resolve()
+        }
+    }
+
+    @objc func setMenuButton(_ call: CAPPluginCall) {
+        guard let id = call.getString("id"), !id.isEmpty else {
+            call.reject("id is required")
+            return
+        }
+        let rect = call.getObject("rect") ?? [:]
+        let items = (call.getArray("items") ?? []).compactMap { $0 as? JSObject }
+        let visible = call.getBool("visible") ?? true
+        let label = call.getString("label")
+        let title = call.getString("title") ?? ""
+
+        func number(_ key: String) -> CGFloat {
+            CGFloat((rect[key] as? NSNumber)?.doubleValue ?? 0)
+        }
+
+        DispatchQueue.main.async {
+            guard let host = self.hostView ?? self.bridge?.viewController?.view else {
+                call.reject("Web view is not ready")
+                return
+            }
+            let button = self.menuButtons[id] ?? self.makeMenuButton(id: id, in: host)
+            button.frame = CGRect(x: number("x"), y: number("y"), width: number("width"), height: number("height"))
+            button.accessibilityLabel = label
+            if !items.isEmpty { button.menu = self.makeMenu(menuId: id, title: title, items: items) }
+            button.isHidden = !visible || button.frame.width < 1 || button.frame.height < 1
+            host.bringSubviewToFront(button)
+            call.resolve()
+        }
+    }
+
+    @objc func removeMenuButton(_ call: CAPPluginCall) {
+        let id = call.getString("id") ?? ""
+        DispatchQueue.main.async {
+            self.menuButtons.removeValue(forKey: id)?.removeFromSuperview()
             call.resolve()
         }
     }
@@ -230,6 +282,59 @@ public class NativeTabBarPlugin: CAPPlugin, CAPBridgedPlugin, UITabBarDelegate {
         if let host = bar.superview {
             notifyListeners("layout", data: metrics(bar, in: host))
         }
+    }
+
+    private func makeMenuButton(id: String, in host: UIView) -> UIButton {
+        let button = UIButton(type: .custom)
+        button.backgroundColor = .clear
+        button.showsMenuAsPrimaryAction = true
+        button.accessibilityIdentifier = "native-menu-\(id)"
+        host.addSubview(button)
+        menuButtons[id] = button
+        return button
+    }
+
+    private func makeMenu(menuId: String, title: String, items: [JSObject]) -> UIMenu {
+        // Destructive items go in their own section at the bottom, as in iOS.
+        var regular: [UIMenuElement] = []
+        var destructive: [UIMenuElement] = []
+        for item in items {
+            guard let itemId = item["id"] as? String else { continue }
+            let itemTitle = item["title"] as? String ?? itemId
+            let image = (item["icon"] as? String).flatMap { UIImage(systemName: $0) }
+            let isDestructive = item["destructive"] as? Bool ?? false
+            let confirm = item["confirm"] as? String
+            let action = UIAction(title: itemTitle, image: image,
+                                  attributes: isDestructive ? .destructive : []) { [weak self] _ in
+                guard let self = self else { return }
+                if let confirm = confirm, !confirm.isEmpty {
+                    self.confirm(message: confirm, actionTitle: itemTitle, destructive: isDestructive) {
+                        self.notifyListeners("menuAction", data: ["menu": menuId, "item": itemId])
+                    }
+                } else {
+                    self.notifyListeners("menuAction", data: ["menu": menuId, "item": itemId])
+                }
+            }
+            if isDestructive { destructive.append(action) } else { regular.append(action) }
+        }
+        var children = regular
+        if !destructive.isEmpty {
+            children.append(UIMenu(title: "", options: .displayInline, children: destructive))
+        }
+        return UIMenu(title: title, children: children)
+    }
+
+    private func confirm(message: String, actionTitle: String, destructive: Bool, then run: @escaping () -> Void) {
+        guard let presenter = bridge?.viewController?.parent ?? bridge?.viewController else { return }
+        let sheet = UIAlertController(title: nil, message: message, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: actionTitle, style: destructive ? .destructive : .default) { _ in run() })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
+        }
+        presenter.present(sheet, animated: true)
     }
 
     /// Distance from the top of the bar to the bottom of the screen.

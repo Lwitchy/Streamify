@@ -26,7 +26,8 @@
     function readSavedTab() {
         try {
             const saved = localStorage.getItem(TAB_KEY);
-            return saved === 'albums' || saved === 'artists' ? saved : 'songs';
+            // 'playlists' only exists with the iPhone tab bar (js/native_tabbar.js)
+            return saved === 'albums' || saved === 'artists' || saved === 'playlists' ? saved : 'songs';
         } catch (e) {
             return 'songs';
         }
@@ -235,14 +236,20 @@
     }
 
     function showLibraryTab(tab, { focus = false } = {}) {
-        libraryTab = tab === 'albums' || tab === 'artists' ? tab : 'songs';
-        saveTab(libraryTab);
+        const hasPlaylists = Boolean($('library-tab-playlists'));
+        const allowed = tab === 'albums' || tab === 'artists' || (tab === 'playlists' && hasPlaylists);
+        libraryTab = allowed ? tab : 'songs';
+        // Don't overwrite a saved "playlists" just because its tab isn't
+        // mounted yet (the tab bar script adds it after load).
+        if (allowed || tab !== 'playlists') saveTab(libraryTab);
         const section = $('trending-section');
         const list = $('trending-list');
         const grid = $('library-albums-grid');
         const artistGrid = $('library-artists-grid');
+        const playlistsList = $('library-playlists-list');
         const isAlbums = libraryTab === 'albums';
         const isArtists = libraryTab === 'artists';
+        const isPlaylists = libraryTab === 'playlists';
 
         document.querySelectorAll('.library-tab').forEach(button => {
             const active = button.dataset.libraryTab === libraryTab;
@@ -251,11 +258,12 @@
             button.tabIndex = active ? 0 : -1;
             if (active && focus) button.focus();
         });
-        if (section) section.classList.toggle('library-albums-active', isAlbums || isArtists);
-        if (list) list.classList.toggle('hidden', isAlbums || isArtists);
+        if (section) section.classList.toggle('library-albums-active', isAlbums || isArtists || isPlaylists);
+        if (list) list.classList.toggle('hidden', isAlbums || isArtists || isPlaylists);
         if (grid) grid.classList.toggle('hidden', !isAlbums);
         if (artistGrid) artistGrid.classList.toggle('hidden', !isArtists);
-        if (isAlbums || isArtists) {
+        if (playlistsList) playlistsList.classList.toggle('hidden', !isPlaylists);
+        if (isAlbums || isArtists || isPlaylists) {
             if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode && typeof toggleLibraryEditMode === 'function') {
                 toggleLibraryEditMode();
             }
@@ -268,6 +276,15 @@
     function onLibraryShown() {
         originStack.length = 0;
         showLibraryTab(libraryTab);
+    }
+
+    /** Re-reads the saved tab after tabs were added or removed. */
+    function syncLibraryTab() {
+        libraryTab = readSavedTab();
+        const section = $('trending-section');
+        if (window.currentActiveView === 'library' && section && !section.classList.contains('hidden')) {
+            showLibraryTab(libraryTab);
+        }
     }
 
     /* --- Album page ------------------------------------------------------- */
@@ -462,7 +479,7 @@
         button.addEventListener('keydown', event => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
             event.preventDefault();
-            const tabs = ['songs', 'albums', 'artists'];
+            const tabs = Array.from(document.querySelectorAll('.library-tab')).map(b => b.dataset.libraryTab);
             const step = event.key === 'ArrowRight' ? 1 : tabs.length - 1;
             showLibraryTab(tabs[(tabs.indexOf(libraryTab) + step) % tabs.length], { focus: true });
         });
@@ -499,6 +516,7 @@
     window.StreamifyAlbums = Object.freeze({
         onLibraryShown,
         showLibraryTab,
+        syncLibraryTab,
         navigateToAlbum,
         renderSearchAlbums,
         renderAlbumGrid,

@@ -783,7 +783,9 @@ html:not(.is-ios) .ios-only-setting {
    space it covers as --native-tabbar-h. In this mode:
      - the top bar is just the profile button (left), plus the search field
        on the Search tab; no hamburger, the sidebar is not used;
-     - Library shows the sidebar's playlists as a row of chips;
+     - Library gets a Playlists tab (Liked Songs, playlists, New playlist);
+     - the profile button opens a native iOS menu (an invisible native
+       button over it, see NativeTabBar.swift setMenuButton);
      - the mini player is a one-row glass card above the tab bar, hidden
        until a song is chosen. */
 @media (max-width: 768px) {
@@ -811,71 +813,107 @@ html:not(.is-ios) .ios-only-setting {
         right: auto !important;
     }
 
-    /* Library: playlists shelf */
-    .native-library-shelf {
+    /* Library > Playlists tab (rows built by js/native_tabbar.js) */
+    .native-playlists-list {
         display: flex;
-        gap: 8px;
-        margin: 0 -12px 18px;
-        padding: 2px 12px;
-        overflow-x: auto;
-        scrollbar-width: none;
-        -webkit-overflow-scrolling: touch;
+        flex-direction: column;
+        gap: 2px;
     }
 
-    .native-library-shelf::-webkit-scrollbar {
+    .native-playlists-list.hidden {
         display: none;
     }
 
-    .native-shelf-chip {
-        flex: 0 0 auto;
-        display: inline-flex;
+    .native-playlist-row {
+        display: flex;
         align-items: center;
-        gap: 6px;
-        max-width: 200px;
-        padding: 8px 14px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.08);
+        gap: 12px;
+        width: 100%;
+        padding: 6px 4px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
         color: #fff;
         font: inherit;
-        font-size: 14px;
-        font-weight: 600;
+        text-align: left;
     }
 
-    .native-shelf-chip span {
+    .native-playlist-row:active {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .native-playlist-art {
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        width: 56px;
+        height: 56px;
+        overflow: hidden;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 24px;
+    }
+
+    .native-playlist-art img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .native-playlist-row.is-liked .native-playlist-art {
+        background: linear-gradient(135deg, #4b6fe0, #8a5bd6 55%, #d9599a);
+        color: #fff;
+    }
+
+    .native-playlist-row.is-create .native-playlist-art {
+        background: transparent;
+        border: 1px dashed rgba(255, 255, 255, 0.3);
+    }
+
+    .native-playlist-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .native-playlist-name,
+    .native-playlist-meta {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .native-shelf-chip.is-liked i {
-        color: var(--accent, #1db954);
+    .native-playlist-name {
+        font-size: 16px;
+        font-weight: 600;
     }
 
-    .native-shelf-chip.is-create {
-        background: transparent;
-        border-style: dashed;
-    }
-
-    .native-shelf-chip:active {
-        transform: scale(0.96);
+    .native-playlist-meta {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 13px;
     }
 
     /* Mini player: one row (cover, title, like, play) with a hairline of
-       progress along the bottom. Tapping the cover or title opens the
-       full player. */
+       progress along the bottom, the same width as the tab bar (16px in from
+       each edge, at most 520px) with even 8px padding all round. Tapping
+       anywhere but its buttons opens the full player. */
     html.native-tabbar-on .music-player {
-        left: 8px;
-        width: calc(100% - 16px);
+        --mini-inset: max(16px, calc((100% - 520px) / 2));
+        left: var(--mini-inset);
+        right: var(--mini-inset);
+        width: auto;
         bottom: calc(max(var(--native-tabbar-h, 0px), var(--safe-bottom)) + 8px);
         height: 60px;
         flex-direction: row;
         align-items: center;
-        gap: 4px;
-        padding: 8px 10px 8px 8px !important;
+        gap: 6px;
+        padding: 8px !important;
         overflow: hidden;
+        cursor: pointer;
         border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 16px;
+        border-radius: 18px;
         background: rgba(28, 28, 32, 0.62);
         -webkit-backdrop-filter: blur(30px) saturate(1.8);
         backdrop-filter: blur(30px) saturate(1.8);
@@ -888,24 +926,34 @@ html:not(.is-ios) .ios-only-setting {
             transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
+    html.native-tabbar-on .music-player:active {
+        background: rgba(40, 40, 46, 0.66);
+    }
+
     html.native-tabbar-on .music-player .player-left {
         flex: 1 1 auto;
         width: auto;
         min-width: 0;
         gap: 10px;
+        padding: 0;
+        margin: 0;
     }
 
-    html.native-tabbar-on .music-player .now-playing-img {
+    html.native-tabbar-on .music-player .now-playing-img,
+    html.native-tabbar-on .music-player .now-playing-img.spinning {
         flex: 0 0 auto;
-        width: 44px;
-        height: 44px;
-        border-radius: 8px;
+        width: 42px;
+        height: 42px;
+        margin: 0 !important;
+        border-radius: 10px;
+        animation: none;
+        transform: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
     }
 
     html.native-tabbar-on .music-player .track-info {
         flex: 1 1 auto;
         min-width: 0;
-        cursor: pointer;
     }
 
     html.native-tabbar-on .music-player .track-info .track-name,
@@ -917,10 +965,38 @@ html:not(.is-ios) .ios-only-setting {
 
     html.native-tabbar-on .music-player .track-info .track-name {
         font-size: 15px;
+        line-height: 1.25;
     }
 
     html.native-tabbar-on .music-player .track-info .track-artist {
         font-size: 13px;
+        line-height: 1.25;
+    }
+
+    /* Heart and play share one 40px button size so the right edge mirrors
+       the cover on the left. */
+    html.native-tabbar-on .music-player .player-like-btn,
+    html.native-tabbar-on .music-player .play-pause-btn {
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 50%;
+        background: transparent !important;
+        box-shadow: none !important;
+        color: #fff;
+    }
+
+    html.native-tabbar-on .music-player .player-like-btn {
+        font-size: 22px;
+    }
+
+    html.native-tabbar-on .music-player .play-pause-btn {
+        font-size: 26px;
     }
 
     html.native-tabbar-on .music-player .player-center {
@@ -942,19 +1018,11 @@ html:not(.is-ios) .ios-only-setting {
         display: none !important;
     }
 
-    html.native-tabbar-on .music-player .play-pause-btn {
-        width: 38px;
-        height: 38px;
-        font-size: 22px;
-        background: transparent;
-        color: #fff;
-    }
-
     /* Progress: a 2px line inside the card's bottom edge, display only */
     html.native-tabbar-on .music-player .progress-container {
         position: absolute;
-        left: 12px;
-        right: 12px;
+        left: 16px;
+        right: 16px;
         bottom: 3px;
         width: auto;
         height: 2px;
@@ -969,6 +1037,239 @@ html:not(.is-ios) .ios-only-setting {
 
     html.native-tabbar-on .music-player .progress-bar-wrapper::before {
         display: none;
+    }
+
+    /* Top bar: glass "‹" on detail pages (instead of the profile button)
+       and glass "⋯" when the page has actions (a native menu opens over
+       it). Both are added by js/native_tabbar.js. */
+    .native-top-btn {
+        display: none;
+    }
+
+    html.native-tabbar-on .native-top-btn {
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        -webkit-backdrop-filter: blur(20px) saturate(1.6);
+        backdrop-filter: blur(20px) saturate(1.6);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        color: #fff;
+        font-size: 26px;
+    }
+
+    html.native-tabbar-on .native-back-btn {
+        order: -2;
+        margin-right: auto;
+    }
+
+    html.native-tabbar-on .native-more-btn {
+        order: 10;
+        margin-left: auto;
+        font-size: 22px;
+    }
+
+    html.native-tabbar-on:not(.native-page-detail) .native-back-btn,
+    html.native-tabbar-on:not(.native-page-more) .native-more-btn,
+    html.native-tabbar-on.native-tab-search .native-more-btn {
+        display: none;
+    }
+
+    html.native-tabbar-on.native-page-detail .top-bar .user-wrapper {
+        display: none;
+    }
+
+    /* Detail pages: the web header (Back + button row) moves to the top bar */
+    html.native-tabbar-on .playlist-detail-section > .playlist-detail-header,
+    html.native-tabbar-on .artist-detail-section > .playlist-detail-header {
+        display: none !important;
+    }
+
+    /* Library: its header buttons are in the top bar's "⋯" */
+    html.native-tabbar-on #trending-section .library-section-actions {
+        display: none !important;
+    }
+
+    /* Blurred copy of the cover behind the header, fading into the page */
+    html.native-tabbar-on .playlist-detail-section,
+    html.native-tabbar-on .artist-detail-section {
+        position: relative;
+        isolation: isolate;
+    }
+
+    html.native-tabbar-on .playlist-detail-section::before {
+        content: '';
+        position: absolute;
+        z-index: -1;
+        top: calc(-12px - var(--mobile-top-bar-height, 0px));
+        left: -12px;
+        right: -12px;
+        height: 560px;
+        background-image: var(--native-backdrop, none);
+        background-size: cover;
+        background-position: center;
+        filter: blur(60px) saturate(1.5) brightness(0.6);
+        transform: scale(1.25);
+        -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 100%);
+        mask-image: linear-gradient(to bottom, #000 35%, transparent 100%);
+        pointer-events: none;
+    }
+
+    html.native-tabbar-on #liked-songs-section::before {
+        background-image: linear-gradient(160deg, #4b6fe0, #8a5bd6 55%, #d9599a);
+        filter: blur(40px) brightness(0.55);
+    }
+
+    /* Hero: no card, big cover, centred text */
+    html.native-tabbar-on .playlist-detail-section .playlist-detail-info {
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        margin: 0 0 22px;
+        padding: 8px 0 0 !important;
+        border: 0 !important;
+        border-radius: 0;
+        background: transparent !important;
+        box-shadow: none !important;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        text-align: center;
+    }
+
+    html.native-tabbar-on .playlist-detail-section .playlist-detail-cover,
+    html.native-tabbar-on .playlist-detail-section .album-hero-cover {
+        width: min(62vw, 260px) !important;
+        height: min(62vw, 260px) !important;
+        margin: 0 auto;
+        border-radius: 12px;
+        background-size: cover;
+        background-position: center;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    html.native-tabbar-on .playlist-detail-section .playlist-detail-cover i {
+        font-size: 64px;
+    }
+
+    html.native-tabbar-on .playlist-detail-section .playlist-detail-meta {
+        align-items: center;
+        gap: 4px;
+        width: 100%;
+    }
+
+    html.native-tabbar-on .playlist-detail-section .album-hero-kind,
+    html.native-tabbar-on .artist-detail-section .album-hero-kind {
+        display: none;
+    }
+
+    html.native-tabbar-on .playlist-detail-section .playlist-detail-name,
+    html.native-tabbar-on .artist-detail-section .artist-hero-name {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 800;
+        line-height: 1.15;
+        letter-spacing: -0.01em;
+    }
+
+    html.native-tabbar-on .playlist-detail-section .album-hero-artist,
+    html.native-tabbar-on .playlist-detail-section .playlist-detail-owner {
+        margin: 0;
+        color: var(--accent, #1db954);
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    html.native-tabbar-on .playlist-detail-section .album-hero-artist a {
+        color: inherit;
+    }
+
+    html.native-tabbar-on .playlist-detail-section .playlist-detail-count,
+    html.native-tabbar-on .artist-detail-section .playlist-detail-count {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 13px;
+    }
+
+    /* Play + Shuffle: two equal pills */
+    html.native-tabbar-on .playlist-detail-section .album-hero-actions,
+    html.native-tabbar-on .artist-detail-section .album-hero-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        width: 100%;
+        max-width: 420px;
+        margin: 10px auto 0;
+    }
+
+    html.native-tabbar-on .album-hero-actions .album-play-btn,
+    html.native-tabbar-on .album-hero-actions .album-shuffle-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 100%;
+        height: 48px;
+        margin: 0;
+        padding: 0 12px;
+        border-radius: 14px;
+        font-size: 16px;
+        font-weight: 700;
+    }
+
+    html.native-tabbar-on .album-hero-actions .album-shuffle-btn {
+        border: 0;
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+    }
+
+    /* Artist: same feel - the header keeps its own blurred photo, minus
+       the card frame, running edge to edge */
+    html.native-tabbar-on .artist-detail-section .artist-hero {
+        margin: 0 -28px 24px;
+        padding: 12px 28px 8px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+        mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+    }
+
+    html.native-tabbar-on .artist-detail-section.artist-header-wide .artist-hero {
+        margin: -28px -28px 24px;
+        padding: 140px 28px 8px;
+    }
+
+    html.native-tabbar-on .artist-detail-section .artist-hero-meta {
+        gap: 4px;
+    }
+
+    /* Song lists on these pages: no "# Title ⏱" header, no durations */
+    html.native-tabbar-on #playlist-songs-list .song-row.header-row,
+    html.native-tabbar-on #album-tracks-list .song-row.header-row,
+    html.native-tabbar-on #liked-tracks-list .song-row.header-row,
+    html.native-tabbar-on #artist-tracks-list .song-row.header-row {
+        display: none !important;
+    }
+
+    html.native-tabbar-on #playlist-songs-list .song-row,
+    html.native-tabbar-on #album-tracks-list .song-row,
+    html.native-tabbar-on #liked-tracks-list .song-row,
+    html.native-tabbar-on #artist-tracks-list .song-row {
+        grid-template-columns: 24px minmax(0, 1fr) auto !important;
+        padding: 8px 4px !important;
+        border-radius: 10px;
+    }
+
+    html.native-tabbar-on #playlist-songs-list .song-row > span:nth-child(5),
+    html.native-tabbar-on #album-tracks-list .song-row > span:nth-child(5),
+    html.native-tabbar-on #liked-tracks-list .song-row > span:nth-child(5),
+    html.native-tabbar-on #artist-tracks-list .song-row > span:nth-child(5) {
+        display: none !important;
     }
 
     /* Nothing loaded yet: no "Select a Song" card */
