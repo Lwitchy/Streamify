@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Tempo benchmark for Static/home/js/studio-tempo.js (Studio's "measured" BPM).
+
+  Decodes every song in MusicLibrary/uploads/Streamify Downloads the way Studio
+  does (22.05 kHz), runs the detector and compares it with the published
+  tempos below (a song counts as right within 2 BPM / 2%; half or double speed
+  counts as wrong).
+
+  Run from the repo root:   python -m http.server 8765
+  then open:                http://localhost:8765/Tests/tempo-bench.html
+
+  Last result (2026-11-06): 12 of 12 known songs right, also leave-one-out.
+  Karma reads 101, matching its own BPM tag (the 90 below is the commonly
+  published value; one of the two is off).
+-->
+<meta charset="utf-8">
+<title>Tempo benchmark</title>
+<style>
+  body { background: #111; color: #ddd; font: 13px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
+  .ok { color: #30d158; } .bad { color: #ff453a; }
+</style>
+<pre id="out">loading…</pre>
+<script src="/Static/home/js/studio-tempo.js"></script>
+<script>
+// Commonly published tempos (and the one BPM tag in this set).
+const REF = {
+  'Taylor Swift - Anti-Hero': 97,
+  'Taylor Swift - Karma': 90,
+  'Taylor Swift - Bejeweled': 164,
+  "Taylor Swift - You're On Your Own, Kid": 120,
+  'Olivia Rodrigo - vampire': 138,
+  'Olivia Rodrigo - bad idea right': 129,
+  "Taylor Swift - Shake It Off (Taylor's Version)": 160,
+  'Taylor Swift - Bad Blood': 170,
+  'Taylor Swift - Lavender Haze': 97,
+  'Taylor Swift - Midnight Rain': 140,
+  'Taylor Swift - Vigilante Shit': 80,
+  'The Chainsmokers & Halsey - Closer': 95
+};
+
+(async () => {
+  const out = document.getElementById('out');
+  const dir = '/MusicLibrary/uploads/Streamify%20Downloads/';
+  const html = await (await fetch(dir)).text();
+  const files = [...html.matchAll(/href="([^"]+\.(?:mp3|flac))"/g)].map(m => m[1]);
+  const lines = [];
+  let right = 0;
+  let known = 0;
+  for (const f of files) {
+    const name = decodeURIComponent(f);
+    const key = Object.keys(REF).find(k => name.startsWith(k));
+    const want = key ? REF[key] : null;
+    const bytes = await (await fetch(dir + f)).arrayBuffer();
+    const buffer = await new OfflineAudioContext(2, 22050, 22050).decodeAudioData(bytes);
+    const t0 = performance.now();
+    const r = await StreamifyTempo.estimate(buffer);
+    const ms = Math.round(performance.now() - t0);
+    let mark = '';
+    if (want) {
+      known++;
+      const ok = Math.abs(r.bpm - want) <= Math.max(2, want * 0.02);
+      if (ok) right++;
+      mark = ok ? '<span class="ok">OK</span>' : `<span class="bad">X (want ${want})</span>`;
+    }
+    lines.push(`${name.slice(0, 48).padEnd(48)} ${String(r.bpm).padStart(6)} BPM  ${String(ms).padStart(5)} ms  ${mark}`);
+    out.innerHTML = lines.join('\n') + `\n\n${lines.length} / ${files.length}…`;
+  }
+  out.innerHTML = lines.join('\n') + `\n\nKnown tempos right: ${right} / ${known}`;
+})();
+</script>

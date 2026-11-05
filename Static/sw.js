@@ -1,6 +1,6 @@
 // Bump this whenever cached app-shell assets change. Old shell caches are
 // removed during activation so clients cannot retain stale CSS or JavaScript.
-const CACHE_NAME = 'streamify-app-shell-v142';
+const CACHE_NAME = 'streamify-app-shell-v146';
 const MEDIA_CACHE_PREFIX = 'streamify-media-cache-';
 const OFFLINE_STATE_CACHE_NAME = 'streamify-offline-state-v1';
 const ACTIVE_USER_STATE_URL = '/__streamify_offline_state__/active-user';
@@ -24,7 +24,7 @@ const APP_SHELL = [
 '/Static/home/css/home_mobile.css?v=4.31',
   '/Static/home/css/mobile_app.css?v=1.16',
   '/Static/home/css/customize.css?v=1.5',
-  '/Static/home/css/studio.css?v=1.9',
+  '/Static/home/css/studio.css?v=1.12',
   '/Static/vendor/boxicons/boxicons.min.css?v=4.8',
   '/Static/vendor/boxicons/fonts/boxicons.eot',
   '/Static/vendor/boxicons/fonts/boxicons.woff2',
@@ -80,16 +80,17 @@ const APP_SHELL = [
   '/Static/home/js/player.js?v=4.55',
   '/Static/home/js/lyrics.js?v=1.9',
   '/Static/home/js/playerfx.js?v=1.1',
-  '/Static/home/js/studio.js?v=1.11',
+  '/Static/home/js/studio-tempo.js?v=1.0',
+  '/Static/home/js/studio.js?v=1.12',
   '/Static/home/js/api_v2.js?v=4.47',
-  '/Static/home/js/albums.js?v=1.6',
+  '/Static/home/js/albums.js?v=1.7',
   '/Static/home/js/likes.js?v=1.1',
   '/Static/home/js/artists.js?v=1.3',
   '/Static/home/js/homepage.js?v=1.1',
   '/Static/home/js/downloads.js?v=4.45',
   '/Static/home/js/ui.js?v=4.57',
   '/Static/home/js/mobile_app.js?v=1.3',
-  '/Static/home/js/native_tabbar.js?v=1.4'
+  '/Static/home/js/native_tabbar.js?v=1.5'
 ];
 
 let activeUserKey;

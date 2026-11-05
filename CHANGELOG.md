@@ -35,7 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - loudness (LUFS, measured the way streaming services do), peak (marked
       when the file itself clips), dynamics, and the real format (codec, bit
       depth or bitrate, sample rate, channels) read from the file by the new
-      `GET /api/songs/:id/tags`; tempo only when the file has a BPM tag;
+      `GET /api/songs/:id/tags`; tempo from the file's BPM tag, or measured
+      from the song (spectral-flux onsets and autocorrelation; within 2 BPM
+      on 12 pop songs with published tempos - `Tests/tempo-bench.html`);
     - **Even out loudness**: plays every song at about -14 LUFS from its
       measured loudness (quiet songs are raised only as far as their peak
       allows). Off by default.
@@ -43,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     color, and presets glide into place.
   - Switching between Studio and Lyrics animates: one fades out while the
     cover glides to its new place.
+- **Your Library tabs animate** (Playlists / Songs / Albums / Artists): the
+  shown list fades up and out, the next rises in - the same motion as
+  Studio's pages. Blur is desktop-only (not on iPhone, nor on very long
+  lists); everything is off with the system's Reduce Motion.
   - Studio sits straight on the player's backdrop (no card), in the player
     color, and presets glide into place.
 

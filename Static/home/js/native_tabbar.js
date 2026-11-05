@@ -243,9 +243,9 @@
         }
     }
 
-    function showLibraryTab(tab) {
+    function showLibraryTab(tab, options) {
         if (window.StreamifyAlbums && typeof window.StreamifyAlbums.showLibraryTab === 'function') {
-            window.StreamifyAlbums.showLibraryTab(tab);
+            window.StreamifyAlbums.showLibraryTab(tab, options);
         }
     }
 
@@ -262,7 +262,7 @@
         playlistsTab.setAttribute('aria-selected', 'false');
         playlistsTab.setAttribute('aria-controls', 'library-playlists-list');
         playlistsTab.tabIndex = -1;
-        playlistsTab.addEventListener('click', function () { showLibraryTab('playlists'); });
+        playlistsTab.addEventListener('click', function () { showLibraryTab('playlists', { animate: true }); });
         tabs.insertBefore(playlistsTab, tabs.firstChild);
 
         playlistsPanel = el('div', 'native-playlists-list hidden');

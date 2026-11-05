@@ -454,7 +454,7 @@
                 <div class="studio-stat" data-stat="peak" title="Highest sample level. Above 0 means the file itself clips."><span class="studio-stat-label">Peak</span><strong>&ndash;</strong><small>dBFS</small></div>
                 <div class="studio-stat" data-stat="plr" title="Peak to loudness ratio: how much the loudest moments stand above the average. Low means heavily compressed."><span class="studio-stat-label">Dynamics</span><strong>&ndash;</strong><small>dB</small></div>
                 <div class="studio-stat studio-stat-wide" data-stat="format"><span class="studio-stat-label">Format</span><strong>&ndash;</strong><small></small></div>
-                <div class="studio-stat hidden" data-stat="bpm" title="From the file's BPM tag"><span class="studio-stat-label">Tempo</span><strong>&ndash;</strong><small>BPM</small></div>
+                <div class="studio-stat hidden" data-stat="bpm" title="From the file's BPM tag when it has one, otherwise measured from the song"><span class="studio-stat-label">Tempo</span><strong>&ndash;</strong><small>BPM</small></div>
             </div>
             <div class="studio-level">
                 <label class="studio-check"><input type="checkbox" id="studio-normalize"><span>Even out loudness</span></label>
@@ -1135,12 +1135,12 @@
          - Peak: highest sample (at 22.05 kHz, so a touch under true peak).
          - Dynamics: peak-to-loudness ratio (PLR).
          - Overview: loudness of 240 slices of the song, for the song shape.
-         - Tempo: only from the file's BPM tag. A measured tempo was tried and
-           dropped: on 30 real songs it matched the published tempo about
-           half the time.
+         - Tempo: the file's BPM tag when it has one ("from tag"), otherwise
+           measured by js/studio-tempo.js ("measured"; within 2 BPM on 12 pop
+           songs with published tempos - see that file).
          - Format: codec, bit depth and sample rate read from the file by the
            server (GET /api/songs/:id/tags). */
-    const ANALYSIS_KEY = 'streamify:studio:analysis:v3';
+    const ANALYSIS_KEY = 'streamify:studio:analysis:v4';
     const ANALYSIS_LIMIT = 400;
     const ANALYSIS_RATE = 22050;
     const MAX_ANALYSIS_BYTES = 150 * 1024 * 1024;
@@ -1221,8 +1221,12 @@
         setStat('format', fmt.value, [fmt.sub, layout].filter(Boolean).join(' · '));
         const dash = measuring ? '…' : '–';
         const bpmEl = panel.querySelector('[data-stat="bpm"]');
-        bpmEl.classList.toggle('hidden', !(tags && tags.bpm));
-        if (tags && tags.bpm) setStat('bpm', String(Math.round(tags.bpm)), 'BPM · from tag');
+        const tagBpm = tags && tags.bpm;
+        const measuredBpm = result && result.bpm;
+        bpmEl.classList.toggle('hidden', !(tagBpm || measuredBpm || measuring));
+        if (tagBpm) setStat('bpm', String(Math.round(tagBpm)), 'BPM · from tag');
+        else if (measuredBpm) setStat('bpm', String(Math.round(measuredBpm)), 'BPM · measured');
+        else if (measuring) setStat('bpm', '…', 'BPM');
         if (!result || !Number.isFinite(result.lufs)) {
             ['lufs', 'peak', 'plr'].forEach(n => setStat(n, dash, null, ''));
             return;
@@ -1358,8 +1362,14 @@
             if (analysisJob !== job) return;
             const overview = measureOverview(buffer);
             await tagsReady;
+            let bpm = 0;
+            if (!(tags && tags.bpm) && window.StreamifyTempo) {
+                try { bpm = (await window.StreamifyTempo.estimate(buffer)).bpm || 0; } catch (e) { bpm = 0; }
+                if (analysisJob !== job) return;
+            }
             const result = {
                 tags,
+                bpm,
                 overview,
                 lufs: Math.round(lufs * 10) / 10,
                 peak: Math.round(peak * 10) / 10,

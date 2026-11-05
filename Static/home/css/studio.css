@@ -363,6 +363,8 @@
 }
 
 .studio-check {
+    /* flex so the gap below separates the switch from its text */
+    display: inline-flex !important;
     flex-direction: row !important;
     align-items: center;
     gap: 8px !important;
@@ -381,18 +383,23 @@
 }
 
 /* Checkboxes as small switches in the player color (like Studio's power
-   switch), instead of the browser's square boxes. */
+   switch), instead of the browser's square boxes. Sizes are exact so the
+   knob sits with the same 2px gap on every side, on or off:
+   track 34x20 (1px border -> 32x18 inside), knob 14, travel 32-14-2-2 = 14. */
 .studio-check input[type="checkbox"] {
     -webkit-appearance: none;
     appearance: none;
     position: relative;
+    box-sizing: border-box;
     flex: 0 0 auto;
-    width: 30px;
-    height: 18px;
+    width: 34px;
+    height: 20px;
     margin: 0;
+    padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.14);
+    vertical-align: middle;
     cursor: pointer;
     transition: background-color 0.2s ease, border-color 0.2s ease;
 }
@@ -400,36 +407,29 @@
 .studio-check input[type="checkbox"]::after {
     content: '';
     position: absolute;
-    top: 2px;
+    top: 50%;
     left: 2px;
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: #fff;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transform: translate(0, -50%);
     transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .studio-check input[type="checkbox"]:checked {
-    border-color: transparent;
+    border-color: rgba(255, 255, 255, 0.08);
     background: var(--studio-accent);
 }
 
 .studio-check input[type="checkbox"]:checked::after {
-    transform: translateX(12px);
+    transform: translate(14px, -50%);
 }
 
 .studio-check input[type="checkbox"]:focus-visible {
     outline: 2px solid var(--studio-accent);
     outline-offset: 2px;
-}
-
-.studio-check input[type="checkbox"]:active::after {
-    width: 15px;
-}
-
-.studio-check input[type="checkbox"]:checked:active::after {
-    transform: translateX(9px);
 }
 
 /* Output */
@@ -605,11 +605,11 @@
 }
 
 .studio-stat small {
-    overflow: hidden;
     color: rgba(255, 255, 255, 0.5);
     font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.35;
+    /* Wraps instead of cutting off ("BPM · measured", long formats) */
+    overflow-wrap: anywhere;
 }
 
 .studio-track.is-measuring .studio-stat strong {

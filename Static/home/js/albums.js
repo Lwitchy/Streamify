@@ -253,7 +253,66 @@
         }
     }
 
-    function showLibraryTab(tab, { focus = false } = {}) {
+    /* Switching tabs (a tab click, not arriving on Library): the shown panel
+       fades up and out, the new one rises in - the motion Studio uses for
+       its pages and visualizer styles. Blur is added on desktop only: on
+       iPhone animated blur is what made WebKit glitch on the lyrics, and a
+       very tall panel (a long song list) would be costly to blur anywhere,
+       so those just fade and slide. Off with the system's Reduce Motion. */
+    let tabSwitch = null;
+
+    function tabMotionAllowed() {
+        const root = document.documentElement;
+        if (root.classList.contains('motion-reduced')) return false;
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+        return typeof Element.prototype.animate === 'function';
+    }
+
+    function tabBlurAllowed(el) {
+        if (document.documentElement.classList.contains('is-ios')) return false;
+        return el.getBoundingClientRect().height < window.innerHeight * 2.5;
+    }
+
+    function visibleLibraryPanel() {
+        return ['trending-list', 'library-albums-grid', 'library-artists-grid', 'library-playlists-list']
+            .map($).find(el => el && !el.classList.contains('hidden')) || null;
+    }
+
+    function swapPanels(from, to, apply) {
+        if (!from || !to || from === to || !tabMotionAllowed()) {
+            if (tabSwitch) tabSwitch.cancel();
+            tabSwitch = null;
+            apply();
+            return;
+        }
+        if (tabSwitch) tabSwitch.cancel();
+        const blurOut = tabBlurAllowed(from);
+        const out = from.animate([
+            { opacity: 1, transform: 'none', filter: 'blur(0px)' },
+            { opacity: 0, transform: 'translateY(-8px)', filter: blurOut ? 'blur(6px)' : 'blur(0px)' }
+        ], { duration: 160, easing: 'ease-in', fill: 'forwards' });
+        tabSwitch = out;
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            if (tabSwitch !== out) { out.cancel(); return; }
+            tabSwitch = null;
+            apply();
+            out.cancel();
+            const blurIn = tabBlurAllowed(to);
+            to.animate([
+                { opacity: 0, transform: 'translateY(12px)', filter: blurIn ? 'blur(8px)' : 'blur(0px)' },
+                { opacity: 1, transform: 'none', filter: 'blur(0px)' }
+            ], { duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+        };
+        // A hidden window pauses animations; the timer still swaps the tab.
+        const timer = setTimeout(finish, 300);
+        out.onfinish = finish;
+    }
+
+    function showLibraryTab(tab, { focus = false, animate = false } = {}) {
         const hasPlaylists = Boolean($('library-tab-playlists'));
         const allowed = tab === 'albums' || tab === 'artists' || (tab === 'playlists' && hasPlaylists);
         libraryTab = allowed ? tab : 'songs';
@@ -276,11 +335,19 @@
             button.tabIndex = active ? 0 : -1;
             if (active && focus) button.focus();
         });
-        if (section) section.classList.toggle('library-albums-active', isAlbums || isArtists || isPlaylists);
-        if (list) list.classList.toggle('hidden', isAlbums || isArtists || isPlaylists);
-        if (grid) grid.classList.toggle('hidden', !isAlbums);
-        if (artistGrid) artistGrid.classList.toggle('hidden', !isArtists);
-        if (playlistsList) playlistsList.classList.toggle('hidden', !isPlaylists);
+        const target = isAlbums ? grid : isArtists ? artistGrid : isPlaylists ? playlistsList : list;
+        const applyPanels = () => {
+            if (section) section.classList.toggle('library-albums-active', isAlbums || isArtists || isPlaylists);
+            if (list) list.classList.toggle('hidden', isAlbums || isArtists || isPlaylists);
+            if (grid) grid.classList.toggle('hidden', !isAlbums);
+            if (artistGrid) artistGrid.classList.toggle('hidden', !isArtists);
+            if (playlistsList) playlistsList.classList.toggle('hidden', !isPlaylists);
+        };
+        if (animate) swapPanels(visibleLibraryPanel(), target, applyPanels);
+        else {
+            if (tabSwitch) { tabSwitch.cancel(); tabSwitch = null; }
+            applyPanels();
+        }
         if (isAlbums || isArtists || isPlaylists) {
             if (typeof isLibraryEditMode !== 'undefined' && isLibraryEditMode && typeof toggleLibraryEditMode === 'function') {
                 toggleLibraryEditMode();
@@ -493,13 +560,13 @@
     /* --- Wiring ----------------------------------------------------------- */
 
     document.querySelectorAll('.library-tab').forEach(button => {
-        button.addEventListener('click', () => showLibraryTab(button.dataset.libraryTab));
+        button.addEventListener('click', () => showLibraryTab(button.dataset.libraryTab, { animate: true }));
         button.addEventListener('keydown', event => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
             event.preventDefault();
             const tabs = Array.from(document.querySelectorAll('.library-tab')).map(b => b.dataset.libraryTab);
             const step = event.key === 'ArrowRight' ? 1 : tabs.length - 1;
-            showLibraryTab(tabs[(tabs.indexOf(libraryTab) + step) % tabs.length], { focus: true });
+            showLibraryTab(tabs[(tabs.indexOf(libraryTab) + step) % tabs.length], { focus: true, animate: true });
         });
     });
 
