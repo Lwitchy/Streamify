@@ -15,8 +15,8 @@
             name: 'Word timing editor',
             stage: 'Experimental'
         }),
-        lyricsTrueBlur: Object.freeze({
-            name: 'Real lyric blur on iPhone',
+        lyricsSimpleBlur: Object.freeze({
+            name: 'Simple lyric blur on iPhone',
             stage: 'Experimental'
         })
     });
@@ -24,7 +24,7 @@
     /* Features that are pure CSS switch a class on <html>. This file loads in
        <head>, so the class is there before the first paint. */
     const ROOT_CLASSES = Object.freeze({
-        lyricsTrueBlur: 'lyrics-true-blur'
+        lyricsSimpleBlur: 'lyrics-simple-blur'
     });
 
     function applyRootClasses(state) {

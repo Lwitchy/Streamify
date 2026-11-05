@@ -280,20 +280,8 @@ function loadSong(song) {
     if (dedicatedProgressBar) dedicatedProgressBar.style.width = '0%';
     if (dedicatedCurrTimeEl) dedicatedCurrTimeEl.textContent = '0:00';
 
-    /* Highlight the new row if it exists in the current view */
-    // Clear all existing highlights across the entire app
-    document.querySelectorAll('.song-row.playing').forEach(r => r.classList.remove('playing'));
-
-    // Target the specific section that is currently visible
-    const activeSection = document.querySelector('section:not(.hidden)');
-    if (activeSection) {
-        // Find visible rows specifically in this section, ignoring headers
-        const rows = activeSection.querySelectorAll('.song-row:not(.header-row)');
-        const realIndex = getCurrentRealIndex();
-        if (rows[realIndex]) {
-            rows[realIndex].classList.add('playing');
-        }
-    }
+    /* Mark the new song in every list that shows it. */
+    syncNowPlayingRows();
 
     /* OS / lock-screen media session: update metadata only */
     if ('mediaSession' in navigator) {
@@ -320,17 +308,36 @@ function loadSong(song) {
     }
 }
 
+/* Play and pause icons both live in the button; switching cross-fades and
+ * turns one into the other while the button gives a small swell, instead of
+ * swapping the icon's HTML. */
+function setPlayPauseIcon(button, playing, playOffset) {
+    if (!button) return;
+    if (!button.querySelector('.pp-icon')) {
+        button.innerHTML =
+            `<span class="pp-icon pp-play" aria-hidden="true"><i class='bx bx-play' style='margin-left:${playOffset}px;'></i></span>` +
+            "<span class=\"pp-icon pp-pause\" aria-hidden=\"true\"><i class='bx bx-pause'></i></span>";
+        button.dataset.state = playing ? 'playing' : 'paused';
+        return;
+    }
+    const next = playing ? 'playing' : 'paused';
+    if (button.dataset.state === next) return;
+    button.dataset.state = next;
+    button.classList.remove('pp-swell');
+    void button.offsetWidth; // restart the swell
+    button.classList.add('pp-swell');
+}
+
+setPlayPauseIcon(btnPlay, false, 2);
+setPlayPauseIcon(dedicatedBtnPlay, false, 4);
+
 function syncPlaybackUI(playing) {
     isPlaying = playing;
     const playbackLabel = playing ? 'Pause' : 'Play';
-    btnPlay.innerHTML = playing
-        ? "<i class='bx bx-pause' style='margin-left:0;'></i>"
-        : "<i class='bx bx-play' style='margin-left:2px;'></i>";
+    setPlayPauseIcon(btnPlay, playing, 2);
     btnPlay.setAttribute('aria-label', playbackLabel);
     if (dedicatedBtnPlay) {
-        dedicatedBtnPlay.innerHTML = playing
-            ? "<i class='bx bx-pause' style='margin-left:0;'></i>"
-            : "<i class='bx bx-play' style='margin-left:4px;'></i>";
+        setPlayPauseIcon(dedicatedBtnPlay, playing, 4);
         dedicatedBtnPlay.setAttribute('aria-label', playbackLabel);
     }
 
@@ -499,6 +506,30 @@ function playSongAtIndex(index) {
     activeShuffledPlaylist = [...shuffledPlaylist];
     _playSongFromPlaylist(index, activePlaylist, activeShuffledPlaylist);
 }
+
+/* The "now playing" row is matched by song id, in every list on the page
+ * (Library, playlists, albums, Liked Songs...), and stays marked while paused.
+ * It used to be picked by position in whichever section was visible, which
+ * marked nothing (or the wrong row) when the song was started from another
+ * list, and lists rebuilt while paused lost the mark. */
+function syncNowPlayingRows(root = document) {
+    const id = window.currentlyPlayingSongId;
+    const key = id === undefined || id === null || id === '' ? null : String(id);
+    root.querySelectorAll('.song-row.playing').forEach(row => {
+        if (key === null || row.dataset.id !== key) row.classList.remove('playing');
+    });
+    if (key === null) return;
+    const selector = `.song-row[data-id="${window.CSS && CSS.escape ? CSS.escape(key) : key.replace(/"/g, '\\"')}"]`;
+    root.querySelectorAll(selector).forEach(row => {
+        if (!row.classList.contains('header-row')) row.classList.add('playing');
+    });
+}
+window.syncNowPlayingRows = syncNowPlayingRows;
+
+function syncPausedClass() {
+    document.body.classList.toggle('audio-paused', audio.paused);
+}
+['play', 'playing', 'pause', 'ended', 'emptied'].forEach(type => audio.addEventListener(type, syncPausedClass));
 
 function getCurrentRealIndex() {
     return isShuffle ? activeShuffledPlaylist[currentIndex] : currentIndex;
@@ -926,6 +957,83 @@ function setThemeColor(color) {
     }
 }
 
+/* A bright, saturated color picked from the cover (the darkened average
+ * above is for the backdrop; this one is for accents: progress bar, volume,
+ * the playing row, the beat glow). Returned as "r, g, b". */
+const _coverAccentCache = new Map();
+function vividCoverColor(data) {
+    // Group pixels by hue and keep the strongest group, so a pink-and-orange
+    // cover gives pink (its biggest vivid area), not a muddy average of both.
+    const BUCKETS = 12;
+    const buckets = Array.from({ length: BUCKETS }, () => ({ r: 0, g: 0, b: 0, w: 0 }));
+    let avgSat = 0, n = 0, gr = 0, gg = 0, gb = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] < 128) continue;
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        const [h, sat, light] = rgbToHsl(r, g, b);
+        const vivid = sat * (1 - Math.abs(light - 0.55) * 1.4);
+        avgSat += sat; n++;
+        gr += r; gg += g; gb += b;
+        if (vivid <= 0.05) continue;
+        const weight = vivid * vivid;
+        const bucket = buckets[Math.floor(h * BUCKETS) % BUCKETS];
+        bucket.r += r * weight; bucket.g += g * weight; bucket.b += b * weight; bucket.w += weight;
+    }
+    if (!n) return null;
+    const best = buckets.reduce((a, b) => (b.w > a.w ? b : a));
+    const source = best.w > 0.5 ? [best.r / best.w, best.g / best.w, best.b / best.w] : [gr / n, gg / n, gb / n];
+    let [h, s, l] = rgbToHsl(...source);
+    if (best.w <= 0.5 || avgSat / n < 0.08) s = Math.min(s, 0.12);  // black & white art: stay neutral
+    else s = Math.max(s, 0.55);
+    l = Math.min(0.74, Math.max(0.62, l));
+    return hslToRgb(h, s, l).map(v => Math.round(v)).join(', ');
+}
+
+function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h /= 6;
+    }
+    return [h, s, l];
+}
+
+function hslToRgb(h, s, l) {
+    if (s === 0) return [l * 255, l * 255, l * 255];
+    const hue = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [hue(p, q, h + 1 / 3) * 255, hue(p, q, h) * 255, hue(p, q, h - 1 / 3) * 255];
+}
+
+let _coverAccentToken = 0;
+function applyCoverAccent(coverUrl) {
+    const token = ++_coverAccentToken;
+    const publish = rgb => {
+        if (token !== _coverAccentToken) return;
+        if (rgb) document.documentElement.style.setProperty('--cover-accent-rgb', rgb);
+        else document.documentElement.style.removeProperty('--cover-accent-rgb');
+        window.dispatchEvent(new CustomEvent('streamifycoveraccent', { detail: { rgb } }));
+    };
+    if (!coverUrl) { publish(null); return; }
+    if (_coverAccentCache.has(coverUrl)) { publish(_coverAccentCache.get(coverUrl)); return; }
+    Promise.resolve(getCoverThemeColor(coverUrl)).then(() => publish(_coverAccentCache.get(coverUrl) || null));
+}
+
 function getCoverThemeColor(coverUrl) {
     const cached = _coverThemeColorCache.get(coverUrl);
     if (cached) return cached;
@@ -942,6 +1050,7 @@ function getCoverThemeColor(coverUrl) {
                 ctx.drawImage(img, 0, 0, SIZE, SIZE);
 
                 const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
+                _coverAccentCache.set(coverUrl, vividCoverColor(data));
                 let r = 0, g = 0, b = 0, count = 0;
                 for (let i = 0; i < data.length; i += 4) {
                     if (data[i + 3] < 128) continue;
@@ -979,6 +1088,7 @@ function getCoverThemeColor(coverUrl) {
 }
 
 function syncThemeColorToCover(coverUrl) {
+    applyCoverAccent(coverUrl);
     const token = ++_themeColorToken;
     if (!coverUrl) {
         setThemeColor(DEFAULT_THEME_COLOR);
@@ -1017,6 +1127,8 @@ function updateVolumeUI(val) {
     const volPercent = val * 100;
     if (volSlider) volSlider.value = volPercent;
     if (dedicatedVolSlider) dedicatedVolSlider.value = volPercent;
+    // Drives the filled part of the volume track (customize.css).
+    [volSlider, dedicatedVolSlider].forEach(slider => { if (slider) slider.style.setProperty('--vol', `${volPercent}%`); });
 
     const iconClass = val === 0 ? 'bx bx-volume-mute' : (val < 0.5 ? 'bx bx-volume-low' : 'bx bx-volume-full');
     if (volIcon) volIcon.className = iconClass;
@@ -1947,7 +2059,6 @@ function startDesktopLyricsSync() {
         !isLyricsActive ||
         isLyricEditMode ||
         !lyricsAreSynced ||
-        window.innerWidth <= 900 ||
         audio.paused ||
         !document.body.classList.contains('player-section-active')
     ) return;
@@ -1980,20 +2091,57 @@ function setDesktopLyricDepth(lineElements, nextActiveIndex) {
     });
 }
 
+/* Instrumental-break rows (the three dots) fold away when they aren't being
+ * sung and unfold when their break starts; the height animates. Centering has
+ * to aim at where the active line ends up once that settles, not where it is
+ * on the first frame, or the track would drift off-center by a whole row.
+ * Returns how far the active line will still move up, and its final height. */
+const LYRIC_DOTS_LINE_EM = 1.5; // keep in sync with .lyric-dots-line height in player.css
+function lyricSettledGeometry(activeEl) {
+    let shift = 0;
+    let height = activeEl.offsetHeight;
+    if (!lyricsContent || !lyricsContent.querySelector('.lyric-dots-line')) return { shift, height };
+    const gap = parseFloat(getComputedStyle(lyricsContent).rowGap) || 0;
+    for (let el = activeEl.previousElementSibling; el; el = el.previousElementSibling) {
+        if (!el.classList.contains('lyric-dots-line')) continue;
+        // A folded row nets to zero: no height, and a negative top margin
+        // that cancels its gap. Whatever it adds right now will disappear.
+        shift += el.offsetHeight + gap + (parseFloat(getComputedStyle(el).marginTop) || 0);
+    }
+    if (activeEl.classList.contains('lyric-dots-line')) {
+        const style = getComputedStyle(activeEl);
+        shift += parseFloat(style.marginTop) || 0;
+        height = (parseFloat(style.fontSize) || 0) * LYRIC_DOTS_LINE_EM;
+    }
+    return { shift, height };
+}
+
+let desktopLyricsTrackY = 0;
+
+function desktopLyricsMaxTopInset() {
+    return Math.max(16, Math.min(28, lyricsScrollArea.clientHeight * 0.08));
+}
+
 function centerDesktopLyric(activeEl, immediate = false) {
     if (!activeEl || !lyricsScrollArea || !lyricsContent || window.innerWidth <= 900) return;
+    // While the user is scrolling through the lyrics, leave the track where
+    // they put it; it returns to the sung line when they stop.
+    if (isUserScrollingLyrics && !immediate) return;
+    if (isUserScrollingLyrics) stopLyricsBrowsing({ recenter: false });
 
     // Desktop never scrolls the outer viewport. The inner lyric track moves so
     // the active line's layout center lands on the viewport's visual center.
     lyricsScrollArea.scrollTop = 0;
-    const lineCenter = activeEl.offsetTop + (activeEl.offsetHeight / 2);
+    const settled = lyricSettledGeometry(activeEl);
+    const lineCenter = activeEl.offsetTop - settled.shift + (settled.height / 2);
     const centeredTranslateY = (lyricsScrollArea.clientHeight / 2) - lineCenter;
     // The first few lines have no content above them. Full centering would move
     // the entire track down by half a viewport and create the large empty band
     // seen in the screenshot. Once enough lines exist above, normal centering
     // and the exact same spring transition take over.
-    const maxTopInset = Math.max(16, Math.min(28, lyricsScrollArea.clientHeight * 0.08));
+    const maxTopInset = desktopLyricsMaxTopInset();
     const translateY = Math.min(maxTopInset, centeredTranslateY);
+    desktopLyricsTrackY = Math.round(translateY);
 
     if (immediate) lyricsContent.classList.add('lyrics-position-immediate');
     lyricsContent.style.transform = `translateY(${Math.round(translateY)}px)`;
@@ -2014,6 +2162,104 @@ function resetDesktopLyricsPresentation({ resetLineDepth = true } = {}) {
         lineEl.removeAttribute('data-distance');
         lineEl.classList.remove('lyric-line-far');
     });
+}
+
+/* ----- Browsing the lyrics by hand ------------------------------------------
+ * Phones scroll natively (below). On desktop the lyrics are a moving track
+ * inside a clipped panel, so the mouse wheel and touch drags move the track
+ * directly. Every line turns sharp and readable while browsing, and after a
+ * few seconds without input the track springs back to the sung line. */
+const LYRICS_BROWSE_RESUME_MS = 3000;
+let desktopBrowseY = 0;
+let desktopBrowseTarget = 0;
+let desktopBrowseRaf = null;
+
+function readDesktopTrackY() {
+    // The track may be mid-spring; start browsing from where it actually is.
+    try {
+        const matrix = new DOMMatrixReadOnly(getComputedStyle(lyricsContent).transform);
+        if (Number.isFinite(matrix.m42)) return matrix.m42;
+    } catch (e) { /* 'none' or unsupported */ }
+    return desktopLyricsTrackY;
+}
+
+function desktopBrowseBounds() {
+    const lines = lyricsContent.querySelectorAll('.lyric-line');
+    const max = desktopLyricsMaxTopInset();
+    const last = lines[lines.length - 1];
+    if (!last) return { min: max, max };
+    const lastCenter = last.offsetTop + last.offsetHeight / 2;
+    return { min: Math.min(max, lyricsScrollArea.clientHeight / 2 - lastCenter), max };
+}
+
+function stepDesktopBrowse() {
+    desktopBrowseRaf = null;
+    if (!isUserScrollingLyrics || !lyricsContent) return;
+    const diff = desktopBrowseTarget - desktopBrowseY;
+    desktopBrowseY = Math.abs(diff) < 0.4 ? desktopBrowseTarget : desktopBrowseY + diff * 0.24;
+    lyricsContent.style.transform = `translateY(${desktopBrowseY.toFixed(1)}px)`;
+    if (desktopBrowseY !== desktopBrowseTarget) desktopBrowseRaf = requestAnimationFrame(stepDesktopBrowse);
+}
+
+function scheduleLyricsBrowseResume() {
+    if (userScrollingLyricsTimeout) clearTimeout(userScrollingLyricsTimeout);
+    userScrollingLyricsTimeout = setTimeout(() => {
+        userScrollingLyricsTimeout = null;
+        stopLyricsBrowsing({ recenter: true });
+    }, LYRICS_BROWSE_RESUME_MS);
+}
+
+function browseDesktopLyrics(deltaY) {
+    if (!isLyricsActive || isLyricEditMode || !lyricsAreSynced || !lyricsContent || !lyricsScrollArea) return false;
+    if (window.innerWidth <= 900) return false;
+    if (!isUserScrollingLyrics) {
+        isUserScrollingLyrics = true;
+        desktopBrowseY = readDesktopTrackY();
+        desktopBrowseTarget = desktopBrowseY;
+        lyricsScrollArea.classList.add('is-user-scrolling');
+    }
+    const bounds = desktopBrowseBounds();
+    desktopBrowseTarget = Math.min(bounds.max, Math.max(bounds.min, desktopBrowseTarget - deltaY));
+    if (desktopBrowseRaf === null) desktopBrowseRaf = requestAnimationFrame(stepDesktopBrowse);
+    scheduleLyricsBrowseResume();
+    return true;
+}
+
+function stopLyricsBrowsing({ recenter = true } = {}) {
+    if (userScrollingLyricsTimeout) {
+        clearTimeout(userScrollingLyricsTimeout);
+        userScrollingLyricsTimeout = null;
+    }
+    if (desktopBrowseRaf !== null) cancelAnimationFrame(desktopBrowseRaf);
+    desktopBrowseRaf = null;
+    const wasBrowsing = isUserScrollingLyrics;
+    isUserScrollingLyrics = false;
+    if (lyricsScrollArea) lyricsScrollArea.classList.remove('is-user-scrolling');
+    if (recenter && wasBrowsing && isLyricsActive && !isLyricEditMode) scrollToActiveLyric();
+}
+
+function handleLyricsWheel(event) {
+    if (window.innerWidth <= 900 || event.ctrlKey) return;
+    const unit = event.deltaMode === 1 ? 32 : event.deltaMode === 2 ? lyricsScrollArea.clientHeight : 1;
+    if (browseDesktopLyrics(event.deltaY * unit) && event.cancelable) event.preventDefault();
+}
+
+// Touch / pen drags on desktop-sized screens (touch laptops, iPad landscape).
+let lyricsDragPointer = null;
+let lyricsDragLastY = 0;
+function handleLyricsPointerDown(event) {
+    if (window.innerWidth <= 900 || event.pointerType === 'mouse') return;
+    lyricsDragPointer = event.pointerId;
+    lyricsDragLastY = event.clientY;
+}
+function handleLyricsPointerMove(event) {
+    if (event.pointerId !== lyricsDragPointer) return;
+    const dy = event.clientY - lyricsDragLastY;
+    lyricsDragLastY = event.clientY;
+    if (dy) browseDesktopLyrics(-dy);
+}
+function handleLyricsPointerEnd(event) {
+    if (event.pointerId === lyricsDragPointer) lyricsDragPointer = null;
 }
 
 function handleLyricsInteraction() {
@@ -2073,7 +2319,12 @@ function playLyricsEntrance() {
 
 if (lyricsScrollArea) {
     lyricsScrollArea.addEventListener('wheel', handleLyricsInteraction, { passive: true });
+    lyricsScrollArea.addEventListener('wheel', handleLyricsWheel, { passive: false });
     lyricsScrollArea.addEventListener('touchmove', handleLyricsInteraction, { passive: true });
+    lyricsScrollArea.addEventListener('pointerdown', handleLyricsPointerDown);
+    lyricsScrollArea.addEventListener('pointermove', handleLyricsPointerMove);
+    lyricsScrollArea.addEventListener('pointerup', handleLyricsPointerEnd);
+    lyricsScrollArea.addEventListener('pointercancel', handleLyricsPointerEnd);
 }
 
 if (btnLyrics) {
@@ -2101,7 +2352,7 @@ function deactivateLyricsView({ resetLineDepth = true } = {}) {
     isLyricsActive = false;
     activeLyricIndex = -1;
     clearLyricsEntrance();
-    if (lyricsScrollArea) lyricsScrollArea.classList.remove('is-user-scrolling');
+    stopLyricsBrowsing({ recenter: false });
     stopDesktopLyricsSync();
     resetDesktopLyricsPresentation({ resetLineDepth });
     isUserScrollingLyrics = false;
@@ -2343,6 +2594,9 @@ function updateActiveLyric(immediate = false) {
             // scrolling so the lyrics can still be browsed with a finger.
             setDesktopLyricDepth(lineElements, activeIndex);
             scrollToActiveLyric(newActiveEl, immediate || !currentActiveEl);
+            // Switch exactly on time rather than on the next coarse
+            // 'timeupdate' (up to ~250ms late).
+            startDesktopLyricsSync();
         }
     }
 }
@@ -2367,7 +2621,8 @@ function scrollToActiveLyric(activeEl = null, immediate = false) {
         const containerHeight = lyricsScrollArea.clientHeight;
         if (containerHeight <= 0) return;
 
-        const activeHeight = activeEl.getBoundingClientRect().height;
+        const settled = lyricSettledGeometry(activeEl);
+        const activeHeight = settled.height;
         const edgePadding = Math.max(40, Math.round((containerHeight - activeHeight) / 2));
         // Bottom padding allows the final lyric lines to scroll into the center
         lyricsContent.style.setProperty('--lyrics-scroll-padding', `${edgePadding}px`);
@@ -2375,10 +2630,10 @@ function scrollToActiveLyric(activeEl = null, immediate = false) {
         const scrollAreaRect = lyricsScrollArea.getBoundingClientRect();
         const activeRect = activeEl.getBoundingClientRect();
 
-        const relativeTop = (activeRect.top - scrollAreaRect.top) + lyricsScrollArea.scrollTop;
+        const relativeTop = (activeRect.top - scrollAreaRect.top) + lyricsScrollArea.scrollTop - settled.shift;
 
         // When the song is near the beginning, start cleanly at top (scrollTop: 0)
-        const rawTarget = relativeTop - (containerHeight / 2) + (activeRect.height / 2);
+        const rawTarget = relativeTop - (containerHeight / 2) + (activeHeight / 2);
         const target = Math.max(0, Math.round(rawTarget));
         if (immediate) {
             // The scroller has `scroll-behavior: smooth` in CSS, which also
@@ -2408,7 +2663,7 @@ window.addEventListener('resize', () => {
                 centerDesktopLyric(activeEl, true);
             }
         } else {
-            stopDesktopLyricsSync();
+            startDesktopLyricsSync();
             resetDesktopLyricsPresentation({ resetLineDepth: false });
             const activeEl = lyricsContent?.querySelector('.lyric-line.active');
             const activeIndex = Number(activeEl?.dataset.index);
@@ -2535,6 +2790,7 @@ let audioContext = null;
 let mediaElementSource = null;
 let eqNodes = {};
 let isEqEnabled = false;
+let analyserNode = null;
 
 const EQ_PRESETS = {
     'custom': null,
@@ -2548,14 +2804,25 @@ const EQ_PRESETS = {
 // Setup EQ nodes
 function initEq() {
     if (audioContext) return;
-
-    // Create audio context
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    audioContext = new AudioContext();
+    buildAudioGraph(new AudioContext());
+}
 
-    // Create media element source
-    // Ensure CORS allows this if files are loaded across origins
+/* One audio graph serves both the equalizer and the beat analyser (the
+ * background pulse and progress-bar glow in playerfx.js). The analyser is a
+ * passive tap: it is never connected to the speakers, so it can't change what
+ * you hear. Once an <audio> element is routed through Web Audio it stays
+ * routed, which is why the graph is only ever built once. */
+function buildAudioGraph(context) {
+    audioContext = context;
+
+    // <audio crossorigin="anonymous"> means streams already need CORS to play,
+    // so routing them through Web Audio can't silence them.
     mediaElementSource = audioContext.createMediaElementSource(audio);
+
+    analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 2048;
+    analyserNode.smoothingTimeConstant = 0.5;
 
     // Create filters
     eqNodes.low = audioContext.createBiquadFilter();
@@ -2581,6 +2848,48 @@ function initEq() {
     updateEqRoute();
 }
 
+/* Beat analysis is skipped on iPhone / iPad (and in the iOS app): routing the
+ * audio element through Web Audio there stops music when the screen locks. */
+function audioAnalysisSupported() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return false;
+    if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) return false;
+    const ua = navigator.userAgent || '';
+    const iOS = /iP(hone|ad|od)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return !iOS;
+}
+
+let _analyserPromise = null;
+/** Resolves to the AnalyserNode, or null when analysis isn't available. */
+function ensureAudioAnalyser() {
+    if (analyserNode) return Promise.resolve(analyserNode);
+    if (!audioAnalysisSupported()) return Promise.resolve(null);
+    if (_analyserPromise) return _analyserPromise;
+    _analyserPromise = (async () => {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const context = new AudioContext();
+        // Never route the music into a context that isn't running yet - that
+        // would mute it. Browsers start one only after a user gesture.
+        if (context.state !== 'running') {
+            try { await Promise.race([context.resume(), new Promise(r => setTimeout(r, 800))]); } catch (e) { /* stays suspended */ }
+        }
+        if (context.state !== 'running' || analyserNode || audioContext) {
+            context.close().catch(() => {});
+            return analyserNode;
+        }
+        buildAudioGraph(context);
+        return analyserNode;
+    })().finally(() => { _analyserPromise = null; });
+    return _analyserPromise;
+}
+
+window.StreamifyAudio = Object.freeze({
+    ensureAnalyser: ensureAudioAnalyser,
+    get analyser() { return analyserNode; },
+    get context() { return audioContext; },
+    supported: audioAnalysisSupported
+});
+
 function updateEqRoute() {
     if (!audioContext) return;
 
@@ -2589,6 +2898,9 @@ function updateEqRoute() {
     eqNodes.low.disconnect();
     eqNodes.mid.disconnect();
     eqNodes.high.disconnect();
+
+    // Passive tap for the beat analyser (survives every re-route).
+    if (analyserNode) mediaElementSource.connect(analyserNode);
 
     if (isEqEnabled) {
         // Connect through EQ

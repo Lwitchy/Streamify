@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/Static/home/css/layout.css?v=4.46">
     <link rel="stylesheet" href="/Static/home/css/components.css?v=4.10">
     <link rel="stylesheet" href="/Static/home/css/upload.css?v=4.10">
-    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.52">
+    <link rel="stylesheet" href="/Static/home/css/player.css?v=4.55">
     <link rel="stylesheet" href="/Static/home/css/modals.css?v=4.52">
     <link rel="stylesheet" href="/Static/home/css/library.css?v=4.43">
     <link rel="stylesheet" href="/Static/home/css/downloads.css?v=4.34">
@@ -19,7 +19,8 @@
 
     <!-- Mobile Overrides (Must be last) -->
 <link rel="stylesheet" href="/Static/home/css/home_mobile.css?v=4.31" media="(max-width: 768px)">
-    <link rel="stylesheet" href="/Static/home/css/mobile_app.css?v=1.6">
+    <link rel="stylesheet" href="/Static/home/css/mobile_app.css?v=1.9">
+    <link rel="stylesheet" href="/Static/home/css/customize.css?v=1.3">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -40,10 +41,13 @@
     <link href='/Static/vendor/boxicons/boxicons.min.css?v=4.8' rel='stylesheet'>
     <link href="/Static/vendor/fonts/outfit.css?v=4.8" rel="stylesheet">
     <link href="/Static/vendor/fonts/plus-jakarta-sans.css?v=4.44" rel="stylesheet">
+    <link href="/Static/vendor/fonts/customization-fonts.css?v=1.0" rel="stylesheet">
     <link rel="stylesheet" href="/Static/vendor/cropperjs/cropper.min.css?v=4.8">
 <script src="/Static/home/js/safe-area.js?v=1.0"></script>
-<script src="/Static/home/js/experiments.js?v=4.37"></script>
+<script src="/Static/home/js/experiments.js?v=4.38"></script>
     <script src="/Static/home/js/theme.js?v=4.36"></script>
+    <script src="/Static/home/js/logo.js?v=1.0"></script>
+    <script src="/Static/home/js/motion.js?v=1.0"></script>
 </head>
 
 <body class="app-booting">
@@ -51,7 +55,7 @@
     <div class="app-boot-screen" id="app-boot-screen" role="status" aria-live="polite"
         aria-label="Preparing Streamify">
         <div class="app-boot-intro-wrapper">
-            <h1 class="streamify-logo app-boot-intro-text">Streamify</h1>
+            <h1 class="streamify-logo app-boot-intro-text" data-text="Streamify">Streamify</h1>
         </div>
     </div>
 
@@ -60,7 +64,7 @@
     <!-- SIDEBAR -->
     <aside class="sidebar">
         <div class="morph-logo">
-            <span class="streamify-logo morph-text gradient-text" aria-label="Streamify">Streamify</span>
+            <span class="streamify-logo morph-text gradient-text" aria-label="Streamify" data-text="Streamify">Streamify</span>
         </div>
         <div class="sidebar-scroll-area">
             <nav class="sidebar-nav">
@@ -123,7 +127,7 @@
                 style="font-size: 24px; margin-right: 15px; cursor: pointer; display: none;"></i>
 
             <div class="top-bar-logo" id="top-bar-logo">
-                <span class="streamify-logo morph-text gradient-text" aria-label="Streamify">Streamify</span>
+                <span class="streamify-logo morph-text gradient-text" aria-label="Streamify" data-text="Streamify">Streamify</span>
             </div>
 
             <div class="search-wrapper">
@@ -1200,7 +1204,161 @@
                                 </label>
                             </div>
                         </div>
-                                            <section class="lyrics-appearance" aria-labelledby="lyrics-appearance-title">
+                        <section class="logo-appearance" id="logo-appearance" aria-labelledby="logo-appearance-title">
+                            <div class="appearance-heading">
+                                <h4 id="logo-appearance-title">Logo</h4>
+                                <p>Make the Streamify wordmark yours. Saved on this device.</p>
+                            </div>
+
+                            <div class="logo-preview">
+                                <span class="streamify-logo morph-text gradient-text logo-preview-mark" aria-hidden="true" data-text="Streamify">Streamify</span>
+                                <button type="button" class="lyrics-pill logo-replay" id="logo-replay-btn" title="Play the entrance animation again">
+                                    <i class='bx bx-revision'></i><span>Replay</span>
+                                </button>
+                            </div>
+
+                            <fieldset class="theme-picker">
+                                <legend>Font</legend>
+                                <div class="theme-option-grid logo-font-grid" id="logo-font-grid"></div>
+                            </fieldset>
+
+                            <fieldset class="theme-picker">
+                                <legend>Color</legend>
+                                <div class="theme-option-grid" id="logo-color-grid"></div>
+                                <div class="appearance-setting-row" id="logo-custom-colors">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label">Custom gradient</span>
+                                        <p>Pick two colors. Picking one switches the logo to Custom.</p>
+                                    </div>
+                                    <div class="custom-color-pair">
+                                        <input type="color" id="logo-custom-from" value="#ec4899" aria-label="Gradient start color">
+                                        <i class='bx bx-right-arrow-alt' aria-hidden="true"></i>
+                                        <input type="color" id="logo-custom-to" value="#8b5cf6" aria-label="Gradient end color">
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="theme-picker">
+                                <legend>Effect</legend>
+                                <div class="logo-chip-grid" id="logo-effect-grid"></div>
+                            </fieldset>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Animation</legend>
+
+                                <div class="appearance-setting-row logo-option-row">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label">Entrance</span>
+                                        <p>Plays once when Streamify opens.</p>
+                                    </div>
+                                    <div class="logo-chip-grid" id="logo-intro-grid"></div>
+                                </div>
+
+                                <div class="appearance-setting-row logo-option-row">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label">Loop</span>
+                                        <p>Keeps moving after the entrance.</p>
+                                    </div>
+                                    <div class="logo-chip-grid" id="logo-motion-grid"></div>
+                                </div>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="logo-flow-label">Color flow</span>
+                                        <p>How fast the gradient moves through the letters.</p>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="logo-flow-label">
+                                        <label><input type="radio" name="logo-flow" value="off"><span>Off</span></label>
+                                        <label><input type="radio" name="logo-flow" value="slow"><span>Slow</span></label>
+                                        <label><input type="radio" name="logo-flow" value="normal"><span>Normal</span></label>
+                                        <label><input type="radio" name="logo-flow" value="fast"><span>Fast</span></label>
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Style</legend>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="logo-size-label">Size</span>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="logo-size-label">
+                                        <label><input type="radio" name="logo-size" value="small"><span>Small</span></label>
+                                        <label><input type="radio" name="logo-size" value="default"><span>Default</span></label>
+                                        <label><input type="radio" name="logo-size" value="large"><span>Large</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="logo-case-label">Letters</span>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="logo-case-label">
+                                        <label><input type="radio" name="logo-case" value="none"><span>Streamify</span></label>
+                                        <label><input type="radio" name="logo-case" value="lower"><span>streamify</span></label>
+                                        <label><input type="radio" name="logo-case" value="upper"><span>STREAMIFY</span></label>
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <div class="appearance-actions">
+                                <button type="button" class="btn btn-outline" id="logo-reset-btn"><i class='bx bx-reset'></i> Reset logo</button>
+                            </div>
+                        </section>
+
+                        <section class="player-appearance" id="player-appearance" aria-labelledby="player-appearance-title">
+                            <div class="appearance-heading">
+                                <h4 id="player-appearance-title">Player</h4>
+                                <p>Colors and motion around the music. Saved on this device.</p>
+                            </div>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Color</legend>
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="player-color-label">Player color</span>
+                                        <p>Used for the progress and volume bars, the playing song and the glow.</p>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="player-color-label">
+                                        <label><input type="radio" name="player-color" value="cover"><span>From cover</span></label>
+                                        <label><input type="radio" name="player-color" value="theme"><span>Theme</span></label>
+                                        <label><input type="radio" name="player-color" value="lyrics"><span>Lyrics color</span></label>
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Motion</legend>
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="fx-pulse-toggle">Pulse with the music</label>
+                                        <p id="fx-pulse-note">The background glows brighter on every beat while a song plays.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="fx-pulse-toggle">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="fx-progress-glow-toggle">Glowing progress bar</label>
+                                        <p>The tip of the progress bar glows with how loud the song is.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="fx-progress-glow-toggle">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </fieldset>
+
+                            <div class="appearance-actions">
+                                <button type="button" class="btn btn-outline" id="fx-reset-btn"><i class='bx bx-reset'></i> Reset player</button>
+                            </div>
+                        </section>
+
+                        <section class="lyrics-appearance" aria-labelledby="lyrics-appearance-title">
                             <div class="appearance-heading">
                                 <h4 id="lyrics-appearance-title">Lyrics</h4>
                                 <p>How lyrics look in the player. Saved on this device.</p>
@@ -1219,17 +1377,68 @@
                                 <div class="lyrics-preview-next">That lavender haze</div>
                             </div>
 
+                            <fieldset class="theme-picker">
+                                <legend>Font</legend>
+                                <div class="theme-option-grid lyrics-font-grid">
+                                    <label class="theme-option lyrics-font-option"><input type="radio" name="lyrics-font" value="default"><span style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif">System</span></label>
+                                    <label class="theme-option lyrics-font-option"><input type="radio" name="lyrics-font" value="jakarta"><span style="font-family: 'Plus Jakarta Sans', sans-serif">Jakarta</span></label>
+                                    <label class="theme-option lyrics-font-option"><input type="radio" name="lyrics-font" value="outfit"><span style="font-family: 'Outfit', sans-serif">Outfit</span></label>
+                                    <label class="theme-option lyrics-font-option"><input type="radio" name="lyrics-font" value="rounded"><span style="font-family: 'Nunito', sans-serif">Rounded</span></label>
+                                    <label class="theme-option lyrics-font-option"><input type="radio" name="lyrics-font" value="serif"><span style="font-family: 'Playfair Display', serif">Serif</span></label>
+                                    <label class="theme-option lyrics-font-option"><input type="radio" name="lyrics-font" value="mono"><span style="font-family: 'JetBrains Mono', monospace">Mono</span></label>
+                                    <label class="theme-option lyrics-font-option"><input type="radio" name="lyrics-font" value="hand"><span style="font-family: 'Caveat', cursive">Handwritten</span></label>
+                                </div>
+                            </fieldset>
+
                             <fieldset class="theme-picker lyrics-option-group">
-                                <legend>Enhanced lyrics</legend>
+                                <legend>Text</legend>
 
                                 <div class="appearance-setting-row has-segmented">
                                     <div class="appearance-setting-copy">
                                         <span class="appearance-setting-label" id="lyrics-size-label">Text size</span>
                                     </div>
                                     <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-size-label">
-                                        <label><input type="radio" name="lyrics-size" value="small"><span>Small</span></label>
-                                        <label><input type="radio" name="lyrics-size" value="default"><span>Default</span></label>
-                                        <label><input type="radio" name="lyrics-size" value="large"><span>Large</span></label>
+                                        <label><input type="radio" name="lyrics-size" value="small"><span>S</span></label>
+                                        <label><input type="radio" name="lyrics-size" value="default"><span>M</span></label>
+                                        <label><input type="radio" name="lyrics-size" value="large"><span>L</span></label>
+                                        <label><input type="radio" name="lyrics-size" value="xl"><span>XL</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-case-label">Letters</span>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-case-label">
+                                        <label><input type="radio" name="lyrics-case" value="none"><span>As written</span></label>
+                                        <label><input type="radio" name="lyrics-case" value="upper"><span>ABC</span></label>
+                                        <label><input type="radio" name="lyrics-case" value="lower"><span>abc</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row">
+                                    <div class="appearance-setting-copy">
+                                        <label class="appearance-setting-label" for="lyrics-bold-toggle">Bold lyrics</label>
+                                        <p>Heavier lettering for every line.</p>
+                                    </div>
+                                    <label class="switch appearance-switch">
+                                        <input type="checkbox" id="lyrics-bold-toggle" data-lyrics-pref="bold">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Color &amp; glow</legend>
+
+                                <div class="appearance-setting-row logo-option-row" id="lyrics-color-row">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-color-label">Highlight color</span>
+                                        <p>The line being sung, and its glow.</p>
+                                    </div>
+                                    <div class="lyrics-custom-color">
+                                        <div class="lyrics-color-grid" id="lyrics-color-grid" role="radiogroup" aria-labelledby="lyrics-color-label"></div>
+                                        <input type="color" id="lyrics-custom-color" value="#ff7eb6" aria-label="Custom highlight color">
                                     </div>
                                 </div>
 
@@ -1247,17 +1456,6 @@
 
                                 <div class="appearance-setting-row">
                                     <div class="appearance-setting-copy">
-                                        <label class="appearance-setting-label" for="lyrics-bold-toggle">Bold lyrics</label>
-                                        <p>Heavier lettering for every line.</p>
-                                    </div>
-                                    <label class="switch appearance-switch">
-                                        <input type="checkbox" id="lyrics-bold-toggle" data-lyrics-pref="bold">
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-
-                                <div class="appearance-setting-row">
-                                    <div class="appearance-setting-copy">
                                         <label class="appearance-setting-label" for="lyrics-held-glow-toggle">Glowing held notes</label>
                                         <p>Long, held words light up as they're sung, brightest at the end of a line. Needs word-by-word lyrics.</p>
                                     </div>
@@ -1265,6 +1463,60 @@
                                         <input type="checkbox" id="lyrics-held-glow-toggle" data-lyrics-pref="heldGlow">
                                         <span class="slider"></span>
                                     </label>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Layout</legend>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-align-label">Alignment</span>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-align-label">
+                                        <label><input type="radio" name="lyrics-align" value="left"><span>Left</span></label>
+                                        <label><input type="radio" name="lyrics-align" value="center"><span>Center</span></label>
+                                        <label><input type="radio" name="lyrics-align" value="right"><span>Right</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-spacing-label">Line spacing</span>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-spacing-label">
+                                        <label><input type="radio" name="lyrics-spacing" value="compact"><span>Compact</span></label>
+                                        <label><input type="radio" name="lyrics-spacing" value="default"><span>Default</span></label>
+                                        <label><input type="radio" name="lyrics-spacing" value="relaxed"><span>Relaxed</span></label>
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="theme-picker lyrics-option-group">
+                                <legend>Motion</legend>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-anim-label">Line movement</span>
+                                        <p>How lines glide when the next one starts.</p>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-anim-label">
+                                        <label><input type="radio" name="lyrics-anim" value="spring"><span>Bouncy</span></label>
+                                        <label><input type="radio" name="lyrics-anim" value="smooth"><span>Smooth</span></label>
+                                        <label><input type="radio" name="lyrics-anim" value="snappy"><span>Snappy</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="appearance-setting-row has-segmented">
+                                    <div class="appearance-setting-copy">
+                                        <span class="appearance-setting-label" id="lyrics-blur-label">Background blur</span>
+                                        <p>Blur on the lines before and after the one being sung.</p>
+                                    </div>
+                                    <div class="lyrics-segmented" role="radiogroup" aria-labelledby="lyrics-blur-label">
+                                        <label><input type="radio" name="lyrics-blur" value="off"><span>Off</span></label>
+                                        <label><input type="radio" name="lyrics-blur" value="light"><span>Light</span></label>
+                                        <label><input type="radio" name="lyrics-blur" value="default"><span>Full</span></label>
+                                    </div>
                                 </div>
 
                                 <div class="appearance-setting-row">
@@ -1278,6 +1530,10 @@
                                     </label>
                                 </div>
                             </fieldset>
+
+                            <div class="appearance-actions">
+                                <button type="button" class="btn btn-outline" id="lyrics-reset-btn"><i class='bx bx-reset'></i> Reset lyrics</button>
+                            </div>
                         </section>
 
                         <section class="artist-appearance" aria-labelledby="artist-appearance-title">
@@ -1366,17 +1622,16 @@
                         <div class="settings-toggle-row experimental-feature-row ios-only-setting">
                             <div>
                                 <div class="experimental-feature-title">
-                                    <strong>Real lyric blur on iPhone</strong>
+                                    <strong>Simple lyric blur on iPhone</strong>
                                 </div>
                                 <span class="experimental-feature-description" id="experimental-true-blur-description">
-                                    Uses true blur and glow on the lyrics, like the desktop app. iOS can briefly flash
-                                    thin coloured lines while lyrics change with this on. Off uses a smooth
-                                    lookalike that never glitches.
+                                    Draws the lyric blur with a lightweight lookalike instead of real blur.
+                                    Try it if lyrics stutter on an older iPhone.
                                 </span>
                             </div>
                             <label class="switch">
-                                <input type="checkbox" id="experimental-true-blur-toggle" data-experiment="lyricsTrueBlur"
-                                    aria-label="Enable real lyric blur on iPhone"
+                                <input type="checkbox" id="experimental-true-blur-toggle" data-experiment="lyricsSimpleBlur"
+                                    aria-label="Enable simple lyric blur on iPhone"
                                     aria-describedby="experimental-true-blur-description">
                                 <span class="slider"></span>
                             </label>
@@ -2495,6 +2750,12 @@
             <!-- Multi-track list (playlists and albums) -->
             <div class="resolve-preview-list hidden" id="downloads-confirm-list"></div>
 
+            <!-- Quality preference, shown only for multi-track imports -->
+            <div class="resolve-quality hidden" id="downloads-confirm-quality">
+                <span class="resolve-quality-label">Quality</span>
+                <div class="resolve-quality-options" id="downloads-confirm-quality-options"></div>
+            </div>
+
             <p class="download-confirm-note" id="downloads-confirm-note"></p>
 
             <div class="modal-actions">
@@ -2510,7 +2771,7 @@
          It powers live download progress. Loaded before the page scripts so
          window.io exists by the time downloads.js connects. -->
     <script src="/socket.io/socket.io.js"></script>
-    <script src="/Static/home/js/config.js?v=4.24"></script>
+    <script src="/Static/home/js/config.js?v=4.25"></script>
     <script src="/Static/vendor/cropperjs/cropper.min.js?v=4.8"></script>
     <script src="/Static/home/js/offline.js?v=4.38"></script>
     <script src="/Static/home/js/telemetry.js?v=1.0"></script>
@@ -2520,14 +2781,15 @@
     <!-- Must load before ui.js: activateSettingsTab() calls into
          window.StreamifyUpdates when the Updates pane is opened. -->
     <script src="/Static/home/js/updates.js?v=4.46"></script>
-    <script src="/Static/home/js/player.js?v=4.49"></script>
-    <script src="/Static/home/js/lyrics.js?v=1.6"></script>
-    <script src="/Static/home/js/api_v2.js?v=4.45"></script>
+    <script src="/Static/home/js/player.js?v=4.51"></script>
+    <script src="/Static/home/js/lyrics.js?v=1.9"></script>
+    <script src="/Static/home/js/playerfx.js?v=1.0"></script>
+    <script src="/Static/home/js/api_v2.js?v=4.46"></script>
     <script src="/Static/home/js/albums.js?v=1.4"></script>
-    <script src="/Static/home/js/likes.js?v=1.0"></script>
+    <script src="/Static/home/js/likes.js?v=1.1"></script>
     <script src="/Static/home/js/artists.js?v=1.2"></script>
     <script src="/Static/home/js/homepage.js?v=1.0"></script>
-    <script src="/Static/home/js/downloads.js?v=4.44"></script>
+    <script src="/Static/home/js/downloads.js?v=4.45"></script>
     <script src="/Static/home/js/ui.js?v=4.56"></script>
     <script src="/Static/home/js/mobile_app.js?v=1.2"></script>
 </body>

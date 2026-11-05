@@ -1,0 +1,775 @@
+/* =========================================================================
+   Customization: Logo + extra Lyrics options (Settings > Appearance)
+   logo.js and lyrics.js put the saved choices on <html> as data attributes
+   and custom properties. Without them every rule here is inert, so the app
+   looks exactly as before.
+========================================================================= */
+
+/* ---------------------------------------------------------------- Logo -- */
+
+:root.logo-custom .streamify-logo {
+    font-family: var(--logo-family) !important;
+    font-weight: var(--logo-weight) !important;
+    font-style: var(--logo-style);
+    font-variation-settings: var(--logo-variation);
+    letter-spacing: var(--logo-tracking);
+    text-transform: var(--logo-case);
+    background-image: var(--logo-gradient);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    /* Script faces have tall loops and deep descenders; the gradient is only
+       painted inside the box, so give the glyphs room without moving layout. */
+    padding: 0.2em 0.14em 0.28em 0.08em;
+    margin: -0.2em -0.14em -0.28em -0.08em;
+    line-height: 1.2;
+    position: relative;
+    isolation: isolate;
+}
+
+/* Effects. A text-shadow on gradient text paints over the gradient, so the
+   gradient moves to an ::after copy of the word (from data-text) on top, and
+   the element's own transparent text carries the shadow underneath. Without
+   data-text this falls back to the plain gradient. */
+:root.logo-custom .streamify-logo[data-text] {
+    background-image: none;
+    text-shadow: var(--logo-shadow, none);
+}
+
+:root.logo-custom .streamify-logo[data-text]::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    padding: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    line-height: inherit;
+    white-space: nowrap;
+    text-shadow: none;
+    -webkit-text-stroke: 0;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-image: var(--logo-gradient);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: var(--logo-flow);
+    pointer-events: none;
+}
+
+:root.logo-custom .morph-text {
+    font-size: calc(30px * var(--logo-scale, 1));
+    opacity: 1;
+    transform: none;
+    filter: none;
+    animation:
+        var(--logo-intro) 0.1s backwards,
+        var(--logo-flow),
+        var(--logo-motion) 2.1s infinite;
+}
+
+:root.logo-custom .app-boot-intro-text {
+    font-size: calc(68px * var(--logo-scale, 1));
+    animation: var(--logo-flow), var(--logo-motion) 0.6s infinite;
+}
+
+/* Outline: hollow letters traced in the logo color. */
+:root.logo-custom[data-logo-effect="outline"] .streamify-logo {
+    background-image: none;
+    -webkit-text-stroke: max(1px, 0.04em) var(--logo-accent);
+}
+
+:root.logo-custom[data-logo-effect="outline"] .streamify-logo::after {
+    display: none;
+}
+
+:root.logo-custom[data-logo-font="pixel"] .streamify-logo {
+    -webkit-font-smoothing: none;
+}
+
+/* The top bar keeps a fixed slot so it can animate open; follow the size. */
+@media (min-width: 901px) {
+    :root.logo-custom body.player-section-active .top-bar-logo {
+        width: calc(150px * var(--logo-size-scale, 1));
+    }
+}
+
+:root.logo-custom .top-bar-logo {
+    overflow: clip;
+    overflow-clip-margin: 24px;
+}
+
+@keyframes logoIntroMorph {
+    0% { opacity: 0; filter: blur(14px); transform: scale(0.88); }
+    40% { opacity: 0.6; filter: blur(6px); transform: scale(0.96); }
+    100% { opacity: 1; filter: blur(0px); transform: scale(1); }
+}
+
+@keyframes logoIntroFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes logoIntroPop {
+    0% { opacity: 0; transform: scale(0.3); }
+    55% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes logoIntroDrop {
+    0% { opacity: 0; transform: translateY(-70%); }
+    55% { opacity: 1; transform: translateY(8%); }
+    78% { transform: translateY(-3%); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes logoIntroWipe {
+    from { clip-path: inset(-40% 100% -50% -20%); }
+    to { clip-path: inset(-40% -20% -50% -20%); }
+}
+
+@keyframes logoMotionPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes logoMotionFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-0.09em); }
+}
+
+@keyframes logoMotionSwing {
+    0%, 100% { transform: rotate(-2.5deg); }
+    50% { transform: rotate(2.5deg); }
+}
+
+@keyframes logoMotionBounce {
+    0%, 45%, 100% { transform: translateY(0) scale(1, 1); }
+    12% { transform: translateY(0) scale(1.04, 0.94); }
+    24% { transform: translateY(-0.16em) scale(0.97, 1.04); }
+    36% { transform: translateY(0) scale(1.02, 0.97); }
+}
+
+@keyframes logoMotionFlicker {
+    0%, 17%, 19%, 21%, 61%, 64%, 100% { opacity: 1; }
+    18% { opacity: 0.45; }
+    20% { opacity: 0.7; }
+    62% { opacity: 0.35; }
+    63% { opacity: 0.85; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root.logo-custom .morph-text,
+    :root.logo-custom .app-boot-intro-text {
+        animation: none;
+    }
+}
+
+/* --- Logo settings UI --- */
+.logo-appearance {
+    margin-top: 28px;
+}
+
+.logo-preview {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 116px;
+    margin-bottom: 16px;
+    padding: 22px 20px;
+    box-sizing: border-box;
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at 20% 30%, rgba(var(--gradient-1-rgb, 65, 105, 225), 0.14), transparent 55%),
+        radial-gradient(circle at 80% 70%, rgba(var(--gradient-2-rgb, 129, 100, 215), 0.12), transparent 55%),
+        var(--sidebar-bg, #0b0b0f);
+    overflow: hidden;
+}
+
+:root.logo-custom .logo-preview .logo-preview-mark {
+    font-size: calc(40px * var(--logo-scale, 1));
+}
+
+.logo-preview .logo-replay {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+}
+
+.logo-font-grid {
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+}
+
+.settings-pane .theme-option.logo-font-option {
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-height: 70px;
+    padding: 10px 6px 8px;
+    overflow: hidden;
+}
+
+.logo-font-sample {
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--text-primary, #fff);
+    line-height: 1.35;
+    white-space: nowrap;
+    text-overflow: clip;
+}
+
+.logo-option-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.logo-font-option .logo-option-name {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.logo-chip-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+    gap: 6px;
+}
+
+.settings-pane .theme-option.logo-chip {
+    justify-content: center;
+    min-height: 36px;
+    padding: 7px 8px;
+}
+
+.logo-option-row {
+    display: block;
+}
+
+.logo-option-row .appearance-setting-copy {
+    margin-bottom: 10px;
+}
+
+.custom-color-pair {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+}
+
+.custom-color-pair i {
+    color: var(--text-secondary);
+}
+
+.settings-pane .custom-color-pair input[type="color"],
+.settings-pane .lyrics-custom-color input[type="color"] {
+    flex: none;
+    width: 42px;
+    height: 34px;
+    padding: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 7px;
+    background: rgba(0, 0, 0, 0.22);
+    cursor: pointer;
+}
+
+.appearance-setting-row.is-disabled .custom-color-pair,
+.appearance-setting-row.is-disabled .lyrics-custom-color {
+    opacity: 0.45;
+}
+
+.appearance-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
+.appearance-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* --------------------------------------------------------- Lyrics extras -- */
+
+:root {
+    --lyric-active: #fff;
+    --lyric-active-rgb: 255, 255, 255;
+    --lyric-gap-scale: 1;
+}
+
+:root[data-lyrics-color="theme"] {
+    --lyric-active: rgb(var(--accent-rgb));
+    --lyric-active-rgb: var(--accent-rgb);
+}
+
+/* Highlight color for the line being sung */
+:root[data-lyrics-color]:not([data-lyrics-color="white"]) .lyrics-content:not(.lyrics-editing) .lyric-line.active,
+:root[data-lyrics-color]:not([data-lyrics-color="white"]) .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"],
+:root[data-lyrics-color]:not([data-lyrics-color="white"]) .lyrics-content:not(.lyrics-editing) .lyric-line.word-synced.active .lyric-word,
+:root[data-lyrics-color]:not([data-lyrics-color="white"]) .lyrics-content:not(.lyrics-editing) .lyric-line.word-synced.active .lyric-dot {
+    color: var(--lyric-active);
+}
+
+:root[data-lyrics-color]:not([data-lyrics-color="white"]) .lyrics-content:not(.lyrics-editing) .lyric-line.word-synced.active .lyric-word.is-held .lyric-letter {
+    color: rgba(var(--lyric-active-rgb), calc(0.32 + var(--lp) * 0.68));
+}
+
+/* Font */
+:root[data-lyrics-font="jakarta"] { --lyric-family: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', sans-serif; }
+:root[data-lyrics-font="outfit"] { --lyric-family: 'Outfit', -apple-system, 'Segoe UI', sans-serif; }
+:root[data-lyrics-font="rounded"] { --lyric-family: 'Nunito', -apple-system, 'Segoe UI', sans-serif; }
+:root[data-lyrics-font="serif"] { --lyric-family: 'Playfair Display', Georgia, serif; }
+:root[data-lyrics-font="mono"] { --lyric-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; }
+:root[data-lyrics-font="hand"] { --lyric-family: 'Caveat', 'Segoe Print', cursive; }
+
+/* base.css sets a font on every element (*), so word spans need it too. */
+:root[data-lyrics-font]:not([data-lyrics-font="default"]) .lyrics-content:not(.lyrics-editing) .lyric-line,
+:root[data-lyrics-font]:not([data-lyrics-font="default"]) .lyrics-content:not(.lyrics-editing) .lyric-line *,
+:root[data-lyrics-font]:not([data-lyrics-font="default"]) .lyrics-preview,
+:root[data-lyrics-font]:not([data-lyrics-font="default"]) .lyrics-preview * {
+    font-family: var(--lyric-family);
+}
+
+:root[data-lyrics-font="mono"] .lyrics-content:not(.lyrics-editing) .lyric-line {
+    letter-spacing: -0.03em;
+}
+
+/* Alignment */
+:root[data-lyrics-align="center"] .lyrics-content:not(.lyrics-editing) {
+    align-items: center;
+    text-align: center;
+}
+
+:root[data-lyrics-align="right"] .lyrics-content:not(.lyrics-editing) {
+    align-items: flex-end;
+    text-align: right;
+}
+
+:root[data-lyrics-align="center"] .lyrics-content:not(.lyrics-editing) .lyric-line,
+:root[data-lyrics-align="center"] .lyrics-content:not(.lyrics-editing) .lyric-dots {
+    transform-origin: center center;
+}
+
+:root[data-lyrics-align="right"] .lyrics-content:not(.lyrics-editing) .lyric-line,
+:root[data-lyrics-align="right"] .lyrics-content:not(.lyrics-editing) .lyric-dots {
+    transform-origin: right center;
+}
+
+:root[data-lyrics-align="center"] .lyrics-preview { align-items: center; text-align: center; }
+:root[data-lyrics-align="left"] .lyrics-preview { align-items: flex-start; text-align: left; }
+:root[data-lyrics-align="right"] .lyrics-preview { align-items: flex-end; text-align: right; }
+
+/* Line spacing */
+:root[data-lyrics-spacing="compact"] { --lyric-gap-scale: 0.55; }
+:root[data-lyrics-spacing="relaxed"] { --lyric-gap-scale: 1.6; }
+
+:root[data-lyrics-spacing]:not([data-lyrics-spacing="default"]) .lyrics-content:not(.lyrics-editing) {
+    --lyric-gap: calc(15px * var(--lyric-gap-scale));
+}
+
+:root[data-lyrics-spacing]:not([data-lyrics-spacing="default"]) .lyrics-preview-next {
+    margin-top: calc(10px * var(--lyric-gap-scale));
+}
+
+/* Letter case */
+:root[data-lyrics-case="upper"] .lyrics-content:not(.lyrics-editing) .lyric-line,
+:root[data-lyrics-case="upper"] .lyrics-preview {
+    text-transform: uppercase;
+    letter-spacing: 0.015em;
+}
+
+:root[data-lyrics-case="lower"] .lyrics-content:not(.lyrics-editing) .lyric-line,
+:root[data-lyrics-case="lower"] .lyrics-preview {
+    text-transform: lowercase;
+}
+
+/* Extra large text */
+:root[data-lyrics-size="xl"] .lyrics-content:not(.lyrics-editing) .lyric-line { font-size: 27px; }
+:root[data-lyrics-size="xl"] .lyrics-content:not(.lyrics-editing) .lyric-line.active { font-size: 28px; }
+:root[data-lyrics-size="xl"] .lyrics-preview-line { font-size: 28px; }
+
+/* Line animation speed */
+:root[data-lyrics-anim="smooth"] .lyrics-scroll-area {
+    --lyrics-spring: cubic-bezier(0.22, 1, 0.36, 1);
+    --lyrics-spring-duration: 720ms;
+    --m-lyric-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --m-lyric-dur: 780ms;
+}
+
+:root[data-lyrics-anim="snappy"] .lyrics-scroll-area {
+    --lyrics-spring: cubic-bezier(0.2, 0.9, 0.3, 1.12);
+    --lyrics-spring-duration: 220ms;
+    --m-lyric-ease: cubic-bezier(0.2, 0.9, 0.3, 1);
+    --m-lyric-dur: 260ms;
+}
+
+/* Background lines: blur strength */
+:root[data-lyrics-blur="off"] .lyrics-preview-next { filter: none; }
+:root[data-lyrics-blur="light"] .lyrics-preview-next { filter: blur(0.7px); }
+
+@media (min-width: 901px) {
+    :root[data-lyrics-spacing]:not([data-lyrics-spacing="default"]) .lyrics-content:not(.lyrics-editing) {
+        --lyric-gap: calc(24px * var(--lyric-gap-scale));
+    }
+
+    :root[data-lyrics-size="xl"] .lyrics-content:not(.lyrics-editing) .lyric-line,
+    :root[data-lyrics-size="xl"] .lyrics-content:not(.lyrics-editing) .lyric-line.active {
+        font-size: clamp(25px, 2.7vw, 34px);
+    }
+
+    :root[data-lyrics-blur="off"] .lyrics-content:not(.lyrics-editing) .lyric-line:not([data-distance="0"]) {
+        filter: blur(0px);
+    }
+
+    :root[data-lyrics-blur="light"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-1"],
+    :root[data-lyrics-blur="light"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="1"] {
+        filter: blur(0.8px);
+    }
+
+    :root[data-lyrics-blur="light"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-2"],
+    :root[data-lyrics-blur="light"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="2"] {
+        filter: blur(1.6px);
+    }
+
+    :root[data-lyrics-blur="light"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-3"],
+    :root[data-lyrics-blur="light"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="3"] {
+        filter: blur(2.4px);
+    }
+
+    /* Without blur, far-off lines need a bit more presence to read. */
+    :root[data-lyrics-blur="off"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="-3"],
+    :root[data-lyrics-blur="off"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="3"] {
+        opacity: 0.14;
+    }
+}
+
+@media (max-width: 900px) {
+    :root[data-lyrics-spacing]:not([data-lyrics-spacing="default"]) .lyrics-content:not(.lyrics-editing) {
+        --lyric-gap: calc(20px * var(--lyric-gap-scale));
+    }
+
+    :root[data-lyrics-size="xl"] .lyrics-content:not(.lyrics-editing) .lyric-line,
+    :root[data-lyrics-size="xl"] .lyrics-content:not(.lyrics-editing) .lyric-line.active {
+        font-size: 35px;
+    }
+
+    :root[data-lyrics-blur="off"] .lyrics-content:not(.lyrics-editing) .lyric-line:not([data-distance="0"]) {
+        filter: none;
+    }
+
+    :root[data-lyrics-blur="light"] .lyrics-content:not(.lyrics-editing) .lyric-line:not([data-distance="0"]):not(.lyric-pre-enter) {
+        filter: blur(0.5px);
+    }
+
+    /* iOS draws its blur with text-shadow copies (see mobile_app.css). */
+    html.is-ios.lyrics-simple-blur[data-lyrics-blur="off"] .lyrics-content:not(.lyrics-editing) .lyric-line:not([data-distance="0"]):not(.lyric-pre-enter) {
+        color: #fff;
+        text-shadow:
+            0 0 0 rgba(255, 255, 255, 0),
+            0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    html.is-ios.lyrics-simple-blur[data-lyrics-blur="light"] .lyrics-content:not(.lyrics-editing) .lyric-line:not([data-distance="0"]):not(.lyric-pre-enter) {
+        color: rgba(255, 255, 255, 0.4);
+        text-shadow:
+            0 0 1.2px rgba(255, 255, 255, 0.9),
+            0 0 0 rgba(0, 0, 0, 0);
+    }
+}
+
+/* --- Lyrics settings UI additions --- */
+.lyrics-font-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+
+.settings-pane .theme-option.lyrics-font-option {
+    justify-content: center;
+    min-height: 40px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.lyrics-color-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.settings-pane .theme-option.lyrics-color-option {
+    min-height: 0;
+    padding: 5px;
+    border-radius: 999px;
+}
+
+.lyrics-color-option .theme-swatch {
+    width: 24px;
+    height: 24px;
+}
+
+.lyrics-custom-color {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.lp-word.is-sung,
+.lp-word.is-singing,
+.lp-word.is-held {
+    color: var(--lyric-active);
+}
+
+@media (max-width: 600px) {
+    .logo-font-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ===================================================== Player effects ==
+   playerfx.js / player.js / likes.js. --player-accent-rgb is the player color:
+   picked from the cover (default), the theme accent, or the lyrics highlight.
+========================================================================= */
+
+:root {
+    --player-accent-rgb: var(--accent-rgb);
+}
+
+:root[data-player-color="cover"] { --player-accent-rgb: var(--cover-accent-rgb, var(--accent-rgb)); }
+:root[data-player-color="theme"] { --player-accent-rgb: var(--accent-rgb); }
+:root[data-player-color="lyrics"] { --player-accent-rgb: var(--lyric-active-rgb, 255, 255, 255); }
+
+/* Inside the player, the player color *is* the accent: shuffle / repeat,
+   liked hearts, the equalizer and focus rings all follow it. */
+:root[data-player-color]:not([data-player-color="theme"]) .music-player,
+:root[data-player-color]:not([data-player-color="theme"]) #player-section,
+:root[data-player-color]:not([data-player-color="theme"]) #eq-popup {
+    --accent: rgb(var(--player-accent-rgb));
+    --accent-rgb: var(--player-accent-rgb);
+}
+
+.music-player :focus-visible,
+#player-section :focus-visible {
+    outline-color: rgb(var(--player-accent-rgb));
+}
+
+/* Lyrics highlight can follow the cover too. */
+:root[data-lyrics-color="cover"] {
+    --lyric-active: rgb(var(--cover-accent-rgb, 255, 255, 255));
+    --lyric-active-rgb: var(--cover-accent-rgb, 255, 255, 255);
+}
+
+/* --- Beat glow layers --------------------------------------------------- */
+.beat-glow {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    will-change: opacity, transform;
+    contain: strict;
+}
+
+/* Behind the whole app: light rising from the player bar, plus the sides. */
+.beat-glow--app {
+    background:
+        radial-gradient(ellipse 70% 42% at 50% 104%, rgba(var(--player-accent-rgb), 0.34), transparent 70%),
+        radial-gradient(ellipse 34% 46% at 0% 58%, rgba(var(--player-accent-rgb), 0.14), transparent 70%),
+        radial-gradient(ellipse 34% 46% at 100% 42%, rgba(var(--player-accent-rgb), 0.12), transparent 70%);
+    transform-origin: 50% 100%;
+}
+
+/* Inside the full-screen player, between the blurred cover and the content. */
+.beat-glow--player {
+    position: absolute;
+    background:
+        radial-gradient(ellipse 55% 55% at 32% 52%, rgba(var(--player-accent-rgb), 0.30), transparent 70%),
+        radial-gradient(ellipse 60% 40% at 70% 100%, rgba(var(--player-accent-rgb), 0.18), transparent 70%);
+    transform-origin: 32% 52%;
+}
+
+/* The full player covers the app glow; no need to paint both. */
+body.player-section-active .beat-glow--app {
+    visibility: hidden;
+}
+
+:root:not(.fx-pulse) .beat-glow {
+    display: none;
+}
+
+/* --- Progress bar: played part in the player color, glowing tip ---------- */
+:root.fx-progress-glow .progress-bar,
+:root.fx-progress-glow .dedicated-progress-bar {
+    --level: 0;
+    background: linear-gradient(90deg, rgba(var(--player-accent-rgb), 0.75), rgb(var(--player-accent-rgb)) 70%, #fff);
+    box-shadow: 0 0 calc(4px + var(--level) * 10px) rgba(var(--player-accent-rgb), calc(0.25 + var(--level) * 0.35));
+}
+
+:root.fx-progress-glow .progress-bar::before,
+:root.fx-progress-glow .dedicated-progress-bar::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 36px;
+    max-width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95));
+    box-shadow:
+        6px 0 calc(6px + var(--level) * 18px) calc(var(--level) * 3px) rgba(var(--player-accent-rgb), calc(0.35 + var(--level) * 0.55)),
+        2px 0 calc(2px + var(--level) * 6px) rgba(255, 255, 255, calc(0.25 + var(--level) * 0.5));
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+/* --- Volume: filled part ------------------------------------------------ */
+.volume-slider {
+    --vol: 70%;
+    background: linear-gradient(90deg,
+        rgba(var(--player-accent-rgb), 0.95) 0 var(--vol),
+        rgba(255, 255, 255, 0.12) var(--vol) 100%);
+}
+
+/* --- The playing song row ------------------------------------------------ */
+.song-row.playing {
+    background: linear-gradient(90deg, rgba(var(--player-accent-rgb), 0.22), rgba(var(--player-accent-rgb), 0.05));
+    border-color: rgba(var(--player-accent-rgb), 0.38);
+}
+
+.song-row.playing .song-title-row {
+    color: rgb(var(--player-accent-rgb));
+}
+
+/* Small moving bars instead of the track number while it's playing. */
+.song-row.playing:not(.edit-mode) .row-index-number {
+    visibility: hidden;
+}
+
+.song-row.playing:not(.edit-mode) .index-cell::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    transform: translate(-50%, -50%);
+    background:
+        linear-gradient(rgb(var(--player-accent-rgb)), rgb(var(--player-accent-rgb))) 0 100% / 3px 40% no-repeat,
+        linear-gradient(rgb(var(--player-accent-rgb)), rgb(var(--player-accent-rgb))) 50% 100% / 3px 90% no-repeat,
+        linear-gradient(rgb(var(--player-accent-rgb)), rgb(var(--player-accent-rgb))) 100% 100% / 3px 60% no-repeat;
+    animation: nowPlayingBars 1.1s ease-in-out infinite;
+}
+
+body.audio-paused .song-row.playing .index-cell::after {
+    animation-play-state: paused;
+}
+
+@keyframes nowPlayingBars {
+    0%, 100% { background-size: 3px 40%, 3px 90%, 3px 60%; }
+    25% { background-size: 3px 85%, 3px 35%, 3px 75%; }
+    50% { background-size: 3px 55%, 3px 70%, 3px 30%; }
+    75% { background-size: 3px 95%, 3px 50%, 3px 85%; }
+}
+
+/* --- Play / pause: one icon turns into the other, the button swells ------ */
+.play-pause-btn {
+    position: relative;
+}
+
+.play-pause-btn .pp-icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        opacity 0.22s ease,
+        transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+        filter 0.3s ease;
+}
+
+.play-pause-btn .pp-icon i {
+    font-size: inherit;
+}
+
+.play-pause-btn[data-state="paused"] .pp-pause,
+.play-pause-btn[data-state="playing"] .pp-play {
+    opacity: 0;
+    transform: scale(0.35) rotate(-90deg);
+    filter: blur(2px);
+}
+
+.play-pause-btn[data-state="paused"] .pp-play,
+.play-pause-btn[data-state="playing"] .pp-pause {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: blur(0);
+}
+
+/* `scale` (not transform) so it doesn't fight the hover / press transforms. */
+.play-pause-btn.pp-swell {
+    animation: ppSwell 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes ppSwell {
+    0% { scale: 1; }
+    35% { scale: 1.12; }
+    100% { scale: 1; }
+}
+
+/* --- Like: pop + glow burst ------------------------------------------- */
+.row-like-btn,
+.player-like-btn {
+    position: relative;
+}
+
+.like-pop i {
+    animation: likePop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.like-pop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.9), 0 0 14px 4px rgba(var(--accent-rgb), 0.55);
+    animation: likeBurst 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.like-unpop i {
+    animation: likeUnpop 0.35s ease;
+}
+
+@keyframes likePop {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.38); }
+    55% { transform: scale(0.9); }
+    80% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+
+@keyframes likeBurst {
+    0% { opacity: 1; transform: scale(0.5); }
+    100% { opacity: 0; transform: scale(1.9); }
+}
+
+@keyframes likeUnpop {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.78); }
+    100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .beat-glow { display: none; }
+    .song-row.playing .index-cell::after { animation: none; }
+    .play-pause-btn.pp-swell,
+    .like-pop i, .like-pop::after, .like-unpop i { animation: none; }
+}

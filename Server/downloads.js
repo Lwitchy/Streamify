@@ -2,7 +2,7 @@
  * Streamify Download Engine
  * =========================
  *
- * Acquires music from YouTube, with optional Soulseek (P2P) fallback, and files it into the
+ * Acquires music from Soulseek (P2P) and YouTube, and files it into the
  * Owner's real music folder so the normal library scanner picks it up.
  *
  * Design rules that shaped this module:
@@ -17,15 +17,26 @@
  *    embedded cover needs zero special-casing and survives the user moving,
  *    renaming or backing up the file.
  *
- * 3. The queue is persisted in SQLite. A Spotify album is 15 sequential
- *    network transfers; a restart in the middle must resume, not lose them.
+ * 3. The queue is persisted in SQLite. A Spotify album is 15 network
+ *    transfers; a restart in the middle must resume, not lose them.
+ *    `claimNextDownload`'s atomic queued->running update is what lets several
+ *    workers share the queue without double-claiming a row.
  *
- * 4. One transfer at a time. This keeps downloads predictable on home connections
- *    and avoids competing with playback for bandwidth.
- *    hammering, and a single worker makes cancellation unambiguous.
+ * 4. A small pool of transfers, not one. A 30-track playlist is 30 sequential
+ *    peers; Soulseek paces per uploader, so running transfers from DIFFERENT
+ *    peers in parallel costs nothing and removes the queue-position wait that
+ *    dominated wall-clock time. Two rules keep that from becoming abuse:
+ *    never two transfers from the same peer at once, and never re-select a
+ *    peer we just abandoned mid-transfer. Both are enforced by the peer
+ *    registry below rather than by serialising everything.
  *
  * 5. Nothing here trusts a remote URL. Artwork is fetched only from an explicit
  *    host allowlist, with redirect, size and content-type limits.
+ *
+ * 6. A refused source is a routing problem, not a failed download. YouTube
+ *    rate-limits per IP, so a block trips a cooldown and the work moves to
+ *    Soulseek; retrying into a block is what turns a soft limit into a hard
+ *    one. No single source being unavailable should stop a playlist.
  */
 
 const fs = require('fs');
@@ -44,14 +55,8 @@ const ffmpegPath = RT.unpackPath(require('@ffmpeg-installer/ffmpeg').path);
 const ytDlpPath = RT.unpackPath(require('yt-dlp-exec/src/constants').YOUTUBE_DL_PATH);
 const ytDlp = ytDlpFactory.create(ytDlpPath);
 
-const SECRETS_TO_STRIP = ['SLSK_USER', 'SLSK_PASS', 'ACOUSTID_CLIENT_KEY', 'TURNSTILE_SECRET_KEY'];
-
-function ytDlpEnv() {
-    const env = { ...process.env };
-    for (const key of SECRETS_TO_STRIP) delete env[key];
-    if (process.versions && process.versions.electron) env.ELECTRON_RUN_AS_NODE = '1';
-    return env;
-}
+// Shared with discordArtwork.js so the yt-dlp runtime cannot drift between them.
+const { ytDlpEnv, ytDlpBaseOptions, withYtDlpSlot } = require('./ytDlpRuntime');
 
 /* ------------------------------------------------------------------ *
  * Constants
@@ -70,7 +75,115 @@ const YOUTUBE_MAX_ATTEMPTS = 3;
 const YOUTUBE_MAX_DURATION_SECONDS = 15 * 60;
 const YOUTUBE_SEARCH_RESULTS = 8;
 
+/**
+ * How long YouTube is left alone after it tells us to go away.
+ *
+ * The point of the cooldown is that a block is not a per-track failure but a
+ * per-IP one, so the correct response is to stop asking rather than to retry
+ * harder. Retrying while blocked is what escalates a soft rate-limit into a
+ * longer one.
+ */
+const YOUTUBE_BLOCK_COOLDOWN_MS = 30 * 60 * 1000;
+
+/**
+ * Errors that mean "YouTube is refusing this client/IP", as opposed to "this
+ * particular video is unusable". Matched case-insensitively against yt-dlp's
+ * message; kept deliberately broad on the HTTP statuses and specific on the
+ * sentinel strings, since a false positive only costs us a fallback to
+ * Soulseek, while a false negative costs us an escalation.
+ */
+const YOUTUBE_BLOCK_PATTERNS = [
+    /sign in to confirm/i,
+    /not a bot/i,
+    // yt-dlp emits a typographic apostrophe, so the patterns below must accept
+    // U+2019 as well as ASCII ' — matching only the ASCII form silently never
+    // fires on real yt-dlp output.
+    /confirm you[‘’']?re not a bot/i,
+    /http error 40[23]\b/i,
+    /http error 429\b/i,
+    /too many requests/i,
+    // Covers both yt-dlp's message ("Login required") and the raw reason
+    // string the API returns ("LOGIN_REQUIRED").
+    /login[ _]required/i,
+    /this content isn[‘’']?t available/i,
+    /requested format is not available/i,
+    /unable to extract/i,
+    /failed to extract any player response/i,
+    /player response/i,
+    /nsig extraction failed/i,
+    /unable to download (?:webpage|video data|api page)/i
+];
+
+const SPOTIFY_OEMBED_TIMEOUT_MS = 8000;
+
 const REQUESTED_SOURCES = new Set(['auto', 'soulseek', 'youtube']);
+
+/**
+ * How a download should weigh quality against size.
+ *
+ *   `lossless` — prefer FLAC/WAV and treat low-bitrate MP3 as a last resort.
+ *   `best`     — the default. Picks the best available but is happy with a
+ *                good MP3, which matters because FLAC of a track often exists
+ *                on one peer with a long queue while a 320 MP3 is free now.
+ *
+ * The distinction only changes RANKING, never filtering: a `lossless` request
+ * still downloads an MP3 rather than failing, because a playable file beats no
+ * file. It is a preference the user expresses, not a guarantee we can make —
+ * we do not control what strangers share.
+ */
+const QUALITY_PREFERENCES = new Set(['best', 'lossless']);
+
+/** How much a format choice changes a Soulseek candidate's rank. */
+const QUALITY_SCORES = {
+    // `lossless` treats an MP3 as a fallback: FLAC is far ahead, and a low
+    // bitrate rip is pushed below most other candidates.
+    lossless: { flac: 400, wav: 380, mp320: -100, mp256: -180, mp192: -260, mpLow: -400 },
+    // `best` still ranks FLAC first — it IS the best available — but keeps a
+    // good MP3 competitive, because a free 320 beats a FLAC behind a long queue.
+    best: { flac: 200, wav: 180, mp320: 150, mp256: 110, mp192: 60, mpLow: -150 }
+};
+
+/**
+ * Maps a candidate to its quality tier, so scoring never has to reason about
+ * raw bitrate numbers again. Note the boundaries are inclusive at the top and
+ * a 128 kbps file lands in `mpLow` — an earlier version used `< 128`, which
+ * let exactly 128 escape the low-quality penalty entirely.
+ */
+function qualityTierFor(candidate) {
+    if (candidate.extension === '.flac') return 'flac';
+    if (candidate.extension === '.wav') return 'wav';
+
+    const bitrate = Number(candidate.bitrate) || 0;
+    if (bitrate >= 320) return 'mp320';
+    if (bitrate >= 256) return 'mp256';
+    if (bitrate >= 192) return 'mp192';
+    if (bitrate > 0) return 'mpLow';
+    // No advertised bitrate and not lossless: treat as unknown-mid rather than
+    // punishing a peer that simply did not report one.
+    return 'mp256';
+}
+
+/**
+ * Transfers allowed to run at once across distinct peers.
+ *
+ * Four is chosen to be obviously polite: it is well under what a desktop
+ * Soulseek client opens, and it still turns a 30-track playlist from 30
+ * sequential waits into roughly eight rounds. Raising it is a one-line change,
+ * but the per-peer rule below matters far more than this number does.
+ */
+const MAX_PARALLEL_TRANSFERS = 4;
+
+/**
+ * How long a peer stays reserved after we abandon a transfer.
+ *
+ * slsk-client gives us no way to close the underlying socket (see
+ * soulseekDownload), so a cancelled transfer keeps draining in the background
+ * until the peer finishes or drops us. Releasing the peer immediately would let
+ * another worker open a SECOND connection to a peer still serving the first —
+ * exactly the behaviour the per-peer rule exists to prevent. Holding the claim
+ * for a bounded window keeps that promise without needing an abort we do not have.
+ */
+const ABANDONED_PEER_HOLD_MS = 60 * 1000;
 const MAX_ARTWORK_BYTES = 8 * 1024 * 1024;
 const ARTWORK_REDIRECT_LIMIT = 3;
 const ARTWORK_TIMEOUT_MS = 15000;
@@ -222,10 +335,13 @@ function uniqueDestination(root, base, extension) {
 /**
  * rename() fails with EXDEV when the temp folder and the music folder are on
  * different drives, which is the common case on Windows (app on C:, music on D:).
+ *
+ * Fully async: a cross-drive copy of a large lossless file used to block the
+ * whole server (and, on desktop, the window) for as long as the copy took.
  */
-function moveFile(source, destination) {
+async function moveFile(source, destination) {
     try {
-        fs.renameSync(source, destination);
+        await fs.promises.rename(source, destination);
         return;
     } catch (error) {
         if (error.code !== 'EXDEV') throw error;
@@ -236,11 +352,11 @@ function moveFile(source, destination) {
     // the music folder for the scanner to index as a real track.
     const staging = `${destination}.part`;
     try {
-        fs.copyFileSync(source, staging);
-        fs.renameSync(staging, destination);
-        fs.unlinkSync(source);
+        await fs.promises.copyFile(source, staging);
+        await fs.promises.rename(staging, destination);
+        await fs.promises.unlink(source);
     } catch (error) {
-        try { fs.rmSync(staging, { force: true }); } catch { /* best effort */ }
+        try { await fs.promises.rm(staging, { force: true }); } catch { /* best effort */ }
         throw error;
     }
 }
@@ -441,8 +557,11 @@ function normalizeForMatch(value) {
  * Peers advertise their own speed and bitrate, so scores are heuristics rather
  * than guarantees. Ordering: can it start now, does the filename match, is the
  * quality sane, is the peer fast.
+ *
+ * `quality` is the caller's stated preference (see QUALITY_PREFERENCES); it
+ * reweights the format/bitrate terms only.
  */
-function scoreSoulseekCandidate(candidate, queryTokens) {
+function scoreSoulseekCandidate(candidate, queryTokens, quality = 'best') {
     let score = 0;
 
     if (candidate.slots) score += 500;
@@ -453,14 +572,14 @@ function scoreSoulseekCandidate(candidate, queryTokens) {
     const matched = queryTokens.filter(token => haystack.includes(token)).length;
     score += queryTokens.length > 0 ? (matched / queryTokens.length) * 400 : 0;
 
-    if (candidate.extension === '.flac') score += 120;
-    else if (candidate.extension === '.mp3') score += 80;
+    const weights = QUALITY_SCORES[quality] || QUALITY_SCORES.best;
+    const tier = qualityTierFor(candidate);
+    score += weights[tier] !== undefined ? weights[tier] : 0;
 
-    const bitrate = Number(candidate.bitrate) || 0;
-    if (bitrate >= 320) score += 90;
-    else if (bitrate >= 256) score += 60;
-    else if (bitrate >= 192) score += 30;
-    else if (bitrate > 0 && bitrate < 128) score -= 120;
+    // A lossless container keeps a small unconditional bump, since the tier
+    // weights above already encode the user's preference and this is only the
+    // "lossless is strictly better than lossy" half of it.
+    if (tier === 'flac' || tier === 'wav') score += 60;
 
     score += Math.min((Number(candidate.speed) || 0) / 51200, 120);
 
@@ -497,7 +616,7 @@ function normalizeSoulseekResult(raw, query) {
  * Soulseek never signals "search finished" - slsk-client just collects results
  * until its timeout expires and then fires the callback once.
  */
-async function soulseekSearch(query, { timeout = SOULSEEK_INTERACTIVE_SEARCH_MS, limit = 60 } = {}) {
+async function soulseekSearch(query, { timeout = SOULSEEK_INTERACTIVE_SEARCH_MS, limit = 60, quality = 'best' } = {}) {
     const client = await getSoulseekClient();
     if (!client) return { available: false, results: [], error: soulseekLastError };
 
@@ -537,7 +656,7 @@ async function soulseekSearch(query, { timeout = SOULSEEK_INTERACTIVE_SEARCH_MS,
             seen.add(key);
             return true;
         })
-        .map(entry => ({ ...entry, score: scoreSoulseekCandidate(entry, queryTokens) }))
+        .map(entry => ({ ...entry, score: scoreSoulseekCandidate(entry, queryTokens, quality) }))
         .sort((a, b) => b.score - a.score)
         .slice(0, limit);
 
@@ -787,17 +906,98 @@ function normalizeYoutubeResult(entry) {
     };
 }
 
-/** Metadata is read before downloading, but a cancelled search must not leave
- * yt-dlp running for the rest of its timeout. */
-async function youtubeMetadata(target, { shouldCancel, timeout = YOUTUBE_SEARCH_TIMEOUT_MS } = {}) {
+/* ------------------------------------------------------------------ *
+ * YouTube circuit breaker
+ * ------------------------------------------------------------------ */
+
+/** Epoch ms until which YouTube is skipped. 0 means "not blocked". */
+let youtubeBlockedUntil = 0;
+let youtubeBlockReason = null;
+
+/** True when a yt-dlp failure looks like an IP/client-level refusal. */
+function isYoutubeBlockError(error) {
+    const message = String((error && (error.message || error.shortMessage)) || error || '');
+    if (!message) return false;
+    return YOUTUBE_BLOCK_PATTERNS.some(pattern => pattern.test(message));
+}
+
+/**
+ * Records a block and opens the cooldown. Deliberately NOT persisted: a restart
+ * is exactly when a second opinion is worth having, and the failure mode of a
+ * stale on-disk cooldown (skipping a source that has recovered) is worse than
+ * one extra probe.
+ */
+function tripYoutubeBreaker(error) {
+    const message = String((error && (error.message || error.shortMessage)) || error || '').slice(0, 300);
+    const wasBlocked = youtubeBlockedUntil > Date.now();
+    youtubeBlockedUntil = Date.now() + YOUTUBE_BLOCK_COOLDOWN_MS;
+    youtubeBlockReason = message || 'YouTube refused the request.';
+
+    if (!wasBlocked) {
+        const minutes = Math.round(YOUTUBE_BLOCK_COOLDOWN_MS / 60000);
+        logError(`YouTube is rate-limiting this connection; pausing YouTube for ${minutes} minutes. Reason: ${youtubeBlockReason}`);
+        emit('downloads:source-blocked', {
+            source: 'youtube',
+            retryAt: youtubeBlockedUntil,
+            reason: youtubeBlockReason
+        });
+    }
+}
+
+/** Clears the cooldown after a success, so recovery needs no restart. */
+function resetYoutubeBreaker() {
+    if (youtubeBlockedUntil === 0) return;
+    log('YouTube is responding again; resuming YouTube downloads.');
+    youtubeBlockedUntil = 0;
+    youtubeBlockReason = null;
+    emit('downloads:source-available', { source: 'youtube' });
+}
+
+/** True when YouTube should be skipped in favour of another source. */
+function isYoutubeBlocked() {
+    return youtubeBlockedUntil > Date.now();
+}
+
+function youtubeBreakerStatus() {
+    const blocked = isYoutubeBlocked();
+    return {
+        blocked,
+        retryAt: blocked ? new Date(youtubeBlockedUntil).toISOString() : null,
+        reason: blocked ? youtubeBlockReason : null
+    };
+}
+
+/**
+ * Metadata is read before downloading, but a cancelled search must not leave
+ * yt-dlp running for the rest of its timeout.
+ *
+ * `flat` selects the cheap extraction path. A `ytsearch` resolves each result
+ * fully by default, which for 3 results measured ~767 KB of JSON and over 20
+ * seconds — longer than YOUTUBE_SEARCH_TIMEOUT_MS, so searches were timing out
+ * with zero results and no block to blame. Flat mode returns the fields the
+ * scorer actually reads (id, title, duration, uploader/channel) in ~3 seconds.
+ * Thumbnails fall back to the `i.ytimg.com` URL the video id already implies.
+ *
+ * Only safe for SEARCH: a single-video lookup still needs the full extraction,
+ * because that is what fills in the audio formats used for the download.
+ */
+async function youtubeMetadata(target, { shouldCancel, timeout = YOUTUBE_SEARCH_TIMEOUT_MS, flat = false } = {}) {
+    // Paced here rather than at each caller: this is the single funnel for every
+    // search and metadata lookup, including the ones behind `ytsearch`.
+    return withYtDlpSlot(() => runYoutubeMetadata(target, { shouldCancel, timeout, flat }), shouldCancel);
+}
+
+function runYoutubeMetadata(target, { shouldCancel, timeout, flat = false }) {
     return new Promise((resolve, reject) => {
         let child;
         try {
             child = ytDlp.exec(target, {
+                ...ytDlpBaseOptions(),
                 dumpSingleJson: true,
                 noWarnings: true,
                 noPlaylist: true,
-                skipDownload: true
+                skipDownload: true,
+                ...(flat ? { flatPlaylist: true } : {})
             }, { env: ytDlpEnv(), timeout });
         } catch (error) {
             reject(error);
@@ -847,7 +1047,25 @@ function youtubeQuery(item) {
 }
 
 async function youtubeSearch(query, { limit = 5, shouldCancel, expectedDuration } = {}) {
-    const info = await youtubeMetadata(`ytsearch${YOUTUBE_SEARCH_RESULTS}:${query}`, { shouldCancel });
+    // A search costs the same request budget as a download, so it is gated by
+    // the same breaker. Without this, `auto` mode would keep probing.
+    if (isYoutubeBlocked()) {
+        throw new Error('YouTube is paused after rate-limiting this connection.');
+    }
+
+    let info;
+    try {
+        // flat: true — a search only needs id/title/duration/uploader to rank
+        // candidates; the chosen one is fully extracted at download time.
+        info = await youtubeMetadata(`ytsearch${YOUTUBE_SEARCH_RESULTS}:${query}`, {
+            shouldCancel,
+            flat: true
+        });
+    } catch (error) {
+        if (isYoutubeBlockError(error)) tripYoutubeBreaker(error);
+        throw error;
+    }
+    resetYoutubeBreaker();
     const entries = info && Array.isArray(info.entries) ? info.entries : (info ? [info] : []);
     const seen = new Set();
     return entries
@@ -865,6 +1083,12 @@ async function youtubeSearch(query, { limit = 5, shouldCancel, expectedDuration 
 }
 
 async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldCancel } = {}) {
+    // Never spawn yt-dlp while the breaker is open. The point is to stop making
+    // requests, so the check has to happen before the process exists.
+    if (isYoutubeBlocked()) {
+        throw new Error(`YouTube is paused after rate-limiting this connection until ${new Date(youtubeBlockedUntil).toLocaleTimeString()}.`);
+    }
+
     await reportProgress({ stage: 'connecting', resolved_source: 'youtube' });
 
     return new Promise((resolve, reject) => {
@@ -899,6 +1123,7 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
         // parser below needs. The search/resolve step already captured real
         // metadata, so this run only downloads and reports progress.
         const args = {
+            ...ytDlpBaseOptions(),
             ffmpegLocation: ffmpegPath,
             extractAudio: true,
             audioFormat: 'mp3',
@@ -915,6 +1140,9 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
 
             let totalBytes = 0;
             let transferred = 0;
+            // yt-dlp prints many progress lines a second; each report is a DB
+            // write plus a socket push, so keep it to a couple per second.
+            let lastProgressReport = 0;
 
             if (child.stdout) {
                 child.stdout.on('data', chunk => {
@@ -926,6 +1154,9 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
                         const progressMatch = line.match(/\[download\]\s+([\d.]+)%\s+of\s+(?:~?\s*([\d.]+)\s*(KiB|MiB|GiB|B))?(?:\s+at\s+([\d.]+)\s*(KiB|MiB|GiB|B)\/s)?(?:\s+ETA\s+(\d+:\d+))?/i);
                         if (!progressMatch) continue;
                         const pct = parseFloat(progressMatch[1]) / 100;
+                        const progressNow = Date.now();
+                        if (pct < 1 && progressNow - lastProgressReport < 500) continue;
+                        lastProgressReport = progressNow;
                         if (progressMatch[2] && progressMatch[3]) {
                             const val = parseFloat(progressMatch[2]);
                             const unit = progressMatch[3].toUpperCase();
@@ -954,7 +1185,7 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
                 });
             }
 
-            child.then(() => {
+            child.then(async () => {
                 if (settled) return;
                 settled = true;
                 cleanup();
@@ -978,7 +1209,7 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
                 // row's own title/artist win.
                 let downloadedMetadata = null;
                 try {
-                    const tags = NodeID3.read(finalFilePath);
+                    const tags = await NodeID3.Promise.read(finalFilePath);
                     if (tags && (tags.title || tags.artist)) {
                         const videoId = extractYoutubeVideoId(targetUrl);
                         downloadedMetadata = {
@@ -990,12 +1221,15 @@ async function youtubeDownload(sourceUrl, destination, reportProgress, { shouldC
                     }
                 } catch { /* tags are optional */ }
 
+                resetYoutubeBreaker();
                 resolve({ filePath: finalFilePath, source: 'youtube', bitrate: 320, metadata: downloadedMetadata });
             }).catch(err => {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                reject(new Error(err.shortMessage || err.message || String(err)));
+                const message = err.shortMessage || err.message || String(err);
+                if (isYoutubeBlockError(message)) tripYoutubeBreaker(message);
+                reject(new Error(message));
             });
         } catch (err) {
             cleanup();
@@ -1021,31 +1255,138 @@ function isSpotifyUrl(value) {
  * Spotify is a tracklist source only - no audio is ever taken from Spotify.
  * Each resolved track is queued and acquired automatically from the available sources.
  */
+/**
+ * Reads an album's real title and cover from Spotify's public oEmbed endpoint.
+ *
+ * This exists because `spotify-url-info`'s getTracks() does NOT return the album
+ * at all — its objects carry only {artist, duration, name, previewUrl, uri}. So
+ * every imported track used to queue with `album: null`, and because applyTags
+ * uses NodeID3.update (which PRESERVES existing tags), each Soulseek peer's own
+ * album tag survived untouched. One album import therefore produced as many
+ * "albums" in the library as there were distinct peers: a compilation name here,
+ * "Midnights (The Til Dawn edition)" there, "Unknown Album" for peers with no
+ * tag. oEmbed returns exactly the two fields needed, with no auth.
+ *
+ * Never throws: a failed lookup leaves the album null, which is the old
+ * behaviour and is recoverable, whereas failing the whole import is not.
+ */
+async function fetchSpotifyAlbumMetadata(url) {
+    try {
+        const parsed = new URL(url);
+        // Only albums have a single canonical title. A playlist link has its own
+        // name, and a track link has none — using either as the album would be
+        // worse than leaving it empty.
+        if (!/\/album\//i.test(parsed.pathname)) return null;
+
+        const endpoint = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
+        const response = await fetch(endpoint, {
+            signal: AbortSignal.timeout(SPOTIFY_OEMBED_TIMEOUT_MS),
+            headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) {
+            log(`Spotify oEmbed returned ${response.status}; importing without album metadata.`);
+            return null;
+        }
+
+        const data = await response.json();
+        const title = typeof data?.title === 'string' ? data.title.trim() : '';
+        const cover = typeof data?.thumbnail_url === 'string' ? data.thumbnail_url.trim() : '';
+        if (!title && !cover) return null;
+
+        return {
+            album: title || null,
+            // Allowlisted like every other artwork URL, so a surprising host is
+            // dropped here rather than silently becoming a fetch target later.
+            artworkUrl: isTrustedArtworkUrl(cover) ? cover : null
+        };
+    } catch (error) {
+        log(`Spotify oEmbed lookup failed (${error.name === 'TimeoutError' ? 'timeout' : error.message}); importing without album metadata.`);
+        return null;
+    }
+}
+
+/**
+ * Normalised "artist title" key used to spot tracks already in the library.
+ *
+ * Deliberately generous: stripping parentheticals means "Anti-Hero" matches
+ * "Anti-Hero (feat. X)", because the goal is to warn about a re-download, not
+ * to make a precise identity claim. A false positive only pre-unticks a
+ * checkbox the user can re-tick; a false negative silently re-downloads.
+ */
+function libraryMatchKey(artist, title) {
+    const clean = value => normalizeForMatch(String(value || '')
+        .replace(/\((?:feat|ft|with)[^)]*\)/gi, ' ')
+        .replace(/\[[^\]]*\]/g, ' '));
+    const normalizedTitle = clean(title);
+    if (!normalizedTitle) return null;
+    return `${clean(artist)}|${normalizedTitle}`;
+}
+
+/**
+ * Marks which of the resolved tracks are already in the library.
+ *
+ * Never throws and never blocks an import: if the library cannot be read, the
+ * tracks simply come back unmarked, which is the old behaviour.
+ */
+async function markTracksAlreadyOwned(tracks) {
+    try {
+        const { getSongsForMatch } = requireDeps();
+        if (typeof getSongsForMatch !== 'function') return tracks;
+
+        const songs = await getSongsForMatch();
+        const owned = new Set();
+        for (const song of songs || []) {
+            const key = libraryMatchKey(song.artist, song.songname || song.title);
+            if (key) owned.add(key);
+        }
+
+        return tracks.map(track => {
+            const key = libraryMatchKey(track.artist, track.title);
+            return key && owned.has(key) ? { ...track, inLibrary: true } : track;
+        });
+    } catch (error) {
+        logError('Could not check the library for existing tracks:', error.message);
+        return tracks;
+    }
+}
+
 async function resolveSpotifyUrl(url) {
     const { getSpotifyTracks } = requireDeps();
 
-    let tracks;
-    try {
-        tracks = await getSpotifyTracks(url);
-    } catch (error) {
-        logError('Spotify resolution failed:', error.message);
-        throw Object.assign(
-            new Error('Could not read that Spotify link. Public playlists, albums and tracks are supported.'),
-            { statusCode: 400 }
-        );
-    }
+    // Album metadata and the tracklist are independent; fetch them together.
+    const [albumMetadata, tracks] = await Promise.all([
+        fetchSpotifyAlbumMetadata(url),
+        (async () => {
+            try {
+                return await getSpotifyTracks(url);
+            } catch (error) {
+                logError('Spotify resolution failed:', error.message);
+                throw Object.assign(
+                    new Error('Could not read that Spotify link. Public playlists, albums and tracks are supported.'),
+                    { statusCode: 400 }
+                );
+            }
+        })()
+    ]);
 
     if (!Array.isArray(tracks) || tracks.length === 0) {
         throw Object.assign(new Error('That Spotify link contains no tracks, or it is private.'), { statusCode: 404 });
     }
 
-    return tracks.map(track => ({
+    const resolved = tracks.map(track => ({
         title: track.name || 'Unknown Title',
         artist: track.artist || track.artists || 'Unknown Artist',
-        album: track.album || null,
+        // The album title from oEmbed wins over anything on the track object,
+        // because a per-track value is exactly what produced the split albums.
+        album: albumMetadata?.album || track.album || null,
         duration: track.duration_ms ? Math.round(track.duration_ms / 1000) : null,
-        artworkUrl: track.cover || (Array.isArray(track.images) && track.images[0] ? track.images[0].url : null)
+        artworkUrl: track.cover
+            || (Array.isArray(track.images) && track.images[0] ? track.images[0].url : null)
+            || albumMetadata?.artworkUrl
+            || null
     }));
+
+    return await markTracksAlreadyOwned(resolved);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1122,9 +1463,14 @@ function fetchArtwork(rawUrl, redirectsLeft = ARTWORK_REDIRECT_LIMIT) {
  * Tagging
  * ------------------------------------------------------------------ */
 
-function hasEmbeddedArtwork(filePath) {
+/*
+ * Tag reads and writes go through NodeID3.Promise: the synchronous API reads
+ * and rewrites the entire audio file on the event loop, which froze the server
+ * for every downloaded track.
+ */
+async function hasEmbeddedArtwork(filePath) {
     try {
-        const tags = NodeID3.read(filePath);
+        const tags = await NodeID3.Promise.read(filePath);
         return Boolean(tags && tags.image);
     } catch {
         return false;
@@ -1136,7 +1482,7 @@ function hasEmbeddedArtwork(filePath) {
  * survives. Only MP3 carries ID3; other containers keep whatever the source
  * embedded, and the scanner falls back to a cover file for those.
  */
-function applyTags(filePath, metadata, artwork) {
+async function applyTags(filePath, metadata, artwork) {
     if (path.extname(filePath).toLowerCase() !== '.mp3') return false;
 
     const tags = {};
@@ -1157,9 +1503,9 @@ function applyTags(filePath, metadata, artwork) {
     if (Object.keys(tags).length === 0) return false;
 
     try {
-        const result = NodeID3.update(tags, filePath);
-        if (result !== true) logError(`Tagging returned ${result} for ${path.basename(filePath)}`);
-        return result === true;
+        // Resolves on success and rejects on failure (handled below).
+        await NodeID3.Promise.update(tags, filePath);
+        return true;
     } catch (error) {
         logError(`Tagging failed for ${path.basename(filePath)}:`, error.message);
         return false;
@@ -1187,6 +1533,7 @@ function serializeItem(row) {
         stage: row.stage,
         requestedSource: row.requested_source,
         resolvedSource: row.resolved_source,
+        quality: row.quality || 'best',
         title: row.title,
         artist: row.artist,
         album: row.album,
@@ -1216,14 +1563,128 @@ function emitItemProgress(row) {
  * Queue worker
  * ------------------------------------------------------------------ */
 
-let workerRunning = false;
+/** How many worker loops are live right now; the pool never exceeds the cap. */
+let activeWorkerCount = 0;
 let workerStopped = false;
-const activeTransfer = { itemId: null, cancelled: false };
 
-function cancelActiveTransfer(itemId) {
-    if (activeTransfer.itemId !== itemId) return false;
-    activeTransfer.cancelled = true;
+/**
+ * Every in-flight transfer, keyed by queue row id.
+ *
+ * This replaces the old single `activeTransfer` singleton. Cancellation is now
+ * per-transfer, which is what makes a parallel pool correct: cancelling one row
+ * must not disturb its neighbours in the pool.
+ */
+const activeTransfers = new Map();
+
+/**
+ * Soulseek usernames currently serving us a file, mapped to the transfer token
+ * holding them.
+ *
+ * Tokens rather than row ids: a row can be retried while its previous transfer
+ * is still unwinding, and keying on the row would let the old transfer release
+ * a claim belonging to the new one. See endTransfer.
+ *
+ * Two workers must never pull from the same peer simultaneously. Soulseek
+ * grants one upload slot per peer, so a second request either queues behind the
+ * first (no faster) or looks like abuse (worse). Per-peer serialisation is what
+ * makes the pool width safe rather than merely tolerated.
+ */
+const busyPeers = new Map();
+
+/**
+ * Peers abandoned mid-transfer, by username.
+ *
+ * A peer that timed out or stalled once is a poor bet for the next attempt, and
+ * re-selecting it usually just re-queues behind the same problem. Deprioritised
+ * rather than banned, because a peer with a bad moment is not necessarily a bad
+ * peer; entries expire so the library does not accumulate permanent grudges.
+ */
+const discouragedPeers = new Map();
+const DISCOURAGED_PEER_TTL_MS = 10 * 60 * 1000;
+
+/** Monotonic id, so two transfers for the same row are never confused. */
+let transferSequence = 0;
+
+function beginTransfer(itemId) {
+    const transfer = {
+        itemId,
+        token: ++transferSequence,
+        cancelled: false,
+        peer: null
+    };
+    activeTransfers.set(itemId, transfer);
+    return transfer;
+}
+
+/**
+ * Retires a transfer, but ONLY if it is still the current one for that row.
+ *
+ * The identity guard is the load-bearing part. A row can be retried while its
+ * previous transfer is still unwinding — a failed row is retryable the moment
+ * its status lands ('failed'), which processItem writes before this runs. The
+ * retry claims the row and calls beginTransfer, replacing the map entry, so a
+ * plain delete-by-id here would evict the NEW transfer and make it
+ * uncancellable. One retry click is enough to hit this.
+ *
+ * The token check below is a second, narrower guard: `trySoulseek` clears
+ * `transfer.peer` in its own finally, so in practice this branch only ever runs
+ * for the `holdAbandonedPeer` case, where a cancelled transfer has already
+ * released the peer field. Tokens (not row ids) keep that claim bound to the
+ * transfer that took it rather than to a row that may since have been retried.
+ */
+function endTransfer(transfer) {
+    if (activeTransfers.get(transfer.itemId) !== transfer) return;
+
+    if (transfer.peer && busyPeers.get(transfer.peer) === transfer.token) {
+        if (transfer.cancelled) holdAbandonedPeer(transfer.peer, transfer.token);
+        else busyPeers.delete(transfer.peer);
+    }
+    activeTransfers.delete(transfer.itemId);
+}
+
+function cancelTransfer(itemId) {
+    const transfer = activeTransfers.get(itemId);
+    if (!transfer) return false;
+    transfer.cancelled = true;
     return true;
+}
+
+/**
+ * Keeps a peer reserved after its transfer was abandoned, then expires the
+ * claim. See ABANDONED_PEER_HOLD_MS for why the reservation outlives the
+ * transfer rather than being released with it.
+ */
+function holdAbandonedPeer(user, token) {
+    const timer = setTimeout(() => {
+        if (busyPeers.get(user) === token) busyPeers.delete(user);
+    }, ABANDONED_PEER_HOLD_MS);
+    // Never let a cleanup timer hold the process open at shutdown.
+    if (typeof timer.unref === 'function') timer.unref();
+}
+
+/** Marks a peer as having just failed us, so the next attempt prefers another. */
+function discouragePeer(user) {
+    if (!user) return;
+    discouragedPeers.set(user, Date.now());
+}
+
+function isPeerDiscouraged(user) {
+    const at = discouragedPeers.get(user);
+    if (!at) return false;
+    if (Date.now() - at > DISCOURAGED_PEER_TTL_MS) {
+        discouragedPeers.delete(user);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Pacing is handled process-wide by withYtDlpSlot in ytDlpRuntime, not here:
+ * searches, metadata, artwork and downloads all spend the same per-IP
+ * allowance, so a per-module gate would only pace each caller against itself.
+ */
+function delay(ms) {
+    return new Promise(resolve => { setTimeout(resolve, ms); });
 }
 
 function buildSearchQuery(item) {
@@ -1232,100 +1693,145 @@ function buildSearchQuery(item) {
 }
 
 /**
- * Resolves the audio for one queue row and returns the temp file it produced.
+ * Picks the best candidate from a peer that is not already serving us.
+ *
+ * Busy peers are dropped outright rather than merely deprioritised: a second
+ * request to a peer holding our upload slot would queue behind the first and
+ * finish no sooner, so waiting on it is pure delay. `null` therefore means
+ * "every candidate is busy", which the caller treats as a signal to fall
+ * through to the next source rather than to wait.
+ *
+ * Candidates from discouraged peers are deprioritised but kept, so a track only
+ * one peer has still resolves.
  */
-async function acquireAudio(item, temporaryDirectory, reportProgress) {
+function selectSoulseekCandidate(candidates) {
+    const available = candidates.filter(candidate => !busyPeers.has(candidate.user));
+    if (available.length === 0) return null;
+
+    return available
+        .map((candidate, index) => ({
+            candidate,
+            index,
+            penalty: isPeerDiscouraged(candidate.user) ? 1 : 0
+        }))
+        .sort((a, b) => (a.penalty - b.penalty) || (a.index - b.index))[0].candidate;
+}
+
+/**
+ * Resolves the audio for one queue row and returns the temp file it produced.
+ *
+ * Ordering note: `auto` tries Soulseek FIRST. Soulseek has no anti-bot system,
+ * is not rate-limited per IP, and frequently serves lossless where YouTube
+ * yields a 128 kbps transcode — so it is both the better source and the one
+ * that does not punish us for using it. YouTube remains the fallback, which is
+ * also why the breaker only ever costs us a source and never the download.
+ */
+async function acquireAudio(item, temporaryDirectory, reportProgress, transfer) {
     const requestedSource = item.requested_source || 'auto';
     const payload = item.source_payload ? JSON.parse(item.source_payload) : null;
     const query = buildSearchQuery(item);
+    // Stored per row, so a restarted download keeps the quality the user chose
+    // rather than silently reverting to the default.
+    const quality = QUALITY_PREFERENCES.has(item.quality) ? item.quality : 'best';
     const failures = [];
+    const shouldCancel = () => transfer.cancelled;
 
     const tryYoutube = async url => {
         const destination = path.join(temporaryDirectory, 'audio.mp3');
-        return await youtubeDownload(url, destination, reportProgress, {
-            shouldCancel: () => activeTransfer.cancelled
-        });
+        // Paced by the shared gate, so a download cannot run alongside a search
+        // or a Discord artwork lookup and double the request rate.
+        return withYtDlpSlot(
+            () => youtubeDownload(url, destination, reportProgress, { shouldCancel }),
+            shouldCancel
+        );
     };
-
-    if (requestedSource === 'youtube') {
-        try {
-            return await tryYoutube(item.source_url);
-        } catch (error) {
-            if (error.message === 'Cancelled.') throw error;
-            failures.push(`YouTube: ${error.message}`);
-        }
-    }
 
     const trySoulseek = async candidate => {
         const client = await getSoulseekClient();
         if (!client) throw new Error(soulseekLastError || 'Soulseek is not connected.');
 
-        await reportProgress({ stage: 'connecting', resolved_source: 'soulseek' });
-        const live = await refreshSoulseekCandidate(candidate);
-        if (!live) throw new Error('The peer is no longer sharing that file.');
+        // Claim the peer for the duration of the transfer. This is what keeps a
+        // second worker from queueing behind us on the same upload slot.
+        const peer = candidate.user;
+        transfer.peer = peer;
+        busyPeers.set(peer, transfer.token);
 
-        const destination = path.join(temporaryDirectory, `audio${live.extension || '.mp3'}`);
-        await reportProgress({
-            stage: 'downloading',
-            resolved_source: 'soulseek',
-            total_bytes: Number(live.sizeBytes) || 0
-        });
-
-        const result = await soulseekDownload(client, live, destination, reportProgress, {
-            shouldCancel: () => activeTransfer.cancelled
-        });
-        return { ...result, source: 'soulseek', bitrate: live.bitrate };
-    };
-
-    if (requestedSource === 'auto') {
         try {
-            await reportProgress({ stage: 'searching', resolved_source: 'youtube' });
-            const results = await youtubeSearch(youtubeQuery(item), {
-                limit: YOUTUBE_MAX_ATTEMPTS,
-                expectedDuration: item.duration_seconds,
-                shouldCancel: () => activeTransfer.cancelled
+            await reportProgress({ stage: 'connecting', resolved_source: 'soulseek' });
+            const live = await refreshSoulseekCandidate(candidate);
+            if (!live) throw new Error('The peer is no longer sharing that file.');
+
+            const destination = path.join(temporaryDirectory, `audio${live.extension || '.mp3'}`);
+            await reportProgress({
+                stage: 'downloading',
+                resolved_source: 'soulseek',
+                total_bytes: Number(live.sizeBytes) || 0
             });
 
-            for (const candidate of results) {
-                if (activeTransfer.cancelled) throw new Error('Cancelled.');
-                try {
-                    return await tryYoutube(candidate.payload.url);
-                } catch (error) {
-                    if (error.message === 'Cancelled.') throw error;
-                    failures.push(`YouTube: ${error.message}`);
+            const result = await soulseekDownload(client, live, destination, reportProgress, {
+                shouldCancel
+            });
+            return { ...result, source: 'soulseek', bitrate: live.bitrate };
+        } catch (error) {
+            // A peer that stalled or dropped us is a poor bet for the retry.
+            if (error.message !== 'Cancelled.') discouragePeer(peer);
+            throw error;
+        } finally {
+            if (busyPeers.get(peer) === transfer.token) {
+                if (transfer.cancelled) {
+                    // The socket is still draining; see ABANDONED_PEER_HOLD_MS.
+                    holdAbandonedPeer(peer, transfer.token);
+                } else {
+                    busyPeers.delete(peer);
                 }
             }
-            if (results.length === 0) failures.push('YouTube: No matching videos.');
-        } catch (error) {
-            if (error.message === 'Cancelled.') throw error;
-            if (!failures.some(failure => failure.startsWith('YouTube:'))) {
-                failures.push(`YouTube: ${error.message}`);
-            }
+            transfer.peer = null;
         }
-    }
+    };
 
-    // An explicitly picked search result.
+    // An explicitly picked search result. Honoured before anything else so a
+    // hand-chosen lossless file is never silently swapped for another source.
     if (requestedSource === 'soulseek' && payload) {
         return await trySoulseek(payload);
     }
-    // Automatic mode uses Soulseek only as a fallback. Explicit requests still
-    // prefer the selected peer so lossless downloads do not silently change source.
+
+    // Soulseek first for `auto` and explicit soulseek. See the ordering note in
+    // this function's doc comment for why it leads rather than follows.
     if (requestedSource === 'auto' || requestedSource === 'soulseek') {
         try {
             await reportProgress({ stage: 'searching', resolved_source: 'soulseek' });
             const { available, results } = await soulseekSearch(query, {
                 timeout: SOULSEEK_AUTO_SEARCH_MS,
-                limit: 10
+                limit: 10,
+                quality
             });
 
+            // Up to six distinct peers are tried, against the old fixed three:
+            // with several workers live, the best-scoring peers are legitimately
+            // busy, and giving up when the top few are taken is what made
+            // playlists crawl.
+            //
+            // The `break` on "no candidate left" is load-bearing, not a
+            // shortcut. Waiting for a busy peer instead would let workers block
+            // on peers held by each other — A waiting on Y while B holds Y and
+            // waits on X — so the fall-through to YouTube is what keeps the pool
+            // deadlock-free.
             if (available && results.length > 0) {
-                for (const candidate of results.slice(0, 3)) {
-                    if (activeTransfer.cancelled) throw new Error('Cancelled.');
+                const ordered = [...results].sort((a, b) => (b.score || 0) - (a.score || 0));
+                const attempts = requestedSource === 'soulseek' ? 4 : 6;
+                for (let attempt = 0; attempt < attempts; attempt += 1) {
+                    const candidate = selectSoulseekCandidate(ordered);
+                    if (!candidate) break;
+                    if (transfer.cancelled) throw new Error('Cancelled.');
                     try {
                         return await trySoulseek({ ...candidate, query });
                     } catch (error) {
-                        failures.push(`Soulseek (${candidate.user}): ${error.message}`);
                         if (error.message === 'Cancelled.') throw error;
+                        failures.push(`Soulseek (${candidate.user}): ${error.message}`);
+                        // Remove the failed peer from consideration so the next
+                        // iteration picks a different one rather than looping.
+                        const index = ordered.indexOf(candidate);
+                        if (index >= 0) ordered.splice(index, 1);
                     }
                 }
             } else if (!available) {
@@ -1337,14 +1843,58 @@ async function acquireAudio(item, temporaryDirectory, reportProgress) {
             if (error.message === 'Cancelled.') throw error;
             failures.push(`Soulseek: ${error.message}`);
         }
+    }
 
+    // YouTube as the fallback for `auto`, and the only path for an explicit
+    // youtube request. Skipped outright while the breaker is open, so a block
+    // costs one source rather than the download.
+    const youtubeWanted = requestedSource === 'youtube' || requestedSource === 'auto';
+    if (youtubeWanted && !isYoutubeBlocked()) {
+        if (requestedSource === 'youtube') {
+            try {
+                return await tryYoutube(item.source_url);
+            } catch (error) {
+                if (error.message === 'Cancelled.') throw error;
+                failures.push(`YouTube: ${error.message}`);
+            }
+        } else {
+            try {
+                await reportProgress({ stage: 'searching', resolved_source: 'youtube' });
+                const results = await youtubeSearch(youtubeQuery(item), {
+                    limit: YOUTUBE_MAX_ATTEMPTS,
+                    expectedDuration: item.duration_seconds,
+                    shouldCancel
+                });
 
+                for (const candidate of results) {
+                    if (transfer.cancelled) throw new Error('Cancelled.');
+                    try {
+                        return await tryYoutube(candidate.payload.url);
+                    } catch (error) {
+                        if (error.message === 'Cancelled.') throw error;
+                        failures.push(`YouTube: ${error.message}`);
+                        // A block invalidates every remaining candidate: they
+                        // share one IP and one client identity, so continuing
+                        // would only deepen the rate-limit we just hit.
+                        if (isYoutubeBlockError(error)) break;
+                    }
+                }
+                if (results.length === 0) failures.push('YouTube: No matching videos.');
+            } catch (error) {
+                if (error.message === 'Cancelled.') throw error;
+                if (!failures.some(failure => failure.startsWith('YouTube:'))) {
+                    failures.push(`YouTube: ${error.message}`);
+                }
+            }
+        }
+    } else if (youtubeWanted && isYoutubeBlocked()) {
+        failures.push('YouTube is paused after rate-limiting this connection.');
     }
 
     throw new Error(failures.join(' | ') || 'Could not provide this track.');
 }
 
-async function processItem(item) {
+async function processItem(item, transfer) {
     const temporaryDirectory = createTempDirectory();
     let lastEmit = 0;
 
@@ -1375,8 +1925,8 @@ async function processItem(item) {
 
     try {
         const downloadRoot = resolveDownloadRoot();
-        const acquired = await acquireAudio(item, temporaryDirectory, reportProgress);
-        if (activeTransfer.cancelled) throw new Error('Cancelled.');
+        const acquired = await acquireAudio(item, temporaryDirectory, reportProgress, transfer);
+        if (transfer.cancelled) throw new Error('Cancelled.');
 
         await reportProgress({ stage: 'tagging', progress: 0.96 });
 
@@ -1410,13 +1960,13 @@ async function processItem(item) {
         
         // Prioritize explicit artwork (from Spotify/iTunes) over whatever the peer embedded.
         if (artworkUrlToFetch) {
-            if (explicitArtworkUrl || !hasEmbeddedArtwork(acquired.filePath)) {
+            if (explicitArtworkUrl || !(await hasEmbeddedArtwork(acquired.filePath))) {
                 artwork = await fetchArtwork(artworkUrlToFetch);
             }
         }
 
         const shouldTagMetadata = Boolean(item.artist || acquired.source === 'youtube' || (resolvedTitle && !isGenericTitle));
-        const tagsUpdated = applyTags(
+        const tagsUpdated = await applyTags(
             acquired.filePath,
             shouldTagMetadata
                 ? { title: resolvedTitle, artist: resolvedArtist, album: item.album }
@@ -1436,7 +1986,7 @@ async function processItem(item) {
         const extension = path.extname(acquired.filePath).toLowerCase() || '.mp3';
         const base = buildBaseFileName(resolvedArtist, resolvedTitle);
         const destination = uniqueDestination(downloadRoot, base, extension);
-        moveFile(acquired.filePath, destination);
+        await moveFile(acquired.filePath, destination);
         log(`Saved ${path.basename(destination)} from ${acquired.source}`);
 
         await reportProgress({ stage: 'indexing', progress: 0.99 });
@@ -1481,7 +2031,7 @@ async function processItem(item) {
         emitItemProgress(finished);
         emit('downloads:completed', { item: serializeItem(finished) });
     } catch (error) {
-        const cancelled = activeTransfer.cancelled || error.message === 'Cancelled.';
+        const cancelled = transfer.cancelled || error.message === 'Cancelled.';
         const finished = await HandleDatabase.finishDownloadItem(item.id, {
             status: cancelled ? 'cancelled' : 'failed',
             error: cancelled ? null : String(error.message || error).slice(0, 500)
@@ -1494,38 +2044,73 @@ async function processItem(item) {
 }
 
 /**
- * Single-flight queue pump. Safe to call whenever work is added; a second call
- * while running is a no-op because the loop drains everything.
+ * One worker loop: claims rows and processes them until the queue runs dry.
+ *
+ * `claimNextDownload` remains the single source of truth for what is claimable
+ * — its `WHERE status = 'queued'` guard was written for exactly this, so
+ * several loops racing for work cannot double-claim a row.
+ *
+ * A worker exits only when there is genuinely nothing left to claim, which is
+ * what makes the pool self-draining: the loops stay alive through the whole
+ * batch and only wind down once the queue is empty.
  */
-async function pumpQueue() {
-    if (workerRunning || workerStopped) return;
-    workerRunning = true;
+async function runWorkerLoop() {
+    while (!workerStopped) {
+        const item = await HandleDatabase.claimNextDownload();
+        if (!item) return;
 
-    try {
-        while (!workerStopped) {
-            const item = await HandleDatabase.claimNextDownload();
-            if (!item) break;
-
-            activeTransfer.itemId = item.id;
-            activeTransfer.cancelled = false;
-
-            emitQueueChanged();
-            try {
-                await processItem(item);
-            } catch (error) {
-                logError('Unhandled worker error:', error);
-                await HandleDatabase.finishDownloadItem(item.id, {
-                    status: 'failed',
-                    error: String(error.message || error).slice(0, 500)
-                });
-            } finally {
-                activeTransfer.itemId = null;
-                activeTransfer.cancelled = false;
-            }
-            emitQueueChanged();
+        const transfer = beginTransfer(item.id);
+        emitQueueChanged();
+        try {
+            await processItem(item, transfer);
+        } catch (error) {
+            logError('Unhandled worker error:', error);
+            await HandleDatabase.finishDownloadItem(item.id, {
+                status: 'failed',
+                error: String(error.message || error).slice(0, 500)
+            });
+        } finally {
+            endTransfer(transfer);
         }
-    } finally {
-        workerRunning = false;
+        emitQueueChanged();
+    }
+}
+
+/**
+ * Tops the pool back up to its configured width.
+ *
+ * Safe to call whenever work is added: the guard means an extra call while the
+ * pool is already full starts nothing, and because workers drain the queue
+ * themselves this never needs to know how much work there is.
+ */
+function pumpQueue() {
+    if (workerStopped) return;
+
+    while (activeWorkerCount < MAX_PARALLEL_TRANSFERS) {
+        activeWorkerCount += 1;
+        runWorkerLoop()
+            .catch(error => logError('Queue worker failed:', error))
+            .finally(() => {
+                activeWorkerCount -= 1;
+
+                // A worker can run dry at the exact moment new work lands, while
+                // the count is still at the cap — so the enqueue's own pumpQueue
+                // call saw a full pool and started nothing. Only the last worker
+                // to exit needs to re-check: while any other loop is alive it
+                // will claim the new row itself.
+                //
+                // Gated on `countClaimableDownloads` rather than
+                // `countPendingDownloads`: the latter also counts `running`
+                // rows, which no worker can claim. With rows still running and
+                // nothing queued, this would spawn a worker that immediately
+                // exits, re-check, and spawn again — an endless spin instead of
+                // an idle pool.
+                if (!workerStopped && activeWorkerCount === 0) {
+                    HandleDatabase.countClaimableDownloads()
+                        .then(claimable => { if (claimable > 0 && !workerStopped) pumpQueue(); })
+                        .catch(error => logError('Queue re-check failed:', error.message));
+                }
+            });
     }
 }
 
@@ -1606,7 +2191,7 @@ function fetchItunesArtwork(artist, title) {
 }
 
 /** Search the requested sources for the Downloads page. */
-async function search(query, { sources = ['youtube'], limit = 40 } = {}) {
+async function search(query, { sources = ['youtube'], limit = 40, quality = 'best' } = {}) {
     const trimmed = String(query || '').trim();
     if (trimmed.length < 2) {
         throw Object.assign(new Error('Enter at least two characters to search.'), { statusCode: 400 });
@@ -1618,7 +2203,7 @@ async function search(query, { sources = ['youtube'], limit = 40 } = {}) {
     const wantSoulseek = sources.includes('soulseek');
     const wantYoutube = sources.includes('youtube');
     const [soulseekResult, youtubeResult] = await Promise.all([
-        wantSoulseek ? soulseekSearch(trimmed, { limit }).catch(error => ({
+        wantSoulseek ? soulseekSearch(trimmed, { limit, quality }).catch(error => ({
             available: false, results: [], error: error.message
         })) : Promise.resolve({ available: false, results: [], error: null }),
         wantYoutube ? youtubeSearch(`${trimmed} audio`, { limit: Math.min(limit, 10) })
@@ -1709,14 +2294,19 @@ async function resolveLink(url) {
         const videoId = extractYoutubeVideoId(trimmed);
         let meta = null;
         try {
-            const child = ytDlp.exec(canonicalUrl, {
-                dumpSingleJson: true,
-                noWarnings: true,
-                noPlaylist: true,
-                skipDownload: true
-            }, { env: ytDlpEnv(), timeout: 15000 });
-            const result = await child;
-            meta = JSON.parse(result.stdout);
+            // Paced like every other lookup: pasting a playlist of links is a
+            // burst of resolveLink calls, and they share the per-IP allowance.
+            meta = await withYtDlpSlot(async () => {
+                const child = ytDlp.exec(canonicalUrl, {
+                    ...ytDlpBaseOptions(),
+                    dumpSingleJson: true,
+                    noWarnings: true,
+                    noPlaylist: true,
+                    skipDownload: true
+                }, { env: ytDlpEnv(), timeout: 15000 });
+                const result = await child;
+                return JSON.parse(result.stdout);
+            });
         } catch (err) {
             logError('yt-dlp metadata extraction failed during resolveLink:', err.message || err);
             meta = null;
@@ -1791,6 +2381,7 @@ async function enqueue(items, requestedBy, { batchLabel = null } = {}) {
         batchUid,
         batchLabel: items.length > 1 ? batchLabel : null,
         requestedSource: item.requestedSource || 'auto',
+        quality: QUALITY_PREFERENCES.has(item.quality) ? item.quality : 'best',
         title: String(item.title || '').trim().slice(0, 300) || 'Unknown Title',
         artist: item.artist ? String(item.artist).trim().slice(0, 300) : null,
         album: item.album ? String(item.album).trim().slice(0, 300) : null,
@@ -1804,7 +2395,7 @@ async function enqueue(items, requestedBy, { batchLabel = null } = {}) {
 
     const result = await HandleDatabase.enqueueDownloads(prepared, requestedBy);
     emitQueueChanged();
-    pumpQueue().catch(error => logError('Queue pump failed:', error));
+    pumpQueue();
 
     return {
         queued: result.accepted.length,
@@ -1815,9 +2406,17 @@ async function enqueue(items, requestedBy, { batchLabel = null } = {}) {
 
 async function getQueue() {
     const rows = await HandleDatabase.getDownloadQueue({ limit: 200 });
+    // Sorted by row id so `activeId` means "the oldest running download", which
+    // is what a single-value reader would expect. Map insertion order is claim
+    // order, which is not the same thing once workers race.
+    const activeIds = [...activeTransfers.keys()].sort((a, b) => a - b);
     return {
         items: rows.map(serializeItem),
-        activeId: activeTransfer.itemId,
+        // `activeId` keeps the single-value shape for older clients; `activeIds`
+        // is the honest answer now that several transfers run at once.
+        activeId: activeIds.length > 0 ? activeIds[0] : null,
+        activeIds,
+        youtube: youtubeBreakerStatus(),
         downloadFolder: (() => {
             try { return resolveDownloadRoot({ create: false }); } catch { return null; }
         })()
@@ -1828,7 +2427,7 @@ async function cancelItem(id) {
     const item = await HandleDatabase.getDownloadItem(id);
     if (!item) throw Object.assign(new Error('That download is no longer in the queue.'), { statusCode: 404 });
 
-    cancelActiveTransfer(item.id);
+    cancelTransfer(item.id);
     const cancelled = await HandleDatabase.cancelDownloadItem(item.id);
     emitQueueChanged();
     return cancelled;
@@ -1836,16 +2435,18 @@ async function cancelItem(id) {
 
 async function cancelBatch(batchUid) {
     const cancelled = await HandleDatabase.cancelDownloadBatch(batchUid);
-    if (activeTransfer.itemId) {
-        const active = await HandleDatabase.getDownloadItem(activeTransfer.itemId);
-        if (active && active.batch_uid === batchUid) cancelActiveTransfer(active.id);
+    // A batch can now span several in-flight transfers, so every matching one
+    // is signalled rather than just the oldest.
+    for (const transfer of activeTransfers.values()) {
+        const active = await HandleDatabase.getDownloadItem(transfer.itemId);
+        if (active && active.batch_uid === batchUid) cancelTransfer(active.id);
     }
     emitQueueChanged();
     return cancelled;
 }
 
 async function cancelAll() {
-    if (activeTransfer.itemId) cancelActiveTransfer(activeTransfer.itemId);
+    for (const itemId of [...activeTransfers.keys()]) cancelTransfer(itemId);
     const cancelled = await HandleDatabase.cancelAllPendingDownloads();
     emitQueueChanged();
     return cancelled;
@@ -1862,7 +2463,7 @@ async function retryItem(id) {
     if (!retried) throw Object.assign(new Error('Only failed or cancelled downloads can be retried.'), { statusCode: 409 });
 
     emitQueueChanged();
-    pumpQueue().catch(error => logError('Queue pump failed:', error));
+    pumpQueue();
     return serializeItem(retried);
 }
 
@@ -1902,13 +2503,13 @@ async function resume() {
     const pending = await HandleDatabase.countPendingDownloads();
     if (pending > 0) {
         log(`Resuming ${pending} pending download(s).`);
-        pumpQueue().catch(error => logError('Queue pump failed:', error));
+        pumpQueue();
     }
 }
 
 function shutdown() {
     workerStopped = true;
-    if (activeTransfer.itemId) cancelActiveTransfer(activeTransfer.itemId);
+    for (const itemId of [...activeTransfers.keys()]) cancelTransfer(itemId);
     disconnectSoulseek();
 }
 
@@ -1933,9 +2534,35 @@ module.exports = {
     testSoulseekConnection,
     isSpotifyUrl,
     isYoutubeUrl,
+    youtubeBreakerStatus,
+    isYoutubeBlockError,
     extractYoutubeVideoId,
     canonicalYoutubeUrl,
     cleanYoutubeTitle,
     splitYoutubeTitle,
-    isTrustedArtworkUrl
+    isTrustedArtworkUrl,
+
+    /**
+     * Test-only surface for the transfer registry.
+     *
+     * These back a race that is invisible in normal use — a retry landing while
+     * the previous transfer unwinds — so it would otherwise only be caught by
+     * hand. Kept deliberately small and named to discourage production use.
+     */
+    __testing: {
+        beginTransfer,
+        endTransfer,
+        cancelTransfer,
+        isPeerBusy: user => busyPeers.has(user),
+        fetchSpotifyAlbumMetadata,
+        scoreSoulseekCandidate,
+        qualityTierFor,
+        claimPeer: (user, transfer) => busyPeers.set(user, transfer.token),
+        activeTransferCount: () => activeTransfers.size,
+        reset: () => {
+            activeTransfers.clear();
+            busyPeers.clear();
+            discouragedPeers.clear();
+        }
+    }
 };

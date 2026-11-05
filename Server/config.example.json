@@ -8,11 +8,5 @@
     "music_directories": [],
     "music_library_owner": null,
     "metadata_lookup_mode": "local_only",
-    "maintenance_message": "Site is currently undergoing maintenance. Please check back later!",
-    "ratelimits": {
-        "api": 200,
-        "social": 20,
-        "comment": 5,
-        "post": 1
-    }
+    "maintenance_message": "Site is currently undergoing maintenance. Please check back later!"
 }

@@ -9,12 +9,17 @@
  * desktop app simply hosts the existing server in-process and points a window
  * at it:
  *
- *     main process ──> require('../Server/server') ──> Express on 127.0.0.1:PORT
+ *     main process ──> utilityProcess(electron/server-host.js)
+ *          │                 └──> Server/server.js ──> Express on 127.0.0.1:PORT
  *          │
  *          └──> BrowserWindow ──> http://127.0.0.1:PORT
  *
+ * The server runs in its own process so that heavy work (downloads, tagging,
+ * indexing) can never freeze the window. The main process only owns windows,
+ * the tray, IPC and the updater.
+ *
  * The same server keeps listening on 0.0.0.0, so phones on the LAN reach the
- * identical instance. One process, one database, three front doors.
+ * identical instance. One server, one database, three front doors.
  *
  * Why the window loads over HTTP instead of file://
  * -------------------------------------------------
@@ -24,7 +29,7 @@
  * the full PWA feature set with zero degradation.
  */
 
-const { app, BrowserWindow, Tray, Menu, shell, ipcMain, dialog, nativeImage, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, ipcMain, dialog, nativeImage, session, utilityProcess } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -140,7 +145,10 @@ let mainWindow = null;
 let connectWindow = null;
 let tray = null;
 let serverInfo = null;
-let serverModule = null;
+let serverProcess = null;
+let serverExitPromise = null;
+let settingRequestId = 0;
+const pendingSettingRequests = new Map();
 let serverOrigin = null;
 let updater = null;
 let isQuitting = false;
@@ -213,77 +221,121 @@ function queueExternalOpen(value, source) {
  * Server lifecycle
  * ------------------------------------------------------------------ */
 
+/**
+ * Forwards one of the server process's output streams line by line.
+ * stderr (errors, warnings) also goes to main.log so failures stay reportable;
+ * stdout is chatty download/scan progress and only goes to the console.
+ */
+function pipeServerOutput(stream, toLogFile) {
+    if (!stream) return;
+    let buffered = '';
+    stream.setEncoding('utf8');
+    stream.on('data', (chunk) => {
+        buffered += chunk;
+        const lines = buffered.split(/\r?\n/);
+        buffered = lines.pop();
+        for (const line of lines) {
+            if (!line) continue;
+            if (toLogFile) writeLog('SERVER', line);
+            else console.log(line);
+        }
+    });
+}
+
+function rejectPendingSettingRequests(reason) {
+    for (const { reject } of pendingSettingRequests.values()) reject(new Error(reason));
+    pendingSettingRequests.clear();
+}
+
+function handleServerMessage(message) {
+    if (!message || typeof message !== 'object') return;
+    if (message.type === 'reply') {
+        const pending = pendingSettingRequests.get(message.id);
+        if (!pending) return;
+        pendingSettingRequests.delete(message.id);
+        if (message.error) pending.reject(new Error(message.error));
+        else pending.resolve(message.value);
+    }
+}
+
 async function startServer() {
-    const serverPath = path.join(REPO_ROOT, 'Server', 'server.js');
-    writeLog('INFO', 'Loading server from', serverPath);
+    const hostPath = path.join(__dirname, 'server-host.js');
+    writeLog('INFO', 'Starting server process from', hostPath);
     writeLog('INFO', 'Data directory:', process.env.STREAMIFY_DATA_DIR);
 
-    // Required lazily so the env vars above are already in place.
-    serverModule = require(serverPath);
-    serverInfo = await serverModule.start();
+    const child = utilityProcess.fork(hostPath, [], {
+        serviceName: 'Streamify Server',
+        stdio: 'pipe',
+        // The env vars set above (data dir etc.) must reach Server/runtime.js.
+        env: { ...process.env },
+    });
+    serverProcess = child;
+    pipeServerOutput(child.stdout, false);
+    pipeServerOutput(child.stderr, true);
 
-    const parsedServerUrl = parseUrl(serverInfo.url);
+    serverExitPromise = new Promise((resolve) => {
+        child.once('exit', (code) => {
+            if (serverProcess === child) serverProcess = null;
+            rejectPendingSettingRequests('The server process exited.');
+            resolve(code);
+            if (serverInfo && !isQuitting && !shutdownPromise) {
+                writeLog('ERROR', `Server process exited unexpectedly (code ${code}).`);
+                serverInfo = null;
+                void showErrorWindowSafely(new Error(
+                    `The Streamify server stopped unexpectedly (exit code ${code}). ` +
+                    'Restart the app; details are in the log file.'
+                ));
+            } else {
+                writeLog('INFO', `Server process exited (code ${code}).`);
+            }
+        });
+    });
+
+    const info = await new Promise((resolve, reject) => {
+        const onMessage = (message) => {
+            if (!message || typeof message !== 'object') return;
+            if (message.type === 'ready') {
+                cleanup();
+                resolve(message.info);
+            } else if (message.type === 'start-failed') {
+                cleanup();
+                const err = new Error(message.error && message.error.message
+                    ? message.error.message
+                    : 'Server failed to start.');
+                if (message.error && message.error.stack) err.stack = message.error.stack;
+                reject(err);
+            }
+        };
+        const onExit = (code) => {
+            cleanup();
+            reject(new Error(`Server process exited during startup (code ${code}).`));
+        };
+        const cleanup = () => {
+            child.removeListener('message', onMessage);
+            child.removeListener('exit', onExit);
+        };
+        child.on('message', onMessage);
+        child.once('exit', onExit);
+    });
+
+    child.on('message', handleServerMessage);
+
+    const parsedServerUrl = parseUrl(info && info.url);
     if (
         !parsedServerUrl ||
         !SAFE_EXTERNAL_PROTOCOLS.has(parsedServerUrl.protocol) ||
         !LOOPBACK_HOSTNAMES.has(parsedServerUrl.hostname) ||
-        parsedServerUrl.protocol !== (serverInfo.secure ? 'https:' : 'http:') ||
+        parsedServerUrl.protocol !== (info.secure ? 'https:' : 'http:') ||
         parsedServerUrl.username !== '' ||
         parsedServerUrl.password !== ''
     ) {
         throw new Error('Server returned an invalid local URL.');
     }
     serverOrigin = parsedServerUrl.origin;
+    serverInfo = info;
 
-    serverModule.httpServer.on('error', (err) => {
-        writeLog('ERROR', 'Server runtime error:', err);
-    });
-    serverModule.httpServer.once('close', () => {
-        writeLog('INFO', 'Server transport closed.');
-    });
-
-    writeLog('INFO', `Server listening on ${serverInfo.url} (secure=${serverInfo.secure})`);
+    writeLog('INFO', `Server listening on ${serverInfo.url} (secure=${serverInfo.secure}, pid=${child.pid})`);
     return serverInfo;
-}
-
-function trackDatabaseShutdown() {
-    try {
-        const database = require(path.join(REPO_ROOT, 'Server', 'database.js'));
-        if (!database || typeof database.close !== 'function') return null;
-
-        const originalClose = database.close;
-        let resolveClosed;
-        let rejectClosed;
-        const closed = new Promise((resolve, reject) => {
-            resolveClosed = resolve;
-            rejectClosed = reject;
-        });
-        // Keep a later close failure handled even if gracefulShutdown itself
-        // throws before this promise can be awaited.
-        void closed.catch(() => {});
-        const trackedClose = function (...args) {
-            let result;
-            try {
-                result = originalClose.apply(this, args);
-            } catch (err) {
-                rejectClosed(err);
-                throw err;
-            }
-            Promise.resolve(result).then(resolveClosed, rejectClosed);
-            return result;
-        };
-        database.close = trackedClose;
-
-        return {
-            closed,
-            restore: () => {
-                if (database.close === trackedClose) database.close = originalClose;
-            },
-        };
-    } catch (err) {
-        writeLog('WARN', 'Could not track database shutdown completion:', err);
-        return null;
-    }
 }
 
 async function waitForShutdown(promise) {
@@ -301,7 +353,8 @@ async function waitForShutdown(promise) {
 function shutdownServer() {
     if (shutdownPromise) return shutdownPromise;
 
-    const moduleToStop = serverModule;
+    const processToStop = serverProcess;
+    const exited = serverExitPromise;
     shutdownPromise = (async () => {
         // Drop the Discord card before anything else. It is synchronous and
         // instant, and a card left up after the app is gone is the one failure
@@ -320,24 +373,21 @@ function shutdownServer() {
             writeLog('WARN', 'Updater teardown failed:', err);
         }
 
-        if (!moduleToStop) {
+        if (!processToStop) {
             writeLog('INFO', 'No server process needed shutdown.');
             return;
         }
 
         writeLog('INFO', 'Graceful server shutdown starting.');
-        // Server.gracefulShutdown currently schedules its database close from
-        // an HTTP callback. Track that close so Electron does not exit after
-        // only the scheduling promise has resolved.
-        const databaseShutdown = trackDatabaseShutdown();
         try {
-            await moduleToStop.gracefulShutdown({ exit: false });
-            if (databaseShutdown) await waitForShutdown(databaseShutdown.closed);
+            processToStop.postMessage({ type: 'shutdown' });
+            // The host replies 'stopped' after the database is closed and then
+            // exits; waiting for the exit covers both.
+            await waitForShutdown(exited);
             writeLog('INFO', 'Graceful server shutdown completed.');
         } catch (err) {
-            writeLog('ERROR', 'Graceful server shutdown failed:', err);
-        } finally {
-            if (databaseShutdown) databaseShutdown.restore();
+            writeLog('ERROR', 'Graceful server shutdown failed; terminating the server process:', err);
+            try { processToStop.kill(); } catch { /* already gone */ }
         }
     })();
 
@@ -901,13 +951,30 @@ function broadcastUpdateState(status) {
 }
 
 /**
- * Reads a system_config row directly. The server runs in this very process, so
- * an HTTP round trip to ourselves would only add a session we do not have.
+ * Reads a system_config row from the server process over its message port.
+ * An HTTP round trip would need a session the main process does not have.
  */
-async function readServerSetting(key) {
-    const database = require(path.join(REPO_ROOT, 'Server', 'database.js'));
-    if (!database || typeof database.getSystemConfigValue !== 'function') return null;
-    return database.getSystemConfigValue(key);
+function readServerSetting(key) {
+    const child = serverProcess;
+    if (!child) return Promise.resolve(null);
+
+    return new Promise((resolve, reject) => {
+        const id = ++settingRequestId;
+        const timer = setTimeout(() => {
+            if (pendingSettingRequests.delete(id)) reject(new Error(`Timed out reading setting "${key}".`));
+        }, 10000);
+        pendingSettingRequests.set(id, {
+            resolve: (value) => { clearTimeout(timer); resolve(value); },
+            reject: (err) => { clearTimeout(timer); reject(err); },
+        });
+        try {
+            child.postMessage({ type: 'getSetting', id, key });
+        } catch (err) {
+            pendingSettingRequests.delete(id);
+            clearTimeout(timer);
+            reject(err);
+        }
+    });
 }
 
 function getUpdater() {

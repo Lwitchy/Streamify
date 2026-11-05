@@ -79,6 +79,7 @@
         const before = isLiked(key);
         if (liked) likedIds.add(key); else likedIds.delete(key);
         refreshButtons();
+        if (before !== liked) popButtons(key, liked);
         try {
             const response = await fetch(window.API_BASE_URL + `/api/likes/${encodeURIComponent(key)}`, {
                 method: liked ? 'PUT' : 'DELETE',
@@ -94,6 +95,21 @@
         } finally {
             pending.delete(key);
         }
+    }
+
+    /* Heart pop: swell, settle, and a burst of glow when liking; a small
+       shrink when unliking. Only for the buttons of the song you tapped. */
+    function popButtons(key, liked) {
+        const current = currentSongId();
+        const selector = `[data-like-song="${window.CSS && CSS.escape ? CSS.escape(key) : key}"]` +
+            (current === key ? ', [data-like-current]' : '');
+        document.querySelectorAll(selector).forEach(button => {
+            button.classList.remove('like-pop', 'like-unpop');
+            void button.offsetWidth;
+            button.classList.add(liked ? 'like-pop' : 'like-unpop');
+            clearTimeout(button._likePopTimer);
+            button._likePopTimer = setTimeout(() => button.classList.remove('like-pop', 'like-unpop'), 800);
+        });
     }
 
     function toggle(songId) {

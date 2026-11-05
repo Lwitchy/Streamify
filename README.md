@@ -166,7 +166,7 @@ to CDNs, so it works on a fully offline network.
 
 ## Security
 
-We built some decent security in here. It has rate limiting to stop brute force attacks, secure cookies, and password hashing. But seriously, do not run this in a massive production environment without putting it behind a proper reverse proxy like Nginx or Cloudflare.
+We built some decent security in here. It has a failed-login lockout, secure cookies, and password hashing. But seriously, do not run this in a massive production environment without putting it behind a proper reverse proxy like Nginx or Cloudflare.
 
 ## Troubleshooting
 

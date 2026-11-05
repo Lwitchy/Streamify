@@ -51,7 +51,16 @@ class Element {
         this.hidden = false;
         this.disabled = false;
         this.value = '';
+        this.checked = false;
     }
+    /*
+     * Assigning `.type` or `.checked` on a real <input> is reflected in the
+     * DOM, so the stub mirrors that onto attributes. Selector matching and
+     * production code both read them back, and a silent no-op here would make
+     * `input[type="checkbox"]` never match.
+     */
+    set type(v) { this.attributes.type = String(v); }
+    get type() { return this.attributes.type || ''; }
     set className(v) { this.classList.set = new Set(String(v).split(/\s+/).filter(Boolean)); }
     get className() { return this.classList.value; }
     set textContent(v) { this._text = String(v); this.children = []; }
@@ -85,9 +94,94 @@ class Element {
         }
         return null;
     }
-    querySelector() { return null; }
-    querySelectorAll() { return []; }
+    /**
+     * Minimal but REAL selector matching, so tests exercise the same lookups
+     * production uses. Only the shapes this app actually queries are supported:
+     * `.class`, `tag`, `[attr]`, `[attr="value"]`, and `a b` descendant chains.
+     */
+    querySelectorAll(selector) {
+        return matchesAll(this, selector);
+    }
+    querySelector(selector) {
+        return matchesAll(this, selector)[0] || null;
+    }
     get offsetWidth() { return 0; }
+}
+
+/** Splits a descendant selector on whitespace, ignoring whitespace in brackets. */
+function splitSelector(selector) {
+    const parts = [];
+    let current = '';
+    let bracketDepth = 0;
+    for (const char of String(selector)) {
+        if (char === '[') bracketDepth += 1;
+        if (char === ']') bracketDepth -= 1;
+        if (/\s/.test(char) && bracketDepth === 0) {
+            if (current) { parts.push(current); current = ''; }
+            continue;
+        }
+        current += char;
+    }
+    if (current) parts.push(current);
+    return parts;
+}
+
+/** Reads an attribute, including the data-* names mirrored onto dataset. */
+function readAttribute(node, name) {
+    if (name.startsWith('data-')) {
+        const key = name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        return node.dataset[key];
+    }
+    return node.attributes[name];
+}
+
+/** True when `node` satisfies a single compound selector like `input.x[y="z"]`. */
+function matchesCompound(node, compound) {
+    let rest = compound;
+    const attrs = [];
+    rest = rest.replace(/\[([^\]]+)\]/g, (_, inner) => { attrs.push(inner); return ''; });
+
+    const tagMatch = /^[a-zA-Z][\w-]*/.exec(rest);
+    if (tagMatch && node.tagName !== tagMatch[0].toUpperCase()) return false;
+
+    for (const className of rest.match(/\.([\w-]+)/g) || []) {
+        if (!node.classList.contains(className.slice(1))) return false;
+    }
+
+    for (const attr of attrs) {
+        const eq = /^([\w-]+)\s*=\s*["']?([^"']*)["']?$/.exec(attr);
+        if (eq) {
+            const [, name, value] = eq;
+            if (String(readAttribute(node, name)) !== value) return false;
+        } else {
+            // Presence test: [data-index] matches only when the value is set.
+            // Note the name is the FULL attribute here (data-index), which is
+            // why it must go through readAttribute rather than indexing
+            // dataset directly with the prefixed name.
+            const value = readAttribute(node, attr);
+            if (value === undefined || value === null || value === '') return false;
+        }
+    }
+
+    return true;
+}
+
+/** Walks descendants, honouring descendant combinators in `selector`. */
+function matchesAll(root, selector) {
+    const parts = splitSelector(selector);
+    if (parts.length === 0) return [];
+
+    const found = [];
+    const visit = (node, index) => {
+        if (matchesCompound(node, parts[index])) {
+            if (index === parts.length - 1) found.push(node);
+            else node.children.forEach(child => visit(child, index + 1));
+        }
+        // A descendant match may start at any depth, so keep descending.
+        node.children.forEach(child => visit(child, index));
+    };
+    root.children.forEach(child => visit(child, 0));
+    return found;
 }
 
 // Parse ids + classes out of the real home.html so the stub mirrors it.
@@ -119,6 +213,8 @@ const document = {
 const fetchCalls = [];
 let soulseekState = { configured: false, username: null, connected: false, error: null };
 let queueItems = [];
+// Reported by /api/downloads/status; null means the breaker is closed.
+let youtubeState = null;
 
 const context = {
     document,
@@ -131,7 +227,13 @@ const context = {
         fetchCalls.push({ url, method: options.method || 'GET', body });
 
         if (url.endsWith('/api/downloads/status')) {
-            return jsonResponse({ success: true, items: queueItems, downloadFolder: 'C:/Music/Streamify Downloads', soulseek: soulseekState });
+            return jsonResponse({
+                success: true,
+                items: queueItems,
+                downloadFolder: 'C:/Music/Streamify Downloads',
+                soulseek: soulseekState,
+                youtube: youtubeState
+            });
         }
         if (url.endsWith('/api/downloads/search')) {
             const source = body && body.sources && body.sources[0];
@@ -155,6 +257,20 @@ const context = {
         if (url.endsWith('/api/downloads/enqueue')) {
             queueItems = body.items.map((it, i) => ({ id: i + 1, title: it.title, status: 'queued' }));
             return jsonResponse({ success: true, queued: body.items.length, skipped: [], items: queueItems });
+        }
+        if (url.endsWith('/api/downloads/resolve')) {
+            // A three-track album where the middle one is already owned, so the
+            // unticking behaviour has something to act on.
+            return jsonResponse({
+                success: true,
+                kind: 'spotify',
+                label: 'Test Album',
+                tracks: [
+                    { title: 'First Track', artist: 'Test Artist', album: 'Test Album' },
+                    { title: 'Owned Track', artist: 'Test Artist', album: 'Test Album', inLibrary: true },
+                    { title: 'Third Track', artist: 'Test Artist', album: 'Test Album' }
+                ]
+            });
         }
         return jsonResponse({ success: true });
     }
@@ -352,6 +468,99 @@ const check = (label, fn) => {
         assert.strictEqual(enqueues[enqueues.length - 1].body.items[0].requestedSource, 'youtube');
         assert.strictEqual(enqueues[enqueues.length - 1].body.items[0].sourceUrl,
             'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    });
+
+    /*
+     * The cooldown notice is the only YouTube notice that exists, and it must
+     * appear for every source selection: when YouTube is paused the downloads
+     * silently come from elsewhere, which without a notice reads as a bug.
+     */
+    await (async () => {
+        youtubeState = {
+            blocked: true,
+            retryAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+            reason: 'Sign in to confirm you are not a bot'
+        };
+        await context.window.StreamifyDownloads.refresh();
+    })();
+
+    check('a YouTube cooldown is surfaced while YouTube is selected', () => {
+        const text = textOf('downloads-source-notice');
+        assert.ok(/YouTube is paused/i.test(text), `no cooldown notice rendered: ${text}`);
+        assert.ok(/Soulseek only/i.test(text), `the notice does not explain the fallback: ${text}`);
+    });
+
+    await (async () => {
+        youtubeState = null;
+        await context.window.StreamifyDownloads.refresh();
+    })();
+
+    check('the cooldown notice clears once YouTube recovers', () => {
+        const text = textOf('downloads-source-notice');
+        assert.ok(!/YouTube is paused/i.test(text), `the cooldown notice outlived the block: ${text}`);
+    });
+
+    /*
+     * Album imports must be selectable. The old dialog rendered a read-only
+     * list, so an album you already partly owned arrived in full a second time
+     * with " (2)" suffixes — there was no way to skip a track.
+     */
+    const enqueuesBeforeImport = () => fetchCalls.filter(c => c.url.endsWith('/api/downloads/enqueue')).length;
+
+    await (async () => {
+        el('downloads-search-input').value = 'https://open.spotify.com/album/testalbum';
+        (el('downloads-search-form').listeners.submit || []).forEach(fn => fn({ preventDefault() {} }));
+        await new Promise(r => setTimeout(r, 40));
+    })();
+
+    check('an album import lists its tracks with checkboxes', () => {
+        const boxes = el('downloads-confirm-list').querySelectorAll('input[type="checkbox"][data-index]');
+        assert.strictEqual(boxes.length, 3, `expected 3 track checkboxes, found ${boxes.length}`);
+    });
+
+    check('tracks already in the library start unticked', () => {
+        const boxes = el('downloads-confirm-list').querySelectorAll('input[type="checkbox"][data-index]');
+        const byIndex = id => boxes.find(box => box.dataset.index === String(id));
+        assert.strictEqual(byIndex(0).checked, true, 'an unowned track was unticked');
+        assert.strictEqual(byIndex(1).checked, false, 'an owned track was pre-ticked');
+        assert.strictEqual(byIndex(2).checked, true, 'an unowned track was unticked');
+
+        const text = el('downloads-confirm-list').textContent;
+        assert.ok(/In library/i.test(text), 'the owned track is not labelled');
+        assert.ok(/1 track is already in your library/i.test(text), `missing the owned-count hint: ${text}`);
+    });
+
+    check('the accept button counts only the ticked tracks', () => {
+        const label = el('downloads-confirm-accept').textContent;
+        assert.ok(/Download 2/i.test(label), `the button should offer 2 tracks, got "${label}"`);
+    });
+
+    check('a quality preference is offered for imports', () => {
+        const quality = el('downloads-confirm-quality');
+        assert.ok(!quality.classList.contains('hidden'), 'the quality picker is hidden for an import');
+        const options = el('downloads-confirm-quality-options').querySelectorAll('.resolve-quality-option');
+        assert.strictEqual(options.length, 2, `expected 2 quality options, got ${options.length}`);
+    });
+
+    await (async () => {
+        // Prefer lossless, then accept.
+        const options = el('downloads-confirm-quality-options').querySelectorAll('.resolve-quality-option');
+        const lossless = options.find(option => option.dataset.value === 'lossless');
+        lossless.click();
+        el('downloads-confirm-accept').click();
+        await new Promise(r => setTimeout(r, 40));
+    })();
+
+    check('only the ticked tracks are queued, carrying the chosen quality', () => {
+        const enqueues = fetchCalls.filter(c => c.url.endsWith('/api/downloads/enqueue'));
+        assert.strictEqual(enqueues.length, enqueuesBeforeImport() , 'expected exactly one enqueue');
+        const items = enqueues[enqueues.length - 1].body.items;
+        assert.strictEqual(items.length, 2, `expected 2 items queued, got ${items.length}`);
+        const titles = items.map(item => item.title);
+        assert.ok(!titles.includes('Owned Track'), 'the already-owned track was queued anyway');
+        assert.deepStrictEqual(titles, ['First Track', 'Third Track']);
+        assert.ok(items.every(item => item.quality === 'lossless'),
+            `the chosen quality was not applied: ${JSON.stringify(items.map(i => i.quality))}`);
     });
 
     console.log(failures === 0 ? '\nGet Music UI checks passed.\n' : `\n${failures} UI check(s) failed.\n`);

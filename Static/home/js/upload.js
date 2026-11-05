@@ -247,49 +247,6 @@ const youtubeStatusText = document.getElementById('youtube-status-text');
 const youtubePercentage = document.getElementById('youtube-percentage');
 
 if (youtubeImportBtn) {
-    let ratelimitInterval = null;
-    // Utility to parse rate limit headers and update UI with a live countdown
-    const updateRateLimitDisplay = (headers_or_data) => {
-        let remaining, resetSeconds;
-
-        // Handle both fetch headers and JSON status objects
-        if (headers_or_data && typeof headers_or_data.get === 'function') {
-            remaining = headers_or_data.get('ratelimit-remaining');
-            resetSeconds = parseInt(headers_or_data.get('ratelimit-reset')) || 0;
-        } else if (headers_or_data) {
-            remaining = headers_or_data.remaining;
-            resetSeconds = headers_or_data.resetSeconds || 0;
-        }
-
-        const infoEl = document.getElementById('youtube-ratelimit-info');
-        if (infoEl) {
-            // Normalize values
-            const count = (remaining !== undefined && remaining !== null) ? remaining : (window.YOUTUBE_LIMIT_MAX || 2);
-            const reset = (resetSeconds !== undefined && resetSeconds !== null) ? resetSeconds : 0;
-
-            if (ratelimitInterval) clearInterval(ratelimitInterval);
-
-            let currentReset = parseInt(reset);
-            const updateUI = () => {
-                if (currentReset <= 0) {
-                    infoEl.innerHTML = `<i class='bx bx-check-circle' style='color: #1db954;'></i> You have <b>${count}</b> downloads remaining. Quota refreshed!`;
-                    infoEl.style.opacity = "1";
-                    clearInterval(ratelimitInterval);
-                    return;
-                }
-                const mins = Math.floor(currentReset / 60);
-                const secs = currentReset % 60;
-                infoEl.innerHTML = `<i class='bx bx-time-five'></i> You have <b>${count}</b> downloads remaining. Refills in <b>${mins}m ${secs}s</b>`;
-                infoEl.style.display = 'block';
-                infoEl.style.opacity = "0.7";
-                currentReset--;
-            };
-
-            updateUI();
-            ratelimitInterval = setInterval(updateUI, 1000);
-        }
-    };
-
     // Utility to sanitize YouTube URLs by removing playlists and other params
     const sanitizeYouTubeUrl = (url) => {
         try {
@@ -350,7 +307,6 @@ if (youtubeImportBtn) {
             });
 
             const metaRes = await metaResponse.json();
-            updateRateLimitDisplay(metaResponse.headers);
 
             if (!metaResponse.ok) throw new Error(metaRes.error || 'Failed to fetch metadata');
 
@@ -381,7 +337,6 @@ if (youtubeImportBtn) {
             });
 
             const res = await response.json();
-            updateRateLimitDisplay(response.headers);
 
             if (response.ok) {
                 youtubeProgressFill.style.width = '100%';
@@ -438,36 +393,6 @@ if (youtubeImportBtn) {
             youtubeImportBtn.innerHTML = '<i class="bx bx-link-external"></i> Import';
         }
     });
-
-    // Initialize Rate Limit Display on Load
-    const initRateLimit = async () => {
-        const infoEl = document.getElementById('youtube-ratelimit-info');
-        try {
-            if (typeof window.API_BASE_URL === 'undefined') {
-                console.warn("[YOUTUBE-UI] API_BASE_URL not ready, retrying...");
-                setTimeout(initRateLimit, 500);
-                return;
-            }
-
-            const resp = await fetch(window.API_BASE_URL + '/api/youtube-ratelimit-status');
-            if (resp.status === 410) {
-                if (infoEl) infoEl.style.display = 'none';
-                return;
-            }
-            if (!resp.ok) throw new Error(`Status check failed: ${resp.status}`);
-
-            const data = await resp.json();
-            if (data && data.success) {
-                updateRateLimitDisplay(data);
-            } else {
-                updateRateLimitDisplay({ remaining: window.YOUTUBE_LIMIT_MAX || 2, resetSeconds: 0 });
-            }
-        } catch (e) {
-            if (infoEl) {
-                infoEl.style.display = 'none';
-            }
-        }
-    }
 
     /* --- Spotify Import Logic --- */
     if (spotifyBtn) {
@@ -671,16 +596,6 @@ if (youtubeImportBtn) {
                 if (typeof fetchPlaylists === 'function') fetchPlaylists(true);
                 if (typeof fetchLibrary === 'function') fetchLibrary(true);
             }
-        });
-    }
-
-    // Initial fetch of rate limit
-    initRateLimit();
-
-    const uploadLink = document.getElementById('upload-link');
-    if (uploadLink) {
-        uploadLink.addEventListener('click', () => {
-            setTimeout(initRateLimit, 100);
         });
     }
 }

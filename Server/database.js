@@ -1609,6 +1609,20 @@ const HandleDatabase = {
         `);
     },
 
+    /**
+     * Just the two columns needed to ask "do I already have this track?".
+     *
+     * Deliberately narrow: the download engine calls this on every album import,
+     * and getAllSongs() carries the identity joins and every metadata column,
+     * none of which matter for a title/artist comparison.
+     */
+    getSongsForMatch: async () => {
+        return await allQuery(musicDb, `
+            SELECT artist, songname FROM songs
+            WHERE COALESCE(availability, 'available') = 'available'
+        `);
+    },
+
     getSongsCount: async ({ includeUnavailable = false } = {}) => {
         const availabilityClause = includeUnavailable ? '' : "WHERE COALESCE(availability, 'available') = 'available'";
         const row = await getQuery(musicDb, `SELECT COUNT(*) as count FROM songs ${availabilityClause}`);
@@ -4429,6 +4443,7 @@ const HandleDatabase = {
                 source_payload TEXT,
                 artwork_url TEXT,
                 dedupe_key TEXT,
+                quality TEXT,
                 progress REAL NOT NULL DEFAULT 0,
                 eta_seconds INTEGER,
                 transferred_bytes INTEGER NOT NULL DEFAULT 0,
@@ -4447,6 +4462,13 @@ const HandleDatabase = {
         await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_download_queue_status ON download_queue(status, id)');
         await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_download_queue_batch ON download_queue(batch_uid, id)');
         await runQuery(musicDb, 'CREATE INDEX IF NOT EXISTS idx_download_queue_created ON download_queue(created_at)');
+
+        // Migration: `quality` (best | lossless) was added after the queue table
+        // shipped, so existing installs need the column added in place.
+        const queueColumns = await allQuery(musicDb, 'PRAGMA table_info(download_queue)');
+        if (!queueColumns.some(column => column.name === 'quality')) {
+            await runQuery(musicDb, 'ALTER TABLE download_queue ADD COLUMN quality TEXT');
+        }
         // Partial uniqueness only over live rows: the same track may legitimately
         // be downloaded again later, but must never sit in the queue twice.
         await runQuery(musicDb, `
@@ -4489,8 +4511,8 @@ const HandleDatabase = {
                     INSERT INTO download_queue (
                         queue_uid, batch_uid, batch_label, status, stage, requested_source,
                         title, artist, album, duration_seconds, search_query, source_url,
-                        source_payload, artwork_url, dedupe_key, requested_by, created_at
-                    ) VALUES (?, ?, ?, 'queued', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        source_payload, artwork_url, dedupe_key, quality, requested_by, created_at
+                    ) VALUES (?, ?, ?, 'queued', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                     queueUid,
                     item.batchUid || null,
@@ -4505,6 +4527,7 @@ const HandleDatabase = {
                     item.sourcePayload ? JSON.stringify(item.sourcePayload) : null,
                     item.artworkUrl || null,
                     item.dedupeKey || null,
+                    item.quality || null,
                     requestedBy,
                     createdAt
                 ]);
@@ -4692,6 +4715,52 @@ const HandleDatabase = {
             "SELECT COUNT(*) AS total FROM download_queue WHERE status IN ('queued', 'running')"
         );
         return row ? Number(row.total) || 0 : 0;
+    },
+
+    /**
+     * Rows a worker could actually claim right now, i.e. `queued` only.
+     *
+     * Distinct from countPendingDownloads, which also counts `running` rows for
+     * "is there work in flight" reporting. The queue worker's idle re-check must
+     * use this one: a `running` row cannot be claimed, so counting it would make
+     * the pool spin waking workers that find nothing to do.
+     */
+    countClaimableDownloads: async () => {
+        const row = await getQuery(
+            musicDb,
+            "SELECT COUNT(*) AS total FROM download_queue WHERE status = 'queued'"
+        );
+        return row ? Number(row.total) || 0 : 0;
+    },
+
+    /**
+     * Which of these songs Streamify itself downloaded.
+     *
+     * A completed queue row records the `song_id` it produced, which is the only
+     * durable evidence that a file was acquired here rather than added by the
+     * user or found on disk. Used to decide whether deleting is routine
+     * housekeeping or a destructive act the user should confirm.
+     *
+     * @returns {Promise<Set<number>>} ids that came from a Streamify download.
+     */
+    getDownloadedSongIds: async (songIds = []) => {
+        const ids = (songIds || []).map(Number).filter(Number.isInteger);
+        if (ids.length === 0) return new Set();
+
+        // Chunked because SQLite's default parameter limit is 999 and a bulk
+        // delete can easily exceed it.
+        const found = new Set();
+        for (let index = 0; index < ids.length; index += 500) {
+            const chunk = ids.slice(index, index + 500);
+            const rows = await allQuery(
+                musicDb,
+                `SELECT DISTINCT song_id FROM download_queue
+                 WHERE status = 'completed' AND song_id IN (${chunk.map(() => '?').join(',')})`,
+                chunk
+            );
+            for (const row of rows) found.add(Number(row.song_id));
+        }
+        return found;
     },
 
     allQuery: async (dbName, query, params = []) => {

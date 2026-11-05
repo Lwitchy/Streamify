@@ -24,7 +24,9 @@ const scripts = [
     'Static/home/js/likes.js',
     'Static/home/js/downloads.js',
     'Static/home/js/ui.js',
-    'Static/home/js/updates.js'
+    'Static/home/js/updates.js',
+    'Static/home/js/logo.js',
+    'Static/home/js/lyrics.js'
 ];
 
 let failures = 0;

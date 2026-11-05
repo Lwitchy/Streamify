@@ -117,9 +117,6 @@ const DEFAULT_CONFIG = {
     music_directories: [],
     music_library_owner: null,
     maintenance_message: 'Site is currently undergoing maintenance. Please check back later!',
-    ratelimits: {
-        api: 200, social: 20, comment: 5, post: 1,
-    },
 };
 
 /**

@@ -1089,9 +1089,10 @@
 }
 
 .lyrics-content {
+    --lyric-gap: 15px;
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: var(--lyric-gap);
     text-align: left;
     /* Clean 24px top margin so line 1 starts right under header buttons; bottom padding permits auto-scrolling */
     padding: 24px 8px var(--lyrics-scroll-padding, 60vh) 8px;
@@ -1133,14 +1134,25 @@
     .lyrics-scroll-area {
         --lyrics-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
         --lyrics-spring-duration: 400ms;
+        /* Room for the sung line's glow past the text edge (most visible with
+           right or left alignment). The panel reaches out on both sides and
+           pads back in by the same amount, so the text doesn't move; the
+           container below lets that strip show instead of clipping it. */
+        --lyrics-glow-room: 40px;
         overflow: hidden;
-        padding: 0;
+        padding: 0 var(--lyrics-glow-room);
+        margin-inline: calc(-1 * var(--lyrics-glow-room));
         scroll-behavior: auto;
+    }
+
+    #dedicated-lyrics-container {
+        overflow: clip;
+        overflow-clip-margin: 40px;
     }
 
     .lyrics-content {
         position: relative;
-        gap: 24px;
+        --lyric-gap: 24px;
         padding: 0 8px;
         transform: translateY(0);
         transform-origin: center top;
@@ -1254,6 +1266,32 @@
     -webkit-backdrop-filter: blur(10px);
     transform: translateZ(0) scale(0.96);
     will-change: transform, opacity, filter;
+}
+
+/* Browsing by hand on desktop (mouse wheel / touch drag, see player.js):
+   the track follows the input directly and every line is sharp. */
+@media (min-width: 901px) {
+    .lyrics-scroll-area.is-user-scrolling .lyrics-content {
+        transition: none;
+    }
+
+    .lyrics-scroll-area.is-user-scrolling .lyrics-content:not(.lyrics-editing) .lyric-line,
+    .lyrics-scroll-area.is-user-scrolling .lyrics-content:not(.lyrics-editing) .lyric-line.lyric-line-far {
+        visibility: visible;
+        pointer-events: auto;
+        opacity: 0.55;
+        filter: blur(0px);
+        transform: translateZ(0) scale(0.95);
+    }
+
+    .lyrics-scroll-area.is-user-scrolling .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"] {
+        opacity: 1;
+        transform: translateZ(0) scale(1.1);
+    }
+
+    .lyrics-scroll-area {
+        touch-action: pan-x;
+    }
 }
 
 @media (min-width: 901px) and (hover: hover) {
@@ -3112,16 +3150,16 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
 
 :root.lyrics-held-glow .lyric-line.word-synced.active .lyric-word.is-held .lyric-letter {
     text-shadow:
-        0 0 calc(var(--lb) * var(--lyric-held-glow-size)) rgba(255, 255, 255, calc(var(--lb) * var(--lyric-held-glow-alpha))),
-        0 0 calc(var(--lb) * 3px) rgba(255, 255, 255, calc(var(--lb) * 0.5));
+        0 0 calc(var(--lb) * var(--lyric-held-glow-size)) rgba(var(--lyric-active-rgb, 255, 255, 255), calc(var(--lb) * var(--lyric-held-glow-alpha))),
+        0 0 calc(var(--lb) * 3px) rgba(var(--lyric-active-rgb, 255, 255, 255), calc(var(--lb) * 0.5));
 }
 
 :root.lyrics-held-glow .lyric-line.word-synced.active .lyric-word.is-held.is-final .lyric-letter {
     transform: translateY(calc(var(--lp) * -0.05em - var(--lb) * 0.08em)) scale(calc(1 + var(--lb) * 0.08));
     text-shadow:
-        0 0 calc(var(--lb) * var(--lyric-held-glow-size) * 1.6) rgba(255, 255, 255, calc(var(--lb) * var(--lyric-held-glow-alpha))),
-        0 0 calc(var(--lb) * var(--lyric-held-glow-size) * 0.5) rgba(255, 255, 255, calc(var(--lb) * var(--lyric-held-glow-alpha) * 0.8)),
-        0 0 calc(var(--lb) * 3px) rgba(255, 255, 255, calc(var(--lb) * 0.6));
+        0 0 calc(var(--lb) * var(--lyric-held-glow-size) * 1.6) rgba(var(--lyric-active-rgb, 255, 255, 255), calc(var(--lb) * var(--lyric-held-glow-alpha))),
+        0 0 calc(var(--lb) * var(--lyric-held-glow-size) * 0.5) rgba(var(--lyric-active-rgb, 255, 255, 255), calc(var(--lb) * var(--lyric-held-glow-alpha) * 0.8)),
+        0 0 calc(var(--lb) * 3px) rgba(var(--lyric-active-rgb, 255, 255, 255), calc(var(--lb) * 0.6));
 }
 
 /* Held words don't lift as a block and aren't masked (a mask would clip
@@ -3149,7 +3187,7 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
 }
 
 :root[data-lyrics-glow="strong"] .lyrics-content .lyric-line.word-synced.active {
-    filter: blur(0px) drop-shadow(0 0 10px rgba(255, 255, 255, 0.32)) drop-shadow(0 4px 16px rgba(0, 0, 0, 0.28));
+    filter: blur(0px) drop-shadow(0 0 10px rgba(var(--lyric-active-rgb, 255, 255, 255), 0.32)) drop-shadow(0 4px 16px rgba(0, 0, 0, 0.28));
 }
 
 :root[data-lyrics-glow="off"] .lyrics-content .lyric-line.word-synced.active {
@@ -3169,9 +3207,15 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
     padding: 0 0.1em;
     transform-origin: left center;
     /* Always visible (dim when it isn't their turn) so breaks never look empty. */
-    opacity: 1;
-    transform: scale(1);
-    transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.6s ease;
+    /* lyrics.js sets --ds / --do every frame while the break is playing
+       (breathing, then a swell and shrink as the next line arrives). */
+    opacity: var(--do, 1);
+    transform: scale(var(--ds, 1));
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+}
+
+.lyric-line.word-synced.active .lyric-dots {
+    transition: none;
 }
 
 .lyric-line.word-synced .lyric-dot {
@@ -3195,19 +3239,33 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
     transition: opacity 0.3s linear, transform 0.3s linear;
 }
 
-.lyric-line.word-synced.active .lyric-dots {
-    animation: lyricDotsBreathe 4s ease-in-out infinite;
+/* The break's row only takes up space while it is being sung: it unfolds
+   when the break starts and folds shut as the next line takes over, so that
+   line glides into place instead of jumping a whole row. player.js centers on
+   the settled layout (lyricSettledGeometry, LYRIC_DOTS_LINE_EM = 1.5). */
+.lyrics-content:not(.lyrics-editing) .lyric-line.lyric-dots-line {
+    --lyric-fold-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --lyric-fold-dur: 520ms;
+    height: 1.5em;
+    line-height: 1.5em;
+    margin-top: 0;
+    transition:
+        height var(--lyric-fold-dur) var(--lyric-fold-ease),
+        margin-top var(--lyric-fold-dur) var(--lyric-fold-ease),
+        opacity 0.35s ease,
+        transform var(--lyrics-spring-duration, 400ms) var(--lyrics-spring, ease),
+        filter var(--lyrics-spring-duration, 400ms) var(--lyrics-spring, ease);
 }
 
-.lyric-line.word-synced.active.is-ending .lyric-dots {
-    /* Break is over: stop breathing and settle, then dim with the line. */
-    animation: none;
-    transform: scale(1);
+.lyrics-content:not(.lyrics-editing) .lyric-line.lyric-dots-line .lyric-dots {
+    vertical-align: middle;
 }
 
-@keyframes lyricDotsBreathe {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
+.lyrics-content:not(.lyrics-editing) .lyric-line.lyric-dots-line:not(.active) {
+    height: 0;
+    margin-top: calc(-1 * var(--lyric-gap, 15px));
+    opacity: 0 !important;
+    pointer-events: none;
 }
 
 /* Settings > Word animations off */
@@ -3218,9 +3276,6 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
     transform: none !important;
 }
 
-:root.lyrics-no-motion .lyric-line.word-synced.active .lyric-dots {
-    animation: none;
-}
 
 @media (prefers-reduced-motion: reduce) {
     .lyric-line.word-synced .lyric-word,
@@ -3231,8 +3286,8 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
         transition: none;
     }
 
-    .lyric-line.word-synced.active .lyric-dots {
-        animation: none;
+    .lyrics-content:not(.lyrics-editing) .lyric-line.lyric-dots-line {
+        --lyric-fold-dur: 1ms;
     }
 }
 
@@ -3453,8 +3508,8 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
 :root[data-lyrics-glow="strong"] .lyrics-content:not(.lyrics-editing) .lyric-line.active,
 :root[data-lyrics-glow="strong"] .lyrics-content:not(.lyrics-editing) .lyric-line[data-distance="0"] {
     text-shadow:
-        0 0 18px rgba(255, 255, 255, 0.38),
-        0 0 3px rgba(255, 255, 255, 0.35),
+        0 0 18px rgba(var(--lyric-active-rgb, 255, 255, 255), 0.38),
+        0 0 3px rgba(var(--lyric-active-rgb, 255, 255, 255), 0.35),
         0 6px 24px rgba(0, 0, 0, 0.3);
 }
 
@@ -3621,13 +3676,13 @@ body.lyrics-editor-open #dedicated-lyrics-container .lyrics-scroll-area {
 
 :root[data-lyrics-glow="off"] .lyrics-preview-line { text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 :root[data-lyrics-glow="strong"] .lyrics-preview-line {
-    text-shadow: 0 0 18px rgba(255, 255, 255, 0.38), 0 0 3px rgba(255, 255, 255, 0.35), 0 6px 24px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 0 18px rgba(var(--lyric-active-rgb, 255, 255, 255), 0.38), 0 0 3px rgba(var(--lyric-active-rgb, 255, 255, 255), 0.35), 0 6px 24px rgba(0, 0, 0, 0.3);
 }
 
 :root.lyrics-held-glow .lp-word.is-held {
     text-shadow:
-        0 0 calc(var(--lyric-held-glow-size) * 1.6) rgba(255, 255, 255, var(--lyric-held-glow-alpha)),
-        0 0 calc(var(--lyric-held-glow-size) * 0.5) rgba(255, 255, 255, calc(var(--lyric-held-glow-alpha) * 0.8));
+        0 0 calc(var(--lyric-held-glow-size) * 1.6) rgba(var(--lyric-active-rgb, 255, 255, 255), var(--lyric-held-glow-alpha)),
+        0 0 calc(var(--lyric-held-glow-size) * 0.5) rgba(var(--lyric-active-rgb, 255, 255, 255), calc(var(--lyric-held-glow-alpha) * 0.8));
     transform: translateY(-0.08em) scale(1.05);
 }
 

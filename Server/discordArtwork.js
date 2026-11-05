@@ -1,6 +1,7 @@
 'use strict';
 
 const Matching = require('./metadataMatching');
+const { ytDlpEnv, ytDlpBaseOptions, withYtDlpSlot } = require('./ytDlpRuntime');
 
 const ARTWORK_MODES = new Set(['app_logo', 'stored_only', 'youtube_exact', 'apple_only', 'best_effort']);
 const YOUTUBE_IMAGE_HOSTS = new Set([
@@ -14,7 +15,6 @@ const LEGACY_IMAGE_HOSTS = new Set([
 ]);
 const SEARCH_LIMIT = 5;
 const SEARCH_GAP_MS = 10000;
-const SECRETS_TO_STRIP = ['SLSK_USER', 'SLSK_PASS', 'ACOUSTID_CLIENT_KEY', 'TURNSTILE_SECRET_KEY'];
 
 let ytDlp = null;
 let searchTail = Promise.resolve();
@@ -139,12 +139,6 @@ function scoreCandidate(song, entry) {
     };
 }
 
-function ytDlpEnv() {
-    const env = { ...process.env };
-    for (const key of SECRETS_TO_STRIP) delete env[key];
-    if (process.versions && process.versions.electron) env.ELECTRON_RUN_AS_NODE = '1';
-    return env;
-}
 
 async function serializeSearch(task) {
     const previous = searchTail;
@@ -171,8 +165,13 @@ async function findExactYoutubeArtwork(song) {
 
     const query = [artist, title].filter(Boolean).join(' ');
     try {
-        const info = await serializeSearch(async () => {
+        // serializeSearch keeps this module's own lookups apart; withYtDlpSlot
+        // additionally keeps them off the global yt-dlp allowance that Get
+        // Music downloads and searches draw from. Both are needed: one shapes
+        // this feature's own cadence, the other shares the per-IP budget.
+        const info = await serializeSearch(() => withYtDlpSlot(async () => {
             const child = ytDlp.exec(`ytsearch${SEARCH_LIMIT}:${query}`, {
+                ...ytDlpBaseOptions(),
                 noWarnings: true,
                 dumpSingleJson: true,
                 flatPlaylist: true,
@@ -185,7 +184,7 @@ async function findExactYoutubeArtwork(song) {
             } finally {
                 if (activeSearch === child) activeSearch = null;
             }
-        });
+        }));
         const ranked = (Array.isArray(info && info.entries) ? info.entries : [])
             .map(entry => scoreCandidate(song, entry))
             .filter(Boolean)

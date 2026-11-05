@@ -874,7 +874,9 @@ function renderLyrics() {
             const activateLine = () => {
                 if (audio && isFinite(line.time)) {
                     audio.currentTime = line.time;
-                    isUserScrollingLyrics = false;
+                    if (typeof stopLyricsBrowsing === 'function') stopLyricsBrowsing({ recenter: false });
+                    else isUserScrollingLyrics = false;
+                    activeLyricIndex = -1;
                     updateActiveLyric();
                     playSong();
                 }
@@ -1021,6 +1023,47 @@ function renderLyricDots(lineEl, line, nextTime) {
     lineEl.appendChild(holder);
     lineEl._lyricWords = spans;
     lineEl._lyricDotsEnd = fillEnd;
+    lineEl._lyricDotsStart = line.time;
+    lineEl._lyricDotsNext = nextTime;
+    lineEl._lyricDotsHolder = holder;
+}
+
+const LYRIC_DOTS_BREATH_SECONDS = 3.4;  // one slow in-and-out
+const LYRIC_DOTS_EXIT_SECONDS = 0.7;    // settle, swell, then shrink away before the next line
+
+/**
+ * Scale and opacity of the dots, worked out from the playback time every
+ * frame. Doing it here (instead of a CSS keyframe that gets switched off)
+ * means the breathing settles, swells and shrinks away in one continuous
+ * motion that lands exactly when the next line starts.
+ */
+function paintLyricDots(lineEl, time) {
+    const holder = lineEl._lyricDotsHolder;
+    if (!holder) return;
+    const start = lineEl._lyricDotsStart;
+    const next = lineEl._lyricDotsNext;
+    const exitLength = Math.min(LYRIC_DOTS_EXIT_SECONDS, Math.max(0.3, (next - start) * 0.25));
+    const exitStart = next - exitLength;
+    const calm = document.documentElement.classList.contains('lyrics-no-motion') ||
+        (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    // Breathing fades out over the second before the exit so the swell
+    // starts from rest instead of from the middle of a breath.
+    const settle = 1 - lyricSmoothstep(Math.min(1, Math.max(0, (time - (exitStart - 1)) / 1)));
+    const breathe = calm ? 1 : 1 + 0.055 * Math.sin(((time - start) / LYRIC_DOTS_BREATH_SECONDS) * Math.PI * 2) * settle;
+
+    const e = Math.min(1, Math.max(0, (time - exitStart) / exitLength));
+    let exitScale = 1;
+    if (!calm) {
+        exitScale = e < 0.35
+            ? 1 + 0.14 * lyricSmoothstep(e / 0.35)
+            : 1.14 * (1 - Math.pow((e - 0.35) / 0.65, 2.2));
+    }
+    const opacity = e <= 0.45 ? 1 : 1 - lyricSmoothstep((e - 0.45) / 0.55);
+
+    const scale = Math.max(0, breathe * exitScale);
+    holder.style.setProperty('--ds', scale.toFixed(4));
+    holder.style.setProperty('--do', opacity.toFixed(3));
 }
 
 let lyricWordRaf = null;
@@ -1029,6 +1072,18 @@ let lyricWordLineEl = null;
 function resetLyricWordLine(lineEl) {
     if (!lineEl || !lineEl._lyricWords) return;
     lineEl.classList.remove('is-ending');
+    if (lineEl._lyricDotsHolder) {
+        // A finished break stays gone while its row folds away; one that is
+        // still ahead (after seeking back) returns to rest.
+        const holder = lineEl._lyricDotsHolder;
+        if (audio && audio.currentTime >= lineEl._lyricDotsNext - 0.05) {
+            holder.style.setProperty('--ds', '0');
+            holder.style.setProperty('--do', '0');
+        } else {
+            holder.style.removeProperty('--ds');
+            holder.style.removeProperty('--do');
+        }
+    }
     lineEl._lyricWords.forEach(word => {
         word.el.classList.remove('is-sung', 'is-singing');
         word.el.style.removeProperty('--wp');
@@ -1081,6 +1136,7 @@ function paintLyricWords(lineEl, time) {
     });
     if (lineEl._lyricDotsEnd !== undefined) {
         lineEl.classList.toggle('is-ending', time >= lineEl._lyricDotsEnd);
+        paintLyricDots(lineEl, time);
     }
 }
 
@@ -2115,58 +2171,178 @@ if (lyricEditorFooter) {
 
 const LYRICS_APPEARANCE_KEY = 'streamify:lyrics-appearance:v1';
 const LYRICS_APPEARANCE_DEFAULTS = Object.freeze({
-    size: 'default',     // small | default | large
+    size: 'default',     // small | default | large | xl
     glow: 'soft',        // off | soft | strong
     bold: false,
     heldGlow: true,
     motion: true,
+    font: 'default',     // default | jakarta | outfit | rounded | serif | mono | hand
+    color: 'white',      // key of LYRICS_HIGHLIGHT_COLORS
+    customColor: '#ff7eb6',
+    align: 'left',       // left | center | right
+    spacing: 'default',  // compact | default | relaxed
+    textCase: 'none',    // none | upper | lower
+    anim: 'spring',      // spring | smooth | snappy
+    blur: 'default',     // off | light | default
+});
+const LYRICS_APPEARANCE_CHOICES = Object.freeze({
+    size: ['small', 'default', 'large', 'xl'],
+    glow: ['off', 'soft', 'strong'],
+    font: ['default', 'jakarta', 'outfit', 'rounded', 'serif', 'mono', 'hand'],
+    align: ['left', 'center', 'right'],
+    spacing: ['compact', 'default', 'relaxed'],
+    textCase: ['none', 'upper', 'lower'],
+    anim: ['spring', 'smooth', 'snappy'],
+    blur: ['off', 'light', 'default'],
+});
+// null = handled in CSS (white is the original look, theme follows the accent).
+const LYRICS_HIGHLIGHT_COLORS = Object.freeze({
+    white: { name: 'White', hex: null, swatch: '#ffffff' },
+    theme: { name: 'Theme', hex: null, swatch: 'var(--accent)' },
+    cover: { name: 'From cover', hex: null, swatch: 'rgb(var(--cover-accent-rgb, 200, 200, 210))' },
+    pink: { name: 'Pink', hex: '#ff7eb6' },
+    lavender: { name: 'Lavender', hex: '#c4a7ff' },
+    sky: { name: 'Sky', hex: '#7cc8ff' },
+    mint: { name: 'Mint', hex: '#6ff2c2' },
+    gold: { name: 'Gold', hex: '#ffd36e' },
+    peach: { name: 'Peach', hex: '#ffab7a' },
+    custom: { name: 'Custom', hex: null },
+});
+// Radio group name in Settings -> preference key.
+const LYRICS_RADIO_GROUPS = Object.freeze({
+    'lyrics-size': 'size',
+    'lyrics-glow': 'glow',
+    'lyrics-font': 'font',
+    'lyrics-color': 'color',
+    'lyrics-align': 'align',
+    'lyrics-spacing': 'spacing',
+    'lyrics-case': 'textCase',
+    'lyrics-anim': 'anim',
+    'lyrics-blur': 'blur',
 });
 
 function readLyricsAppearance() {
     let stored = null;
     try { stored = JSON.parse(localStorage.getItem(LYRICS_APPEARANCE_KEY) || 'null'); } catch (e) { stored = null; }
-    const prefs = { ...LYRICS_APPEARANCE_DEFAULTS, ...(stored && typeof stored === 'object' ? stored : {}) };
-    if (!['small', 'default', 'large'].includes(prefs.size)) prefs.size = 'default';
-    if (!['off', 'soft', 'strong'].includes(prefs.glow)) prefs.glow = 'soft';
+    return normalizeLyricsAppearance(stored);
+}
+
+function normalizeLyricsAppearance(input) {
+    const prefs = { ...LYRICS_APPEARANCE_DEFAULTS, ...(input && typeof input === 'object' ? input : {}) };
+    Object.entries(LYRICS_APPEARANCE_CHOICES).forEach(([key, allowed]) => {
+        if (!allowed.includes(prefs[key])) prefs[key] = LYRICS_APPEARANCE_DEFAULTS[key];
+    });
+    if (!Object.prototype.hasOwnProperty.call(LYRICS_HIGHLIGHT_COLORS, prefs.color)) prefs.color = LYRICS_APPEARANCE_DEFAULTS.color;
+    if (!/^#[0-9a-f]{6}$/i.test(String(prefs.customColor || ''))) prefs.customColor = LYRICS_APPEARANCE_DEFAULTS.customColor;
     ['bold', 'heldGlow', 'motion'].forEach(key => { prefs[key] = prefs[key] === true; });
     return prefs;
 }
 
+function lyricsHexToRgb(hex) {
+    const value = parseInt(hex.slice(1), 16);
+    return `${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}`;
+}
+
 let lyricsAppearance = readLyricsAppearance();
+
+function buildLyricsColorOptions() {
+    const grid = document.getElementById('lyrics-color-grid');
+    if (!grid || grid.childElementCount) return;
+    Object.entries(LYRICS_HIGHLIGHT_COLORS).forEach(([key, color]) => {
+        const option = document.createElement('label');
+        option.className = 'theme-option lyrics-color-option';
+        option.title = color.name;
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'lyrics-color';
+        input.value = key;
+        input.setAttribute('aria-label', color.name);
+        const swatch = document.createElement('span');
+        swatch.className = 'theme-swatch';
+        swatch.dataset.lyricsSwatch = key;
+        swatch.style.background = color.hex || color.swatch || '';
+        option.append(input, swatch);
+        grid.append(option);
+    });
+}
 
 function applyLyricsAppearance() {
     const root = document.documentElement;
     root.dataset.lyricsSize = lyricsAppearance.size;
     root.dataset.lyricsGlow = lyricsAppearance.glow;
+    root.dataset.lyricsFont = lyricsAppearance.font;
+    root.dataset.lyricsColor = lyricsAppearance.color;
+    root.dataset.lyricsAlign = lyricsAppearance.align;
+    root.dataset.lyricsSpacing = lyricsAppearance.spacing;
+    root.dataset.lyricsCase = lyricsAppearance.textCase;
+    root.dataset.lyricsAnim = lyricsAppearance.anim;
+    root.dataset.lyricsBlur = lyricsAppearance.blur;
     root.classList.toggle('lyrics-bold', lyricsAppearance.bold);
     root.classList.toggle('lyrics-held-glow', lyricsAppearance.heldGlow);
     root.classList.toggle('lyrics-no-motion', !lyricsAppearance.motion);
 
-    document.querySelectorAll('input[name="lyrics-size"]').forEach(input => { input.checked = input.value === lyricsAppearance.size; });
-    document.querySelectorAll('input[name="lyrics-glow"]').forEach(input => { input.checked = input.value === lyricsAppearance.glow; });
+    const highlight = lyricsAppearance.color === 'custom'
+        ? lyricsAppearance.customColor
+        : LYRICS_HIGHLIGHT_COLORS[lyricsAppearance.color].hex;
+    if (highlight) {
+        root.style.setProperty('--lyric-active', highlight);
+        root.style.setProperty('--lyric-active-rgb', lyricsHexToRgb(highlight));
+    } else {
+        root.style.removeProperty('--lyric-active');
+        root.style.removeProperty('--lyric-active-rgb');
+    }
+
+    buildLyricsColorOptions();
+    Object.entries(LYRICS_RADIO_GROUPS).forEach(([name, key]) => {
+        document.querySelectorAll(`input[name="${name}"]`).forEach(input => { input.checked = input.value === lyricsAppearance[key]; });
+    });
     document.querySelectorAll('input[data-lyrics-pref]').forEach(input => { input.checked = !!lyricsAppearance[input.dataset.lyricsPref]; });
+    const customInput = document.getElementById('lyrics-custom-color');
+    if (customInput) customInput.value = lyricsAppearance.customColor;
+    const customSwatch = document.querySelector('[data-lyrics-swatch="custom"]');
+    if (customSwatch) customSwatch.style.background = lyricsAppearance.customColor;
 }
 
 function setLyricsAppearance(changes) {
-    lyricsAppearance = { ...lyricsAppearance, ...changes };
+    lyricsAppearance = normalizeLyricsAppearance({ ...lyricsAppearance, ...changes });
     try { localStorage.setItem(LYRICS_APPEARANCE_KEY, JSON.stringify(lyricsAppearance)); } catch (e) { /* this page only */ }
     applyLyricsAppearance();
-    // Size changes move lines; re-center the active one.
+    // Size, font and spacing changes move lines; re-center the active one.
     if (isLyricsActive && !isLyricEditMode && typeof updateActiveLyric === 'function') {
         activeLyricIndex = -1;
         requestAnimationFrame(() => updateActiveLyric(true));
     }
 }
 
-document.querySelectorAll('input[name="lyrics-size"]').forEach(input => {
-    input.addEventListener('change', () => { if (input.checked) setLyricsAppearance({ size: input.value }); });
-});
-document.querySelectorAll('input[name="lyrics-glow"]').forEach(input => {
-    input.addEventListener('change', () => { if (input.checked) setLyricsAppearance({ glow: input.value }); });
+buildLyricsColorOptions();
+Object.entries(LYRICS_RADIO_GROUPS).forEach(([name, key]) => {
+    document.querySelectorAll(`input[name="${name}"]`).forEach(input => {
+        input.addEventListener('change', () => { if (input.checked) setLyricsAppearance({ [key]: input.value }); });
+    });
 });
 document.querySelectorAll('input[data-lyrics-pref]').forEach(input => {
     input.addEventListener('change', () => setLyricsAppearance({ [input.dataset.lyricsPref]: input.checked }));
 });
+const lyricsCustomColorInput = document.getElementById('lyrics-custom-color');
+if (lyricsCustomColorInput) {
+    // Live while dragging, saved when the picker closes.
+    lyricsCustomColorInput.addEventListener('input', () => {
+        lyricsAppearance = normalizeLyricsAppearance({ ...lyricsAppearance, color: 'custom', customColor: lyricsCustomColorInput.value });
+        applyLyricsAppearance();
+    });
+    lyricsCustomColorInput.addEventListener('change', () => setLyricsAppearance({ color: 'custom', customColor: lyricsCustomColorInput.value }));
+}
+const lyricsResetBtn = document.getElementById('lyrics-reset-btn');
+if (lyricsResetBtn) lyricsResetBtn.addEventListener('click', () => setLyricsAppearance({ ...LYRICS_APPEARANCE_DEFAULTS }));
+// Fonts arrive after first paint; re-center once a newly chosen face has loaded.
+if (document.fonts && typeof document.fonts.addEventListener === 'function') {
+    document.fonts.addEventListener('loadingdone', () => {
+        if (isLyricsActive && !isLyricEditMode && typeof updateActiveLyric === 'function') {
+            activeLyricIndex = -1;
+            requestAnimationFrame(() => updateActiveLyric(true));
+        }
+    });
+}
 window.addEventListener('storage', event => {
     if (event.key !== LYRICS_APPEARANCE_KEY) return;
     lyricsAppearance = readLyricsAppearance();

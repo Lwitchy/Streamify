@@ -5,6 +5,178 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Player color, beat pulse & smoother lists - 2026-11-05
+
+### Added
+
+- **Pulse with the music.** A soft glow in the player color sits behind the
+  app and the full-screen player and brightens on every bass hit. It reads
+  the audio through a passive analyser on the same Web Audio graph as the
+  equalizer (never connected to the speakers), adapts to each song's
+  loudness, and fades out when paused. Off on iPhone / iPad, where routing
+  audio through Web Audio stops music when the screen locks.
+- **Glowing progress bar.** The played part takes the player color and its
+  tip glows with how loud the song is right now.
+- **Player color** (Settings > Appearance > Player): *From cover* (default,
+  a vivid color picked from the album art), *Theme*, or *Lyrics color*. It
+  drives the progress and volume bars, the playing song row, shuffle /
+  repeat, the liked heart and focus rings in the player. The lyrics
+  highlight can also be set to *From cover*.
+- **Volume bar fill** in the player color.
+- **Play / pause** icons turn into each other with a small swell instead of
+  swapping.
+- **Liking a song** pops the heart with a burst of glow; unliking gives a
+  small shrink.
+- **Gliding lists.** Rows glide into place when a list changes instead of
+  jumping and replaying the entrance animation: songs removed from a
+  playlist or unliked on Liked Songs fade out where they were, new and
+  deleted playlists in the sidebar fade in and out, and the downloads queue
+  glides as items finish or are cleared. Toasts unfold and fold away.
+- Small moving bars replace the track number of the playing song.
+
+### Fixed
+
+- **The playing song is marked in every list again**, including Your
+  Library > Songs. The row is now matched by song id (it was picked by
+  position in the visible list, so songs started from another list marked
+  nothing or the wrong row) and stays marked while paused.
+
+## [Unreleased] - Logo & lyrics customization - 2026-11-05
+
+### Added
+
+- **Customizable logo** (Settings > Appearance > Logo), saved per device and
+  applied to the boot screen, sidebar and top-bar wordmark:
+  - 14 fonts, including an Instagram-style script (Grand Hotel), Malvides
+    brush, Pacifico, Lobster, Sacramento signature, Playfair italic, Unbounded,
+    Permanent Marker, UnifrakturMaguntia, Monoton neon tubes and a pixel face.
+    Each is scaled to roughly the default width so it fits the sidebar.
+  - 12 colors: theme gradient (default), Instagram, Sunset, Ocean, Aurora,
+    Fire, Candy, Gold, Chrome, Rainbow, White, or a custom two-color gradient.
+  - Effects: Glow, Neon, Shadow, 3D and Outline.
+  - Entrance animations (Morph, Fade, Pop, Drop, Write on, None), looping
+    motion (Pulse, Float, Swing, Bounce, Flicker), color-flow speed, size and
+    letter case. Live preview with a Replay button and a Reset.
+- **More lyric options** (Settings > Appearance > Lyrics): font (System,
+  Jakarta, Outfit, Rounded, Serif, Mono, Handwritten — with Turkish/latin-ext
+  coverage), highlight color for the sung line and its glow (8 presets, theme
+  accent or any custom color), alignment, line spacing, letter case, an XL text
+  size, line movement (Bouncy / Smooth / Snappy), background-line blur
+  (Off / Light / Full) and a Reset. Existing lyric settings are kept.
+- Font files are vendored under `Static/vendor/fonts/extra` (SIL OFL 1.1, via
+  Fontsource) and only download once a setting uses them; they are also in the
+  service-worker app shell for offline use.
+
+### Fixed
+
+- **Instrumental breaks end smoothly.** The three dots used to stop breathing
+  mid-motion at the end of a break and vanish when the next line started,
+  and the next line jumped a whole row. The dots now settle, swell and shrink
+  away in one motion that ends exactly on the next line, and the break's row
+  folds shut so the next line glides into place. Rows unfold again when their
+  break starts; centering aims at the settled layout so nothing drifts.
+- **Lyrics can be scrolled on desktop.** Mouse wheel and touch drags move
+  through the lyrics; every line turns sharp while browsing, and after 3
+  seconds the view springs back to the sung line. Clicking a line still seeks.
+- The sung line's glow is no longer cut off at the edge of the lyrics panel
+  on desktop (most visible with right or left alignment).
+- On phones, lines now switch exactly on time instead of on the next audio
+  `timeupdate` (up to ~250 ms late).
+
+### Changed
+
+- Lyric glows (strong glow, held-note glow, iOS halo) follow the chosen
+  highlight color instead of always being white.
+- `Tests/domWiring.check.js` also checks `logo.js` and `lyrics.js`;
+  `npm run test:theme` also runs the new `Tests/logo.test.js`.
+
+## [Unreleased] - Get Music reliability & parallel downloads - 2026-10-31
+
+### Added
+
+- **Album imports keep their album.** Pasting a Spotify album link now names
+  every track after the real album. Previously `spotify-url-info` returned no
+  album at all, so each track was queued with an empty album and the album tag
+  from whichever Soulseek peer supplied the file survived instead — one album
+  import could produce five or six separate "albums" in the library
+  (`Midnights`, `Midnights (The Til Dawn edition)`, a peer's chart compilation,
+  `Unknown Album`, ...). The album name and cover now come from Spotify's public
+  oEmbed endpoint.
+- **Choose what to download from an album or playlist.** The import preview
+  lists every track with a checkbox, so a whole album no longer has to be taken
+  as-is. Tracks already in the library start unticked, so re-importing an album
+  you partly own stops adding `(2)` duplicates. A live count and an
+  all/none toggle sit above the list.
+- **Quality preference.** Imports can ask for *Best available* or *Prefer
+  lossless*. The old scoring hardcoded a FLAC bonus, so there was no way to
+  express a preference; now FLAC is ranked far ahead when lossless is asked for,
+  and a low-bitrate rip is demoted. A preference is not a filter — an MP3 is
+  still downloaded rather than failing when nothing better exists.
+- **YouTube rate-limit cooldown.** yt-dlp failures that mean "YouTube is
+  refusing this client or IP" (bot check, HTTP 403/429, extraction
+  failures) now pause YouTube for 30 minutes instead of being retried.
+  Retrying into a block is what turns a soft rate-limit into a long one.
+  Downloads continue through Soulseek, and YouTube is resumed automatically
+  by the next successful request. The Get Music page shows the pause rather
+  than leaving downloads silently switching source.
+- The download queue reports its YouTube cooldown state
+  (`youtube.blocked` / `retryAt` / `reason`) and the full set of running
+  items (`activeIds`), alongside the existing `activeId` for older clients.
+- `getSongsForMatch()` and `getDownloadedSongIds()` in the database layer.
+
+### Changed
+
+- **Get Music downloads run in parallel.** Up to four transfers at once
+  instead of one, so a playlist is no longer a queue of sequential waits.
+  Two transfers are never opened to the same peer: Soulseek grants one
+  upload slot per peer, so a second request would only queue behind the
+  first. A peer that just failed or timed out is tried last on the retry.
+- **`auto` now tries Soulseek before YouTube.** Soulseek has no anti-bot
+  system and frequently serves lossless, where YouTube yields a
+  transcoded stream. YouTube remains the fallback, and an explicitly picked
+  Soulseek result is still honoured first.
+- **Folder-managed songs can now be deleted.** They were refused outright,
+  which was written before downloads existed — and since downloads land in real
+  folders and are indexed as folder songs, that guard made every downloaded song
+  permanently undeletable through the UI. Songs Streamify downloaded are removed
+  without ceremony; anything else asks first, naming the file, because deleting
+  it removes the real file from disk.
+- **yt-dlp now runs under a shared request cooldown.** Searches, metadata
+  lookups, link resolution, Discord artwork matching and downloads all draw
+  on one per-IP allowance, one request at a time, 2.5s apart. Previously each
+  path paced itself (or not at all), so a four-wide download pool could burst
+  YouTube exactly the way the cooldown above exists to prevent.
+
+### Fixed
+
+- **YouTube searches no longer time out and return nothing.** A `ytsearch`
+  resolved every result in full by default — measured at ~767 KB of JSON and
+  over 20 seconds for three results, against a 20-second search timeout. So
+  searches ran out the clock, returned zero candidates, and reported no error
+  (there was no block to blame). Searches now use flat extraction, which
+  returns the fields the ranking actually reads — id, title, duration,
+  uploader — in about 3 seconds. Measured end to end: 20s/0 results before,
+  3.7s/3 correct results after. Single-video lookups still extract in full,
+  because that is what fills in the downloadable formats.
+- **YouTube extraction now has a JavaScript runtime.** yt-dlp enables only
+  `deno` by default and, with no runtime present, silently drops the `web`
+  and `tv_samsung` clients — leaving a single-client path that YouTube's
+  anti-bot systems flag quickly. The engine now passes the running Node
+  interpreter (`electron.exe` with `ELECTRON_RUN_AS_NODE` in the desktop
+  build), which yt-dlp reports as a usable challenge provider. The path is
+  normalised to native separators because a forward-slash Windows path is
+  reported as "unavailable" with **no error**, quietly restoring the
+  degraded behaviour.
+- Cancelling one download no longer affects other transfers. Cancellation
+  is per-transfer now that several can run at once.
+- A cancelled Soulseek transfer keeps its peer reserved for a minute. The
+  underlying socket cannot be closed (slsk-client exposes no abort), so
+  releasing the peer immediately could open a second connection to a peer
+  still serving the first.
+- Corrected the 0.4.1 note above: the JavaScript-runtime fix and the shared
+  request cooldown it describes were not present in the code until now.
+  Confirmed by searching the tree for `jsRuntimes` and finding nothing.
+
 ## [Unreleased] - Artist header & player links - 2026-10-31
 
 ### Added

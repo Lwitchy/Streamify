@@ -28,7 +28,7 @@
         searched: false,
         sourceMode: 'youtube',
         results: [],
-        sourceStatus: { soulseek: null },
+        sourceStatus: { soulseek: null, youtube: null },
         queue: [],
         downloadFolder: null,
         queuedIds: new Set(),
@@ -109,18 +109,50 @@
     }
 
     /**
-     * Renders a notice only when the selected source needs attention. YouTube
-     * needs nothing, so the page stays clean unless Soulseek is picked while
-     * unconfigured or broken.
+     * YouTube needs no setup, so it has no notice of its own — but when it has
+     * rate-limited this connection the source is silently paused, and downloads
+     * quietly falling through to Soulseek is exactly the kind of thing that
+     * looks like a bug. Surfaced regardless of which source is selected.
+     */
+    function renderYoutubeCooldownNotice() {
+        const youtube = state.sourceStatus.youtube;
+        if (!youtube || !youtube.blocked) return false;
+
+        const card = node('div', 'downloads-notice downloads-notice--warn');
+        const iconWrap = node('div', 'downloads-notice-icon');
+        iconWrap.appendChild(icon('bx-time-five'));
+        card.appendChild(iconWrap);
+
+        const body = node('div', 'downloads-notice-body');
+        body.appendChild(node('div', 'downloads-notice-title', 'YouTube is paused'));
+        const until = youtube.retryAt ? new Date(youtube.retryAt) : null;
+        const when = until && !Number.isNaN(until.getTime())
+            ? ` It will be tried again around ${until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+            : ' It will be tried again automatically.';
+        body.appendChild(node('div', 'downloads-notice-text',
+            `YouTube asked this server to slow down, so downloads are coming from Soulseek only.${when}`));
+        card.appendChild(body);
+
+        el.notice.appendChild(card);
+        return true;
+    }
+
+    /**
+     * Renders a notice only when a selected source needs attention. YouTube
+     * needs nothing at setup time, so the page stays clean unless Soulseek is
+     * picked while unconfigured or broken — or YouTube has paused itself.
      */
     function renderSourceNotice() {
         if (!el.notice) return;
         el.notice.replaceChildren();
 
+        // YouTube's cooldown is shown whatever source is selected, because it
+        // changes where downloads actually come from.
+        renderYoutubeCooldownNotice();
+
         const soulseek = state.sourceStatus.soulseek;
-        // YouTube is the default source and needs no setup: only surface
-        // Soulseek trouble when the user actually switched to it, or when a
-        // configured account has stopped working.
+        // Only surface Soulseek trouble when the user actually switched to it,
+        // or when a configured account has stopped working.
         if (!soulseek || state.sourceMode !== 'soulseek') return;
         if (soulseekUsable()) return;
 
@@ -486,13 +518,21 @@
 
     function renderQueue() {
         if (!el.queueList) return;
+        // Finished or cleared downloads fade out and the rest glide up,
+        // instead of the list jumping on every status poll.
+        const listMotion = window.StreamifyMotion ? window.StreamifyMotion.captureList(el.queueList) : null;
         el.queueList.replaceChildren();
 
         if (state.queue.length === 0) {
             el.queueList.appendChild(emptyState('bx-cloud-download', 'Nothing queued. Search for a song to get started.'));
         } else {
-            state.queue.forEach(item => el.queueList.appendChild(buildQueueRow(item)));
+            state.queue.forEach(item => {
+                const row = buildQueueRow(item);
+                row.dataset.motionKey = String(item.id);
+                el.queueList.appendChild(row);
+            });
         }
+        if (listMotion) listMotion.play();
 
         const pending = state.queue.filter(item => item.status === 'queued' || item.status === 'running').length;
         const finished = state.queue.length - pending;
@@ -515,6 +555,7 @@
             state.queue = data.items || [];
             state.downloadFolder = data.downloadFolder || null;
             state.sourceStatus.soulseek = Object.assign({}, state.sourceStatus.soulseek, data.soulseek);
+            state.sourceStatus.youtube = data.youtube || null;
             renderQueue();
             renderSourceNotice();
             // Soulseek availability decides whether the tab strip exists at all,
@@ -634,42 +675,171 @@
      * Single entry point for "are you sure?". Nothing reaches the queue without
      * passing through here, whether it is one picked result or a whole Spotify
      * album.
+     *
+     * Multi-track imports are selectable. Tracks the library already has start
+     * UNTICKED, because re-downloading an album you own is the common case and
+     * the old read-only list gave no way to skip them — they simply arrived a
+     * second time with a " (2)" suffix.
      */
     function openConfirm({ title, note, tracks, preview, batchLabel, onCancel }) {
         if (!el.confirmModal) return;
 
-        pendingConfirm = { tracks, batchLabel: batchLabel || null, onCancel: onCancel || null };
+        const isSingle = Boolean(preview);
+        // Selection is tracked by index so the payload keeps its real types and
+        // the same track object is never duplicated into the DOM.
+        const selection = new Set();
+        tracks.forEach((track, index) => { if (!track.inLibrary) selection.add(index); });
+
+        const suggestQuality = () => {
+            const flacCount = tracks.filter(track => track.extension === '.flac').length;
+            return flacCount > 0 && flacCount >= tracks.length / 2 ? 'lossless' : 'best';
+        };
+
+        pendingConfirm = {
+            tracks,
+            selection,
+            quality: suggestQuality(),
+            batchLabel: batchLabel || null,
+            onCancel: onCancel || null
+        };
 
         el.confirmTitle.textContent = title;
         el.confirmNote.textContent = note || '';
 
-        // Single track: show a summary card. Many: show a numbered list.
         el.confirmSingle.replaceChildren();
         el.confirmList.replaceChildren();
-        const isSingle = Boolean(preview);
         el.confirmList.classList.toggle('hidden', isSingle);
 
         if (isSingle) {
             el.confirmSingle.appendChild(buildConfirmTrack(preview));
         } else {
+            el.confirmList.appendChild(buildSelectionHeader(tracks, selection, pendingConfirm));
+
+            const ownedCount = tracks.filter(track => track.inLibrary).length;
             tracks.slice(0, 100).forEach((track, index) => {
-                const row = node('div', 'resolve-preview-item');
-                row.appendChild(node('span', 'resolve-preview-index', String(index + 1)));
-                const text = node('div', 'resolve-preview-text');
-                text.appendChild(node('strong', null, track.title));
-                if (track.artist) text.appendChild(node('span', null, ` - ${track.artist}`));
-                row.appendChild(text);
-                el.confirmList.appendChild(row);
+                el.confirmList.appendChild(buildSelectableRow(track, index, selection, pendingConfirm));
             });
+
+            if (ownedCount > 0) {
+                const hint = node('p', 'resolve-preview-hint',
+                    `${ownedCount} track${ownedCount === 1 ? ' is' : 's are'} already in your library and unticked.`);
+                el.confirmList.appendChild(hint);
+            }
         }
 
-        el.confirmAccept.replaceChildren(
-            icon('bx-download'),
-            node('span', null, isSingle ? 'Download' : `Download ${tracks.length}`)
-        );
+        syncConfirmAccept(isSingle);
+        renderQualityPicker(isSingle, tracks, pendingConfirm);
 
         el.confirmModal.classList.remove('hidden');
         requestAnimationFrame(() => el.confirmAccept.focus());
+    }
+
+    /** "Select all / none" plus a live count, above the list. */
+    function buildSelectionHeader(tracks, selection, pending) {
+        const header = node('div', 'resolve-preview-header');
+
+        const label = node('label', 'resolve-preview-toggle');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = selection.size === tracks.length;
+        box.addEventListener('change', () => {
+            selection.clear();
+            if (box.checked) tracks.forEach((track, index) => selection.add(index));
+            el.confirmList.querySelectorAll('input[type="checkbox"][data-index]')
+                .forEach(input => { input.checked = box.checked; });
+            syncConfirmAccept(false);
+        });
+        label.appendChild(box);
+        label.appendChild(node('span', null, 'All'));
+        header.appendChild(label);
+
+        header.appendChild(node('span', 'resolve-preview-count', countLabel(selection.size, tracks.length)));
+        return header;
+    }
+
+    function countLabel(selected, total) {
+        return `${selected} of ${total} selected`;
+    }
+
+    /** One selectable track row; owned tracks render unticked and dimmed. */
+    function buildSelectableRow(track, index, selection, pending) {
+        const row = node('label', `resolve-preview-item${track.inLibrary ? ' is-owned' : ''}`);
+
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.dataset.index = String(index);
+        box.checked = selection.has(index);
+        box.addEventListener('change', () => {
+            if (box.checked) selection.add(index);
+            else selection.delete(index);
+            syncConfirmAccept(false);
+        });
+        row.appendChild(box);
+
+        row.appendChild(node('span', 'resolve-preview-index', String(index + 1)));
+        const text = node('div', 'resolve-preview-text');
+        text.appendChild(node('strong', null, track.title));
+        if (track.artist) text.appendChild(node('span', null, ` - ${track.artist}`));
+        row.appendChild(text);
+
+        if (track.inLibrary) {
+            row.appendChild(node('span', 'resolve-preview-badge', 'In library'));
+        }
+
+        return row;
+    }
+
+    /** Keeps the accept button's label and disabled state honest. */
+    function syncConfirmAccept(isSingle) {
+        if (!pendingConfirm) return;
+        if (isSingle) {
+            el.confirmAccept.disabled = false;
+            el.confirmAccept.replaceChildren(icon('bx-download'), node('span', null, 'Download'));
+            return;
+        }
+
+        const count = pendingConfirm.selection.size;
+        el.confirmAccept.disabled = count === 0;
+        el.confirmAccept.replaceChildren(
+            icon('bx-download'),
+            node('span', null, count === 0 ? 'Nothing selected' : `Download ${count}`)
+        );
+
+        const counter = el.confirmList.querySelector('.resolve-preview-count');
+        if (counter) counter.textContent = countLabel(count, pendingConfirm.tracks.length);
+    }
+
+    /**
+     * Quality choice for batches. Only meaningful for Soulseek results, so it is
+     * omitted for direct single-track downloads.
+     */
+    function renderQualityPicker(isSingle, tracks, pending) {
+        if (!el.confirmQuality) return;
+        if (isSingle) {
+            el.confirmQuality.classList.add('hidden');
+            return;
+        }
+        el.confirmQuality.classList.remove('hidden');
+
+        const options = [
+            { value: 'best', label: 'Best available', hint: 'Prefers lossless, but takes a good MP3 when it is the only copy free now.' },
+            { value: 'lossless', label: 'Prefer lossless', hint: 'Ranks FLAC far ahead of MP3. Falls back to MP3 rather than failing.' }
+        ];
+
+        el.confirmQualityButtons.replaceChildren();
+        options.forEach(option => {
+            const button = node('button', `resolve-quality-option${pending.quality === option.value ? ' is-active' : ''}`);
+            button.type = 'button';
+            button.dataset.value = option.value;
+            button.appendChild(node('strong', null, option.label));
+            button.appendChild(node('span', null, option.hint));
+            button.addEventListener('click', () => {
+                pending.quality = option.value;
+                el.confirmQualityButtons.querySelectorAll('.resolve-quality-option')
+                    .forEach(other => other.classList.toggle('is-active', other.dataset.value === option.value));
+            });
+            el.confirmQualityButtons.appendChild(button);
+        });
     }
 
     function buildConfirmTrack(preview) {
@@ -717,11 +887,22 @@
 
     async function acceptConfirm() {
         if (!pendingConfirm) return;
-        const { tracks, batchLabel } = pendingConfirm;
+        const { tracks, selection, quality, batchLabel } = pendingConfirm;
+
+        // A batch sends only what is ticked; a single-track confirm has no
+        // selection list, so its one track is sent as-is.
+        const chosen = selection
+            ? tracks.filter((track, index) => selection.has(index))
+            : tracks;
+        if (chosen.length === 0) return;
+
         // Cleared without firing onCancel: this is an accept, not a dismissal.
         closeConfirm(false);
         if (el.searchInput) el.searchInput.value = '';
-        await enqueueItemsSafely(tracks, batchLabel);
+        await enqueueItemsSafely(
+            chosen.map(track => ({ ...track, quality })),
+            batchLabel
+        );
     }
 
     async function enqueueItems(tracks, batchLabel) {
@@ -880,6 +1061,12 @@
 
             socket.on('downloads:changed', () => refresh());
 
+            // The breaker reports through the status payload as well, so the
+            // notice would appear on the next poll anyway — this just makes the
+            // pause land at the moment it happens rather than up to a poll late.
+            socket.on('downloads:source-blocked', () => refresh());
+            socket.on('downloads:source-available', () => refresh());
+
             socket.on('downloads:completed', payload => {
                 if (payload && payload.item) {
                     const label = [payload.item.artist, payload.item.title].filter(Boolean).join(' - ');
@@ -928,6 +1115,8 @@
         el.confirmNote = document.getElementById('downloads-confirm-note');
         el.confirmSingle = document.getElementById('downloads-confirm-single');
         el.confirmList = document.getElementById('downloads-confirm-list');
+        el.confirmQuality = document.getElementById('downloads-confirm-quality');
+        el.confirmQualityButtons = document.getElementById('downloads-confirm-quality-options');
         el.confirmAccept = document.getElementById('downloads-confirm-accept');
         el.confirmCancel = document.getElementById('downloads-confirm-cancel');
         el.confirmClose = document.getElementById('downloads-confirm-close');

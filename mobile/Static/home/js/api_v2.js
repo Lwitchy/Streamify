@@ -544,20 +544,59 @@ function deleteSelectedSongs() {
     if (selectedSongIds.size === 0) return;
 
     const ids = Array.from(selectedSongIds);
+    performDelete(ids, false);
+}
+
+/**
+ * Sends a delete request.
+ *
+ * The server refuses files Streamify did not download unless `confirmDelete` is
+ * set, so the first refusal is a prompt rather than an error: the user is told
+ * the real file goes away, and only a second, explicit click proceeds. Songs
+ * Streamify downloaded need no confirmation — removing them is ordinary
+ * housekeeping, and asking every time would train the user to click through.
+ */
+function performDelete(ids, confirmDelete) {
     fetch(window.API_BASE_URL + '/api/songs/bulk-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ids })
+        body: JSON.stringify({ ids, confirmDelete })
     })
         .then(r => r.json())
         .then(data => {
+            const needsConfirmation = (data.failed || []).filter(entry => entry.code === 'needs_confirmation');
+
+            // Anything that did go through is refreshed and reported first, so a
+            // mixed batch (some deleted, some awaiting confirmation) still
+            // reflects the deletions instead of appearing to do nothing.
             if (data.success && data.success.length > 0) {
-                // Refresh library
                 fetchLibrary(true);
                 toggleLibraryEditMode();
-            } else if (data.failed && data.failed.length > 0) {
-                showToast(`Failed to delete some songs. ${data.failed[0].error}`, 'error');
+                const count = data.success.length;
+                showToast(`Deleted ${count} song${count === 1 ? '' : 's'}.`, 'success');
+            }
+
+            if (!confirmDelete && needsConfirmation.length > 0) {
+                const sample = needsConfirmation[0].filepath;
+                const more = needsConfirmation.length > 1
+                    ? `\nand ${needsConfirmation.length - 1} other file${needsConfirmation.length === 2 ? '' : 's'}`
+                    : '';
+                const proceed = window.confirm(
+                    `${needsConfirmation.length} of these were not downloaded by Streamify.\n\n`
+                    + `Deleting them removes the real file from disk, not just from the library — `
+                    + `the file will be gone and you will need it back from wherever it came from.\n\n`
+                    + `For example:\n${sample}${more}\n\nDelete anyway?`
+                );
+                if (proceed) {
+                    performDelete(needsConfirmation.map(entry => entry.id), true);
+                }
+                return;
+            }
+
+            const realFailures = (data.failed || []).filter(entry => entry.code !== 'needs_confirmation');
+            if (realFailures.length > 0) {
+                showToast(`Failed to delete some songs. ${realFailures[0].error}`, 'error');
             }
         })
         .catch(err => console.error('[BULK DELETE]', err));
@@ -5342,17 +5381,6 @@ function renderDmMessages(messages) {
     container.scrollTop = container.scrollHeight;
 }
 
-function dmDisableInputTemporarily(ms) {
-    const input = document.getElementById('dm-message-input');
-    const sendBtn = document.getElementById('dm-send-btn');
-    if (input) { input.disabled = true; input.placeholder = 'Slow down... wait a moment'; }
-    if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.5'; }
-    setTimeout(() => {
-        if (input) { input.disabled = false; input.placeholder = 'Type a message...'; }
-        if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ''; }
-    }, ms);
-}
-
 function sendDmMessage() {
     const input = document.getElementById('dm-message-input');
     if (!input || !input.value.trim() || !activeDmConversation) return;
@@ -5382,10 +5410,6 @@ function sendDmMessage() {
                 // Remove the optimistic bubble
                 const container = document.getElementById('dm-messages');
                 if (container && container.lastElementChild) container.lastElementChild.remove();
-                // If rate limited (429), disable input temporarily
-                if (data.error && (data.error.includes('Too') || data.error.includes('slow') || data.error.includes('fast'))) {
-                    dmDisableInputTemporarily(60000);
-                }
             } else {
                 // Update contact preview in-place without full re-render
                 const contactItem = document.querySelector(`.dm-contact-item[data-conversation-id="${activeDmConversation}"]`);

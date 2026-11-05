@@ -240,6 +240,16 @@ function renderSongList(songs, listContainer, options = {}) {
         indexLabel = null
     } = options;
 
+    // Rebuilding the same list (e.g. a song unliked on Liked Songs, removed
+    // from the library): rows glide instead of jumping. Rows that simply
+    // haven't been appended yet (batched render) aren't treated as removed.
+    const motionKey = options.motionKey || listContainer.id || null;
+    const newIds = new Set((songs || []).map(s => String(s.id)));
+    const listMotion = motionKey && listContainer.dataset.motionList === motionKey && window.StreamifyMotion
+        ? window.StreamifyMotion.captureList(listContainer, { isRemoved: id => !newIds.has(id) })
+        : null;
+    if (motionKey) listContainer.dataset.motionList = motionKey;
+
     const header = listContainer.querySelector('.header-row');
     listContainer.replaceChildren(...(header ? [header] : []));
 
@@ -318,7 +328,7 @@ function renderSongList(songs, listContainer, options = {}) {
 
         row.dataset.id = song.id;
         row.dataset.index = index;
-        if (isPlaying && String(window.currentlyPlayingSongId) === String(song.id)) {
+        if (window.currentlyPlayingSongId != null && String(window.currentlyPlayingSongId) === String(song.id)) {
             row.classList.add('playing');
         }
 
@@ -459,16 +469,11 @@ function renderSongList(songs, listContainer, options = {}) {
     };
 
     appendBatch(24, allowHiddenInitialBatch);
+    if (listMotion) listMotion.play();
 }
 
 function highlightCurrentSong(listContainer) {
-    if (currentIndex < 0 || !isPlaying || !window.currentlyPlayingSongId) return;
-    const rows = listContainer.querySelectorAll('.song-row:not(.header-row)');
-    rows.forEach(row => {
-        if (row.dataset.id == window.currentlyPlayingSongId) {
-            row.classList.add('playing');
-        }
-    });
+    if (typeof window.syncNowPlayingRows === 'function') window.syncNowPlayingRows(listContainer || document);
 }
 
 /* ========== LIBRARY MANAGEMENT FUNCTIONS ========== */
@@ -544,20 +549,59 @@ function deleteSelectedSongs() {
     if (selectedSongIds.size === 0) return;
 
     const ids = Array.from(selectedSongIds);
+    performDelete(ids, false);
+}
+
+/**
+ * Sends a delete request.
+ *
+ * The server refuses files Streamify did not download unless `confirmDelete` is
+ * set, so the first refusal is a prompt rather than an error: the user is told
+ * the real file goes away, and only a second, explicit click proceeds. Songs
+ * Streamify downloaded need no confirmation — removing them is ordinary
+ * housekeeping, and asking every time would train the user to click through.
+ */
+function performDelete(ids, confirmDelete) {
     fetch(window.API_BASE_URL + '/api/songs/bulk-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ids })
+        body: JSON.stringify({ ids, confirmDelete })
     })
         .then(r => r.json())
         .then(data => {
+            const needsConfirmation = (data.failed || []).filter(entry => entry.code === 'needs_confirmation');
+
+            // Anything that did go through is refreshed and reported first, so a
+            // mixed batch (some deleted, some awaiting confirmation) still
+            // reflects the deletions instead of appearing to do nothing.
             if (data.success && data.success.length > 0) {
-                // Refresh library
                 fetchLibrary(true);
                 toggleLibraryEditMode();
-            } else if (data.failed && data.failed.length > 0) {
-                showToast(`Failed to delete some songs. ${data.failed[0].error}`, 'error');
+                const count = data.success.length;
+                showToast(`Deleted ${count} song${count === 1 ? '' : 's'}.`, 'success');
+            }
+
+            if (!confirmDelete && needsConfirmation.length > 0) {
+                const sample = needsConfirmation[0].filepath;
+                const more = needsConfirmation.length > 1
+                    ? `\nand ${needsConfirmation.length - 1} other file${needsConfirmation.length === 2 ? '' : 's'}`
+                    : '';
+                const proceed = window.confirm(
+                    `${needsConfirmation.length} of these were not downloaded by Streamify.\n\n`
+                    + `Deleting them removes the real file from disk, not just from the library — `
+                    + `the file will be gone and you will need it back from wherever it came from.\n\n`
+                    + `For example:\n${sample}${more}\n\nDelete anyway?`
+                );
+                if (proceed) {
+                    performDelete(needsConfirmation.map(entry => entry.id), true);
+                }
+                return;
+            }
+
+            const realFailures = (data.failed || []).filter(entry => entry.code !== 'needs_confirmation');
+            if (realFailures.length > 0) {
+                showToast(`Failed to delete some songs. ${realFailures[0].error}`, 'error');
             }
         })
         .catch(err => console.error('[BULK DELETE]', err));
@@ -3481,6 +3525,8 @@ function performSearch(query) {
 
                     const row = document.createElement('div');
                     row.className = 'song-row';
+                    row.dataset.id = song.id;
+                    if (window.currentlyPlayingSongId != null && String(window.currentlyPlayingSongId) === String(song.id)) row.classList.add('playing');
                     row.tabIndex = 0;
                     row.setAttribute('role', 'button');
                     row.setAttribute('aria-label', `Play ${song.title} by ${song.artist}`);
@@ -4065,10 +4111,13 @@ function fetchPlaylists(forceRefresh = false) {
 function renderSidebarPlaylists(playlists) {
     const list = document.getElementById('sidebar-playlist-list');
     if (!list) return;
+    // New playlists fade in and deleted ones fade out while the rest glide.
+    const listMotion = window.StreamifyMotion ? window.StreamifyMotion.captureList(list) : null;
     list.innerHTML = '';
 
     if (!playlists || playlists.length === 0) {
         list.innerHTML = '<li><span style="color: var(--text-secondary); font-size: 12px; padding: 4px 8px; display: block;">No playlists yet</span></li>';
+        if (listMotion) listMotion.play();
         return;
     }
 
@@ -4078,6 +4127,7 @@ function renderSidebarPlaylists(playlists) {
         const activeId = window.currentPlaylistId || window.requestedPlaylistId;
         const isActive = activeId && (activeId == p.id || activeId == p.share_id);
         const pid = p.share_id || p.id;
+        li.dataset.motionKey = String(pid);
         li.innerHTML = `<a href="#" class="sidebar-playlist-link${isActive ? ' active' : ''}" data-playlist-id="${pid}"><i class='bx bx-list-ul'></i><span>${safeName}</span></a>`;
         li.querySelector('a').addEventListener('click', (e) => {
             e.preventDefault();
@@ -4085,6 +4135,7 @@ function renderSidebarPlaylists(playlists) {
         });
         list.appendChild(li);
     });
+    if (listMotion) listMotion.play();
 }
 
 function createPlaylist(name) {
@@ -4434,6 +4485,12 @@ async function renderPlaylistDetail(playlistId) {
             if (overlay) overlay.classList.add('hidden');
         }
 
+        // Same playlist re-rendered (a song removed, edits saved): rows glide
+        // into place instead of the whole list replaying its entrance.
+        const listMotion = list.dataset.renderedPlaylistId === String(canonicalPlaylistId) && window.StreamifyMotion
+            ? window.StreamifyMotion.captureList(list)
+            : null;
+        list.dataset.renderedPlaylistId = String(canonicalPlaylistId);
         list.innerHTML = '';
         if (header) list.appendChild(header);
 
@@ -4442,6 +4499,7 @@ async function renderPlaylistDetail(playlistId) {
             emptyMsg.style.cssText = 'color: var(--text-secondary); padding: 20px; text-align: center;';
             emptyMsg.textContent = 'This playlist is empty. Add songs from the library.';
             list.appendChild(emptyMsg);
+            if (listMotion) listMotion.play();
             return;
         }
 
@@ -4479,6 +4537,7 @@ async function renderPlaylistDetail(playlistId) {
             if (isPlaylistEditMode) row.classList.add('edit-mode');
             if (selectedPlaylistSongIds.has(song.id)) row.classList.add('selected');
             row.dataset.id = song.id;
+            if (window.currentlyPlayingSongId != null && String(window.currentlyPlayingSongId) === String(song.id)) row.classList.add('playing');
             row.innerHTML = `
                 <div class="index-cell">
                     <div class="select-indicator"></div>
@@ -4531,6 +4590,11 @@ async function renderPlaylistDetail(playlistId) {
                 removeSongFromPlaylist(canonicalPlaylistId, song.id).then(res => {
                     if (window.currentPlaylistId !== canonicalPlaylistId || window.currentActiveView !== 'playlist') return;
                     if (res.success) {
+                        if (window.StreamifyMotion && !window.StreamifyMotion.reducedMotion()) {
+                            // The row fades away and the rows below glide up.
+                            renderPlaylistDetail(canonicalPlaylistId);
+                            return;
+                        }
                         row.classList.add('deleting-anim');
                         setTimeout(() => {
                             if (window.currentPlaylistId === canonicalPlaylistId && window.currentActiveView === 'playlist') {
@@ -4563,6 +4627,7 @@ async function renderPlaylistDetail(playlistId) {
 
         // Re-apply playing indicator after render
         highlightCurrentSong(list);
+        if (listMotion) listMotion.play();
     } catch (err) {
         if (err.name === 'AbortError' || seq !== _playlistRenderSeq) return;
         window.currentPlaylistId = null;
@@ -5342,17 +5407,6 @@ function renderDmMessages(messages) {
     container.scrollTop = container.scrollHeight;
 }
 
-function dmDisableInputTemporarily(ms) {
-    const input = document.getElementById('dm-message-input');
-    const sendBtn = document.getElementById('dm-send-btn');
-    if (input) { input.disabled = true; input.placeholder = 'Slow down... wait a moment'; }
-    if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.5'; }
-    setTimeout(() => {
-        if (input) { input.disabled = false; input.placeholder = 'Type a message...'; }
-        if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ''; }
-    }, ms);
-}
-
 function sendDmMessage() {
     const input = document.getElementById('dm-message-input');
     if (!input || !input.value.trim() || !activeDmConversation) return;
@@ -5382,10 +5436,6 @@ function sendDmMessage() {
                 // Remove the optimistic bubble
                 const container = document.getElementById('dm-messages');
                 if (container && container.lastElementChild) container.lastElementChild.remove();
-                // If rate limited (429), disable input temporarily
-                if (data.error && (data.error.includes('Too') || data.error.includes('slow') || data.error.includes('fast'))) {
-                    dmDisableInputTemporarily(60000);
-                }
             } else {
                 // Update contact preview in-place without full re-render
                 const contactItem = document.querySelector(`.dm-contact-item[data-conversation-id="${activeDmConversation}"]`);

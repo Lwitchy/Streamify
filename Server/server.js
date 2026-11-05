@@ -9,7 +9,6 @@ const https = require('https');
 const crypto = require('crypto');
 const http = require('http');
 const { spawn } = require('child_process');
-const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 
 const HandleDatabase = require('./database');
@@ -24,6 +23,7 @@ const Fingerprint = require('./fingerprint');
 const EnrichmentSummary = require('./enrichmentSummary');
 const Auth = require('./auth');
 const RT = require('./runtime');
+const { deleteVerdict } = require('./deleteRules');
 const { Jimp } = require('jimp');
 const mm = require('music-metadata');
 const Moderation = require('./moderation');
@@ -163,26 +163,6 @@ io.on('connection', (socket) => {
         socket.join('role:owner');
     }
 
-    // --- WebSocket Rate Limiting ---
-    let packetCount = 0;
-    const packetLimit = 50; // Max events per second
-    let lastReset = Date.now();
-
-    socket.use((packet, next) => {
-        const now = Date.now();
-        if (now - lastReset > 1000) {
-            packetCount = 0;
-            lastReset = now;
-        }
-
-        packetCount++;
-        if (packetCount > packetLimit) {
-            console.warn(`[SOCKET DOS] User '${socket.username}' exceeded rate limit. Disconnecting.`);
-            return socket.disconnect(true);
-        }
-        next();
-    });
-
     socket.on('disconnect', () => {
         // Log clean-up if needed
     });
@@ -228,7 +208,8 @@ Downloads.init({
     io,
     getMusicDirectories,
     indexMusicFile,
-    getSpotifyTracks: getTracks
+    getSpotifyTracks: getTracks,
+    getSongsForMatch: () => HandleDatabase.getSongsForMatch()
 });
 
 // --- Initialize Database ---
@@ -379,69 +360,6 @@ app.use((req, res, next) => {
         'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
     });
     next();
-});
-
-// Rate Limiters
-const apiLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    limit: (req) => app.locals.config.ratelimits.api || 200,
-    message: { error: "Too Many Requests. Slow down!" }
-});
-
-// Stricter limit for social actions (likes)
-const socialLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    limit: (req) => app.locals.config.ratelimits.social || 20,
-    message: { error: "You're liking too fast! Slow down." }
-});
-
-const commentLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    limit: (req) => app.locals.config.ratelimits.comment || 10,
-    message: { error: "You're commenting too fast! Please wait a moment." }
-});
-
-const postLimiter = rateLimit({
-    windowMs: 15 * 1000,
-    limit: (req) => app.locals.config.ratelimits.post || 1,
-    message: { error: "You're posting too fast! There is a 15-second cooldown between posts." }
-});
-
-const profileUpdateLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 2,
-    message: { error: "You're updating your profile too frequently. Please wait a minute." }
-});
-
-const avatarUploadLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 1,
-    message: { error: "You're uploading avatars too frequently. Please wait a minute." }
-});
-
-const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    message: { error: "Too many login/registration attempts. Please try again in 15 minutes." }
-});
-
-// Limit for Widget updates
-const widgetLimiter = rateLimit({
-    windowMs: 10 * 60 * 1000,
-    max: 100,
-    message: { error: "Too many widget updates. Please slow down." }
-});
-
-const dmRequestLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 5,
-    message: { error: "Too many DM requests. Please wait a moment." }
-});
-
-const dmMessageLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 30,
-    message: { error: "You're sending messages too fast. Please slow down." }
 });
 
 async function getFileHash(filePath) {
@@ -1250,14 +1168,6 @@ async function indexMusicFile(filePath, context = {}) {
     return song;
 }
 
-app.use('/api/', (req, res, next) => {
-    // Audio players can issue many Range requests while seeking. Keep those
-    // outside the general JSON API budget so valid playback cannot become a
-    // JSON 429 response mid-track.
-    if (req.path.startsWith('/stream/')) return next();
-    return apiLimiter(req, res, next);
-});
-
 // --- Static Serves ---
 // /Static is layered: user-generated media (covers, avatars, banners) lives in
 // the writable data directory, while the app's own HTML/CSS/JS ships read-only
@@ -1540,13 +1450,7 @@ async function initializeConfig() {
                 oobe_completed: false,
                 auto_update_enabled: true,
                 metadata_lookup_mode: DEFAULT_METADATA_LOOKUP_MODE,
-                acoustid_client_key: '',
-                ratelimits: {
-                    api: 200,
-                    social: 20,
-                    comment: 10,
-                    post: 1
-                }
+                acoustid_client_key: ''
             };
 
             for (const [key, val] of Object.entries(initialConfig)) {
@@ -1555,10 +1459,6 @@ async function initializeConfig() {
             }
         } else {
             // Ensure essential keys exist
-            if (!configMap.ratelimits) {
-                configMap.ratelimits = { api: 200, social: 20, comment: 10, post: 1 };
-                await HandleDatabase.updateSystemConfig('ratelimits', JSON.stringify(configMap.ratelimits));
-            }
             if (configMap.lockdown_new_posts === undefined) {
                 configMap.lockdown_new_posts = false;
                 await HandleDatabase.updateSystemConfig('lockdown_new_posts', JSON.stringify(configMap.lockdown_new_posts));
@@ -1579,16 +1479,11 @@ async function initializeConfig() {
             }
         }
 
-        if (configMap.ratelimits && typeof configMap.ratelimits === 'object') {
-            const cleanedRateLimits = { ...configMap.ratelimits };
-            const hadYoutubeLimits = Object.prototype.hasOwnProperty.call(cleanedRateLimits, 'youtube_max') ||
-                Object.prototype.hasOwnProperty.call(cleanedRateLimits, 'youtube_duration');
-            delete cleanedRateLimits.youtube_max;
-            delete cleanedRateLimits.youtube_duration;
-            if (hadYoutubeLimits) {
-                configMap.ratelimits = cleanedRateLimits;
-                await HandleDatabase.updateSystemConfig('ratelimits', JSON.stringify(cleanedRateLimits));
-            }
+        // Rate limits were a public-server feature and are gone; drop the
+        // leftover row so it never resurfaces in the admin config response.
+        if (Object.prototype.hasOwnProperty.call(configMap, 'ratelimits')) {
+            delete configMap.ratelimits;
+            await HandleDatabase.deleteSystemConfig('ratelimits');
         }
 
         if (!METADATA_LOOKUP_MODES.has(configMap.metadata_lookup_mode)) {
@@ -1622,8 +1517,7 @@ app.locals.config = {
     allow_registration: false,
     lockdown_new_posts: false,
     auto_update_enabled: true,
-    metadata_lookup_mode: DEFAULT_METADATA_LOOKUP_MODE,
-    ratelimits: { api: 200, social: 20, comment: 10, post: 1 }
+    metadata_lookup_mode: DEFAULT_METADATA_LOOKUP_MODE
 };
 
 function parseStoredConfigValue(value) {
@@ -1816,7 +1710,7 @@ function isLoopbackRequest(req) {
     return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
-app.post('/loginrequest', authLimiter, async (req, res) => {
+app.post('/loginrequest', async (req, res) => {
     const ip = req.ip;
     const userAgent = req.headers['user-agent'];
 
@@ -1850,7 +1744,7 @@ app.post('/loginrequest', authLimiter, async (req, res) => {
 });
 
 // Register
-app.post('/register', authLimiter, async (req, res) => {
+app.post('/register', async (req, res) => {
     const { username, password, email, confirm_password } = req.body;
 
     if (typeof username !== 'string' || typeof password !== 'string' || password !== confirm_password) {
@@ -2109,7 +2003,7 @@ app.get('/api/me', requireLogin, async (req, res) => {
 });
 
 // API: update profile
-app.post('/api/user/update-profile', requireLogin, profileUpdateLimiter, async (req, res) => {
+app.post('/api/user/update-profile', requireLogin, async (req, res) => {
     const { display_name, bio } = req.body;
 
     if (display_name && display_name.length > 30) {
@@ -2303,7 +2197,7 @@ app.post('/api/telemetry/listen', requireLogin, async (req, res) => {
 });
 
 // API: Now Playing (for iOS Widget)
-app.post('/api/widget/now-playing', widgetLimiter, async (req, res) => {
+app.post('/api/widget/now-playing', async (req, res) => {
     // Accept session_id from header (iOS widget can't use cookies)
     const sessionId = req.cookies.session_id || req.headers['x-session-id'];
     if (!sessionId) return res.status(401).json({ error: "Unauthorized" });
@@ -2386,12 +2280,6 @@ function discordArtworkExpiry(ttlMs) {
     return new Date(Date.now() + ttlMs).toISOString();
 }
 
-const discordLimiter = rateLimit({
-    windowMs: 10 * 60 * 1000,
-    max: 200,
-    message: { error: "Too many artwork lookups. Please slow down." }
-});
-
 /**
  * Rejects anything Discord's media proxy could not reach from the public
  * internet. A private address here is worse than no address: Discord silently
@@ -2468,7 +2356,7 @@ app.post('/api/settings/discord', requireRole(['Owner']), async (req, res) => {
  * `mode` is a per-device privacy choice. Only explicit online modes send track
  * metadata outside Streamify; app_logo and stored_only never start a lookup.
  */
-app.get('/api/discord/artwork', requireLogin, discordLimiter, async (req, res) => {
+app.get('/api/discord/artwork', requireLogin, async (req, res) => {
     res.set('Cache-Control', 'no-store');
 
     const songId = String(req.query.songId || '').trim();
@@ -2602,7 +2490,7 @@ app.get('/api/discord/artwork', requireLogin, discordLimiter, async (req, res) =
     }
 });
 
-app.post('/api/discord/artwork/refresh', requireLogin, discordLimiter, async (req, res) => {
+app.post('/api/discord/artwork/refresh', requireLogin, async (req, res) => {
     const songId = String(req.body && req.body.songId || '').trim();
     if (!songId || songId.length > 64) return res.status(400).json({ error: 'Invalid song id' });
     try {
@@ -2998,7 +2886,7 @@ const uploadArtistImage = multer({
 });
 
 // API: set an artist photo (Owner/Admin). Replaces any downloaded photo.
-app.post('/api/artists/:uid/image', requireRole(['Owner', 'Admin']), avatarUploadLimiter, uploadArtistImage.single('image'), async (req, res) => {
+app.post('/api/artists/:uid/image', requireRole(['Owner', 'Admin']), uploadArtistImage.single('image'), async (req, res) => {
     try {
         const uid = String(req.params.uid || '');
         if (!Artists.ARTIST_UID_PATTERN.test(uid)) return res.status(400).json({ error: 'Invalid artist' });
@@ -3321,7 +3209,6 @@ app.get('/api/play/:identifier', requireLogin, async (req, res) => {
 app.use([
     '/upload-song',
     '/api/import',
-    '/api/youtube-ratelimit-status',
     '/api/youtube-metadata',
     '/api/youtube-download'
 ], (req, res) => {
@@ -3409,7 +3296,7 @@ app.post('/upload-song', requireLogin, uploadSong.array('song_file', 5), async (
 });
 
 // API: upload-avatar
-app.post('/api/upload-avatar', requireLogin, avatarUploadLimiter, uploadAvatar.single('avatar_file'), async (req, res) => {
+app.post('/api/upload-avatar', requireLogin, uploadAvatar.single('avatar_file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file." });
 
     // Check type
@@ -3430,7 +3317,7 @@ app.post('/api/upload-avatar', requireLogin, avatarUploadLimiter, uploadAvatar.s
 });
 
 // API: upload-banner
-app.post('/api/upload-banner', requireLogin, avatarUploadLimiter, uploadBanner.single('banner_file'), async (req, res) => {
+app.post('/api/upload-banner', requireLogin, uploadBanner.single('banner_file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file." });
 
     const savedUrl = await Media.processUserBannerUpload(req.file.buffer, req.user);
@@ -3450,23 +3337,6 @@ app.post('/api/upload-banner', requireLogin, avatarUploadLimiter, uploadBanner.s
  * ===================================================================== */
 
 const requireOwner = requireRole(['Owner']);
-
-// Soulseek searches remain open for several seconds while peers answer.
-const downloadSearchLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 20,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: "Too many searches. Give it a moment." }
-});
-
-const downloadWriteLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: "Too many download requests. Give it a moment." }
-});
 
 /** Maps engine errors onto their intended status code instead of a blanket 500. */
 function respondDownloadError(res, err, fallback) {
@@ -3489,14 +3359,14 @@ app.get('/api/downloads/status', requireOwner, async (req, res) => {
 });
 
 // API: search Soulseek for a track
-app.post('/api/downloads/search', requireOwner, downloadSearchLimiter, async (req, res) => {
-    const { query, sources } = req.body || {};
+app.post('/api/downloads/search', requireOwner, async (req, res) => {
+    const { query, sources, quality } = req.body || {};
     const requestedSources = Array.isArray(sources) && sources.length > 0
         ? [...new Set(sources.filter(source => source === 'soulseek' || source === 'youtube'))]
         : ['youtube'];
 
     try {
-        const results = await Downloads.search(query, { sources: requestedSources });
+        const results = await Downloads.search(query, { sources: requestedSources, quality });
         return res.json({ success: true, ...results });
     } catch (err) {
         return respondDownloadError(res, err, "Search failed.");
@@ -3504,7 +3374,7 @@ app.post('/api/downloads/search', requireOwner, downloadSearchLimiter, async (re
 });
 
 // API: turn a pasted Spotify link into a preview tracklist
-app.post('/api/downloads/resolve', requireOwner, downloadSearchLimiter, async (req, res) => {
+app.post('/api/downloads/resolve', requireOwner, async (req, res) => {
     const { url } = req.body || {};
     if (typeof url !== 'string' || url.trim().length === 0) {
         return res.status(400).json({ error: "Paste a link first." });
@@ -3522,7 +3392,7 @@ app.post('/api/downloads/resolve', requireOwner, downloadSearchLimiter, async (r
 });
 
 // API: add tracks to the download queue
-app.post('/api/downloads/enqueue', requireOwner, downloadWriteLimiter, async (req, res) => {
+app.post('/api/downloads/enqueue', requireOwner, async (req, res) => {
     const { items, batchLabel } = req.body || {};
     if (!Array.isArray(items)) {
         return res.status(400).json({ error: "Nothing to download." });
@@ -3539,7 +3409,7 @@ app.post('/api/downloads/enqueue', requireOwner, downloadWriteLimiter, async (re
 });
 
 // API: cancel a single queued or running download
-app.post('/api/downloads/queue/:id/cancel', requireOwner, downloadWriteLimiter, async (req, res) => {
+app.post('/api/downloads/queue/:id/cancel', requireOwner, async (req, res) => {
     try {
         const cancelled = await Downloads.cancelItem(req.params.id);
         return res.json({ success: true, cancelled });
@@ -3549,7 +3419,7 @@ app.post('/api/downloads/queue/:id/cancel', requireOwner, downloadWriteLimiter, 
 });
 
 // API: retry a failed or cancelled download
-app.post('/api/downloads/queue/:id/retry', requireOwner, downloadWriteLimiter, async (req, res) => {
+app.post('/api/downloads/queue/:id/retry', requireOwner, async (req, res) => {
     try {
         const item = await Downloads.retryItem(req.params.id);
         return res.json({ success: true, item });
@@ -3559,7 +3429,7 @@ app.post('/api/downloads/queue/:id/retry', requireOwner, downloadWriteLimiter, a
 });
 
 // API: cancel everything still pending
-app.post('/api/downloads/queue/cancel-all', requireOwner, downloadWriteLimiter, async (req, res) => {
+app.post('/api/downloads/queue/cancel-all', requireOwner, async (req, res) => {
     try {
         const cancelled = await Downloads.cancelAll();
         return res.json({ success: true, cancelled });
@@ -3569,7 +3439,7 @@ app.post('/api/downloads/queue/cancel-all', requireOwner, downloadWriteLimiter, 
 });
 
 // API: remove finished rows from the queue history
-app.post('/api/downloads/queue/clear', requireOwner, downloadWriteLimiter, async (req, res) => {
+app.post('/api/downloads/queue/clear', requireOwner, async (req, res) => {
     try {
         const removed = await Downloads.clearFinished();
         return res.json({ success: true, removed });
@@ -3591,7 +3461,7 @@ app.get('/api/settings/downloads', requireOwner, async (req, res) => {
 });
 
 // API: save Soulseek credentials
-app.post('/api/settings/downloads', requireOwner, downloadWriteLimiter, async (req, res) => {
+app.post('/api/settings/downloads', requireOwner, async (req, res) => {
     const { username, password, clear } = req.body || {};
 
     try {
@@ -3608,7 +3478,7 @@ app.post('/api/settings/downloads', requireOwner, downloadWriteLimiter, async (r
 });
 
 // API: verify the stored Soulseek credentials actually log in
-app.post('/api/settings/downloads/test', requireOwner, downloadWriteLimiter, async (req, res) => {
+app.post('/api/settings/downloads/test', requireOwner, async (req, res) => {
     try {
         const result = await Downloads.testSoulseekConnection();
         return res.json({ success: true, ...result, soulseek: await Downloads.soulseekStatus() });
@@ -3763,7 +3633,7 @@ app.get('/api/posts/:id', requireLogin, async (req, res) => {
     }
 });
 
-app.post('/api/posts/:id/like', requireLogin, socialLimiter, async (req, res) => {
+app.post('/api/posts/:id/like', requireLogin, async (req, res) => {
     const postId = req.params.id;
     try {
         const result = await HandleDatabase.toggleLike(postId, req.user);
@@ -3806,7 +3676,7 @@ app.get('/api/posts/:id/comments', requireLogin, async (req, res) => {
     }
 });
 
-app.post('/api/posts/:id/comments', requireLogin, commentLimiter, async (req, res) => {
+app.post('/api/posts/:id/comments', requireLogin, async (req, res) => {
     const postId = req.params.id;
     const { body } = req.body;
     if (!body || body.trim() === '') {
@@ -3852,7 +3722,7 @@ app.post('/api/posts/:id/comments', requireLogin, commentLimiter, async (req, re
     }
 });
 
-app.post('/api/posts', requireLogin, postLimiter, async (req, res) => {
+app.post('/api/posts', requireLogin, async (req, res) => {
     const { body } = req.body;
     if (!body || body.trim() === '') {
         return res.status(400).json({ error: "Post body cannot be empty" });
@@ -3891,7 +3761,7 @@ app.post('/api/posts', requireLogin, postLimiter, async (req, res) => {
     }
 });
 
-app.post('/api/posts/photo', requireLogin, postLimiter, uploadFeedImage.single('photo'), async (req, res) => {
+app.post('/api/posts/photo', requireLogin, uploadFeedImage.single('photo'), async (req, res) => {
     const { body } = req.body;
     if (!req.file) {
         return res.status(400).json({ error: "No image provided" });
@@ -5587,14 +5457,43 @@ app.post('/api/songs/bulk-delete', requireLogin, async (req, res) => {
     const allSongs = await HandleDatabase.getAllSongs();
     const results = { success: [], failed: [] };
 
+    // Which of these Streamify downloaded itself. A download is routine to
+    // remove; anything else is a file the user put there by hand, so deleting it
+    // is destructive in a way the UI asks about first.
+    const downloadedIds = await HandleDatabase.getDownloadedSongIds(ids);
+
+    /*
+     * Folder songs are deletable. They used to be refused outright, which was
+     * written for the uploader-era library — but downloads now land in the
+     * user's real folders and are indexed as `source: 'folder'`, so that guard
+     * made every downloaded song permanently undeletable through the UI.
+     *
+     * The caller is expected to have confirmed; `confirmDelete` in the request
+     * is the user having seen that the real file is removed.
+     */
+    const confirmed = req.body.confirmDelete === true;
+
     for (const id of ids) {
         const song = allSongs.find(s => s.id == id);
         if (!song) {
             results.failed.push({ id, error: "Not found" });
             continue;
         }
-        if (song.source === 'folder') {
-            results.failed.push({ id, error: "Folder-managed songs cannot be deleted from Streamify" });
+
+        const verdict = deleteVerdict({
+            song,
+            downloaded: downloadedIds.has(Number(id)),
+            confirmed
+        });
+        if (!verdict.ok) {
+            results.failed.push(verdict.code === 'needs_confirmation'
+                ? {
+                    id,
+                    code: 'needs_confirmation',
+                    error: "This file was not downloaded by Streamify and will be deleted from disk.",
+                    filepath: song.filepath
+                }
+                : { id, error: verdict.error });
             continue;
         }
 
@@ -5749,7 +5648,7 @@ app.post('/api/notifications/mark-read', requireLogin, async (req, res) => {
 // ============================================================
 
 // Send a DM request
-app.post('/api/dm/request', requireLogin, dmRequestLimiter, async (req, res) => {
+app.post('/api/dm/request', requireLogin, async (req, res) => {
     try {
         const { to_username } = req.body;
         if (!to_username) return res.status(400).json({ error: "Username is required" });
@@ -5817,7 +5716,7 @@ app.get('/api/dm/requests/sent', requireLogin, async (req, res) => {
 });
 
 // Accept or reject a DM request
-app.post('/api/dm/request/:id/respond', requireLogin, dmRequestLimiter, async (req, res) => {
+app.post('/api/dm/request/:id/respond', requireLogin, async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -5892,7 +5791,7 @@ app.get('/api/dm/conversation/:id/messages', requireLogin, async (req, res) => {
 });
 
 // Send a message in a conversation
-app.post('/api/dm/conversation/:id/messages', requireLogin, dmMessageLimiter, async (req, res) => {
+app.post('/api/dm/conversation/:id/messages', requireLogin, async (req, res) => {
     try {
         const { id } = req.params;
         const { body } = req.body;
@@ -5981,7 +5880,7 @@ app.get('/api/admin/config', requireRole(['Owner', 'Admin']), (req, res) => {
 });
 
 app.post('/api/admin/config', requireRole(['Owner', 'Admin']), async (req, res) => {
-    const { maintenance_mode, maintenance_message, lockdown_new_posts, ratelimits } = req.body;
+    const { maintenance_mode, maintenance_message, lockdown_new_posts } = req.body;
     let changes = [];
 
     if (maintenance_mode !== undefined) {
@@ -6002,19 +5901,11 @@ app.post('/api/admin/config', requireRole(['Owner', 'Admin']), async (req, res) 
             changes.push(`Lockdown New Posts: ${app.locals.config.lockdown_new_posts ? 'Enabled' : 'Disabled'}`);
         }
     }
-    if (ratelimits !== undefined) {
-        const cleanedRateLimits = ratelimits && typeof ratelimits === 'object' ? { ...ratelimits } : {};
-        delete cleanedRateLimits.youtube_max;
-        delete cleanedRateLimits.youtube_duration;
-        app.locals.config.ratelimits = { ...app.locals.config.ratelimits, ...cleanedRateLimits };
-        changes.push(`Rate Limits updated: ${JSON.stringify(cleanedRateLimits)}`);
-    }
 
     try {
         if (maintenance_mode !== undefined) await HandleDatabase.updateSystemConfig('maintenance_mode', JSON.stringify(app.locals.config.maintenance_mode));
         if (maintenance_message !== undefined) await HandleDatabase.updateSystemConfig('maintenance_message', JSON.stringify(app.locals.config.maintenance_message));
         if (lockdown_new_posts !== undefined) await HandleDatabase.updateSystemConfig('lockdown_new_posts', JSON.stringify(app.locals.config.lockdown_new_posts));
-        if (ratelimits !== undefined) await HandleDatabase.updateSystemConfig('ratelimits', JSON.stringify(app.locals.config.ratelimits));
 
         if (changes.length > 0) {
             await HandleDatabase.insertSystemLog(req.user, 'config_update', changes.join(', '));

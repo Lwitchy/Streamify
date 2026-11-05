@@ -383,7 +383,19 @@ function showToast(message, type = 'error', duration = 3500) {
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
     container.appendChild(toast);
+    const motion = window.StreamifyMotion;
+    const animated = motion && !motion.reducedMotion();
+    // Toasts unfold into place and fold away, so the ones around them glide
+    // instead of jumping when one arrives or leaves.
+    if (animated) {
+        toast.style.animation = 'none';
+        motion.foldIn(toast);
+    }
     setTimeout(() => {
+        if (animated) {
+            motion.foldOut(toast).then(() => toast.remove());
+            return;
+        }
         toast.classList.add('toast-out');
         setTimeout(() => toast.remove(), 300);
     }, duration);
