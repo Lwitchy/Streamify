@@ -230,6 +230,8 @@ function loadSong(song) {
 
     playerImg.src = coverUrl;
     audio.src = audioUrl;
+    // For listeners that describe the playing track (Studio's track details).
+    window.dispatchEvent(new CustomEvent('streamifysongchange', { detail: { song, url: audioUrl } }));
 
     // Sync Dedicated Player
     if (dedicatedTitle) {
@@ -2778,43 +2780,23 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeCoverExpand();
 });
 
-/* ========== EQUALIZER (Simple 3-band) ========== */
-
-const btnEq = document.getElementById('btn-eq');
-const eqPopup = document.getElementById('eq-popup');
-const eqToggle = document.getElementById('eq-toggle');
-const eqPresetSelect = document.getElementById('eq-preset-select');
-const eqLow = document.getElementById('eq-low');
-const eqMid = document.getElementById('eq-mid');
-const eqHigh = document.getElementById('eq-high');
+/* ========== AUDIO GRAPH (Studio + beat analyser) ========== */
 
 let audioContext = null;
 let mediaElementSource = null;
-let eqNodes = {};
-let isEqEnabled = false;
 let analyserNode = null;
+// Optional processing chain ({ input, output } AudioNodes) - Studio
+// (js/studio.js) plugs its EQ / preamp / limiter in here.
+let audioProcessor = null;
+// Passive listeners on the untouched music (Studio's meters while Studio is
+// off). Like the analyser they never reach the speakers.
+const audioTaps = new Set();
 
-const EQ_PRESETS = {
-    'custom': null,
-    'flat': { low: 0, mid: 0, high: 0 },
-    'bass-boost': { low: 8, mid: 0, high: 2 },
-    'vocal': { low: -2, mid: 6, high: 2 },
-    'electronic': { low: 6, mid: -2, high: 6 },
-    'rock': { low: 5, mid: -1, high: 4 }
-};
-
-// Setup EQ nodes
-function initEq() {
-    if (audioContext) return;
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    buildAudioGraph(new AudioContext());
-}
-
-/* One audio graph serves both the equalizer and the beat analyser (the
- * background pulse and progress-bar glow in playerfx.js). The analyser is a
- * passive tap: it is never connected to the speakers, so it can't change what
- * you hear. Once an <audio> element is routed through Web Audio it stays
- * routed, which is why the graph is only ever built once. */
+/* One audio graph serves Studio and the beat analyser (the background pulse
+ * and progress-bar glow in playerfx.js). The analyser is a passive tap: it is
+ * never connected to the speakers, so it can't change what you hear. Once an
+ * <audio> element is routed through Web Audio it stays routed, which is why
+ * the graph is only ever built once. */
 function buildAudioGraph(context) {
     audioContext = context;
 
@@ -2826,28 +2808,7 @@ function buildAudioGraph(context) {
     analyserNode.fftSize = 2048;
     analyserNode.smoothingTimeConstant = 0.5;
 
-    // Create filters
-    eqNodes.low = audioContext.createBiquadFilter();
-    eqNodes.low.type = 'lowshelf';
-    eqNodes.low.frequency.value = 320;
-    eqNodes.low.gain.value = 0;
-
-    eqNodes.mid = audioContext.createBiquadFilter();
-    eqNodes.mid.type = 'peaking';
-    eqNodes.mid.frequency.value = 1000;
-    eqNodes.mid.Q.value = 0.5;
-    eqNodes.mid.gain.value = 0;
-
-    eqNodes.high = audioContext.createBiquadFilter();
-    eqNodes.high.type = 'highshelf';
-    eqNodes.high.frequency.value = 3200;
-    eqNodes.high.gain.value = 0;
-
-    // Connect original path first (bypassed)
-    mediaElementSource.connect(audioContext.destination);
-
-    // Update visual state based on toggle
-    updateEqRoute();
+    updateAudioRoute();
 }
 
 /* Beat analysis is skipped on iPhone / iPad (and in the iOS app): routing the
@@ -2885,117 +2846,60 @@ function ensureAudioAnalyser() {
     return _analyserPromise;
 }
 
+/* source -> [processor] -> speakers, plus the analyser tap on the source. */
+function updateAudioRoute() {
+    if (!audioContext || !mediaElementSource) return;
+    mediaElementSource.disconnect();
+    if (analyserNode) mediaElementSource.connect(analyserNode);
+    audioTaps.forEach(node => mediaElementSource.connect(node));
+    if (audioProcessor) {
+        mediaElementSource.connect(audioProcessor.input);
+        try { audioProcessor.output.disconnect(audioContext.destination); } catch (e) { /* wasn't connected */ }
+        audioProcessor.output.connect(audioContext.destination);
+    } else {
+        mediaElementSource.connect(audioContext.destination);
+    }
+}
+
+/** Studio hands its chain here (or null to play straight through). The
+ *  nodes must belong to StreamifyAudio.context. */
+function setAudioProcessor(processor) {
+    if (audioProcessor && audioProcessor !== processor) {
+        try { audioProcessor.output.disconnect(); } catch (e) { /* already detached */ }
+    }
+    audioProcessor = processor && processor.input && processor.output ? processor : null;
+    updateAudioRoute();
+}
+
+/** Studio's meters: listen to the music before any processing. */
+function addAudioTap(node) {
+    if (!node || audioTaps.has(node)) return;
+    audioTaps.add(node);
+    if (mediaElementSource) mediaElementSource.connect(node);
+}
+
+function removeAudioTap(node) {
+    if (!audioTaps.delete(node) || !mediaElementSource) return;
+    try { mediaElementSource.disconnect(node); } catch (e) { /* wasn't connected */ }
+}
+
 window.StreamifyAudio = Object.freeze({
     ensureAnalyser: ensureAudioAnalyser,
     get analyser() { return analyserNode; },
     get context() { return audioContext; },
-    supported: audioAnalysisSupported
+    supported: audioAnalysisSupported,
+    setProcessor: setAudioProcessor,
+    addTap: addAudioTap,
+    removeTap: removeAudioTap
 });
 
-function updateEqRoute() {
-    if (!audioContext) return;
-
-    // Disconnect existing
-    mediaElementSource.disconnect();
-    eqNodes.low.disconnect();
-    eqNodes.mid.disconnect();
-    eqNodes.high.disconnect();
-
-    // Passive tap for the beat analyser (survives every re-route).
-    if (analyserNode) mediaElementSource.connect(analyserNode);
-
-    if (isEqEnabled) {
-        // Connect through EQ
-        mediaElementSource.connect(eqNodes.low);
-        eqNodes.low.connect(eqNodes.mid);
-        eqNodes.mid.connect(eqNodes.high);
-        eqNodes.high.connect(audioContext.destination);
-
-        // Enable sliders visually
-        [eqLow, eqMid, eqHigh].forEach(slider => slider.classList.remove('disabled'));
-    } else {
-        // Bypass EQ
-        mediaElementSource.connect(audioContext.destination);
-
-        // Disable sliders visually
-        [eqLow, eqMid, eqHigh].forEach(slider => slider.classList.add('disabled'));
-    }
-}
-
-// Event listeners for UI
-if (btnEq) {
-    btnEq.addEventListener('click', (e) => {
-        e.stopPropagation();
-        eqPopup.classList.toggle('hidden');
-
-        // Initialize EQ on first interaction
-        if (!eqPopup.classList.contains('hidden') && !audioContext) {
-            initEq();
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-        }
-    });
-}
-
-// Close popup when clicking outside
-document.addEventListener('click', (e) => {
-    if (eqPopup && !eqPopup.classList.contains('hidden') && !eqPopup.contains(e.target) && e.target !== btnEq && !btnEq.contains(e.target)) {
-        eqPopup.classList.add('hidden');
-    }
+/* The full player, for Studio (js/studio.js): it closes lyrics before it
+   opens, and opens the player from the desktop bar's Studio button. */
+window.StreamifyPlayerView = Object.freeze({
+    isLyricsActive: () => isLyricsActive,
+    closeLyrics: () => { if (isLyricsActive) deactivateLyricsView(); },
+    open: () => openDedicatedPlayerFromCover()
 });
-
-if (eqToggle) {
-    eqToggle.addEventListener('change', (e) => {
-        isEqEnabled = e.target.checked;
-        if (isEqEnabled && !audioContext) initEq();
-        if (audioContext && audioContext.state === 'suspended') {
-            audioContext.resume();
-        }
-        updateEqRoute();
-        btnEq.style.color = isEqEnabled ? 'var(--accent)' : '#b3b3b3';
-
-        // Update gains to match current sliders when enabling
-        if (isEqEnabled && audioContext) {
-            eqNodes.low.gain.value = parseFloat(eqLow.value);
-            eqNodes.mid.gain.value = parseFloat(eqMid.value);
-            eqNodes.high.gain.value = parseFloat(eqHigh.value);
-        }
-    });
-}
-
-// Slider events
-const updateGain = (node, value) => {
-    if (node) node.gain.value = parseFloat(value);
-};
-
-const handleSliderInput = (e, node) => {
-    if (eqPresetSelect && eqPresetSelect.value !== 'custom') {
-        eqPresetSelect.value = 'custom';
-    }
-    if (isEqEnabled) updateGain(node, e.target.value);
-};
-
-if (eqLow) eqLow.addEventListener('input', (e) => handleSliderInput(e, eqNodes.low));
-if (eqMid) eqMid.addEventListener('input', (e) => handleSliderInput(e, eqNodes.mid));
-if (eqHigh) eqHigh.addEventListener('input', (e) => handleSliderInput(e, eqNodes.high));
-
-if (eqPresetSelect) {
-    eqPresetSelect.addEventListener('change', (e) => {
-        const preset = EQ_PRESETS[e.target.value];
-        if (preset) {
-            eqLow.value = preset.low;
-            eqMid.value = preset.mid;
-            eqHigh.value = preset.high;
-
-            if (isEqEnabled && audioContext) {
-                eqNodes.low.gain.value = preset.low;
-                eqNodes.mid.gain.value = preset.mid;
-                eqNodes.high.gain.value = preset.high;
-            }
-        }
-    });
-}
 
 // Resume context if suspended
 audio.addEventListener('play', () => {

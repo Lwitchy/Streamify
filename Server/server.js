@@ -3095,6 +3095,52 @@ function sendAudioStream(res, fullPath, statusCode, headers, options = undefined
     });
 }
 
+/* API: what the audio file itself says about the track - the BPM tag (if the
+ * label or DJ software set one) and the real format (codec, sample rate, bit
+ * depth). Used by Studio's track details; read on demand so it covers every
+ * song already in the library. Cached per file version (path + mtime). */
+const trackTagCache = new Map();
+const TRACK_TAG_CACHE_LIMIT = 2000;
+
+app.get('/api/songs/:id/tags', requireLogin, async (req, res) => {
+    try {
+        const songData = await HandleDatabase.getSong(req.params.id);
+        if (!songData) return res.status(404).json({ error: "Song not found" });
+        if (!canAccessSong(songData, req.user)) return res.status(403).json({ error: "Access Denied" });
+
+        let fullPath = songData.filepath;
+        if (!path.isAbsolute(fullPath)) fullPath = path.resolve(RT.DATA_ROOT, songData.filepath);
+        let stat;
+        try { stat = fs.statSync(fullPath); } catch (e) { stat = null; }
+        if (!stat || !stat.isFile()) return res.status(404).json({ error: "Audio file not found on server disk" });
+
+        const cacheKey = `${fullPath}|${stat.mtimeMs}`;
+        let tags = trackTagCache.get(cacheKey);
+        if (!tags) {
+            const parsed = await mm.parseFile(fullPath, { duration: false, skipCovers: true });
+            const format = parsed.format || {};
+            const rawBpm = Number(parsed.common && parsed.common.bpm);
+            tags = {
+                // Tags sometimes hold 0 or junk; only a plausible tempo counts.
+                bpm: Number.isFinite(rawBpm) && rawBpm >= 30 && rawBpm <= 300 ? Math.round(rawBpm * 100) / 100 : null,
+                codec: format.codec || format.container || null,
+                lossless: typeof format.lossless === 'boolean' ? format.lossless : null,
+                sampleRate: Number.isFinite(format.sampleRate) ? format.sampleRate : null,
+                bitsPerSample: Number.isFinite(format.bitsPerSample) ? format.bitsPerSample : null,
+                channels: Number.isFinite(format.numberOfChannels) ? format.numberOfChannels : null,
+                bitrate: Number.isFinite(format.bitrate) ? Math.round(format.bitrate / 1000) : null
+            };
+            if (trackTagCache.size >= TRACK_TAG_CACHE_LIMIT) trackTagCache.delete(trackTagCache.keys().next().value);
+            trackTagCache.set(cacheKey, tags);
+        }
+        res.set('Cache-Control', 'private, max-age=300');
+        res.json(tags);
+    } catch (err) {
+        console.error('[TRACK TAGS]', err);
+        if (!res.headersSent) res.status(500).json({ error: "Could not read the file's tags" });
+    }
+});
+
 // API: stream audio file
 app.get('/api/stream/:id', requireLogin, async (req, res) => {
     try {

@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Studio - 2026-11-06
+
+### Added
+
+- **Studio**, replacing the 3-band equalizer (desktop browsers and the desktop
+  app; not on iPhone / iPad, where routing audio through Web Audio stops music
+  when the screen locks). Open it from the new button at the end of the full
+  player's volume row, or the equalizer button on the player bar: the cover
+  and controls slide left and Studio opens on the right.
+  - 8 bands (bell, low / high shelf, low / high cut, notch) on a frequency
+    curve drawn from the filters' real response, over a live spectrum. Drag a
+    point to move it, scroll to change its width, double-click to turn it off,
+    or type exact values.
+  - Auto preamp lowers the level by the curve's highest boost, and a clip guard
+    (limiter) catches any peaks left; its light flashes when it does.
+  - Hold *Compare* to hear the song without Studio.
+  - Presets (Flat, Bass boost, Warm, Vocal, Bright, Electronic, Rock,
+    Loudness), saved per device.
+  - The button is green while Studio is changing the sound, flashes red when
+    the clip guard works, and right-click turns Studio on or off.
+  - **Two pages**, switched with the dots in Studio's header (or the arrow
+    keys) using the song-change motion. *Equalizer* holds the EQ; *Sound*
+    holds:
+    - a live visualizer (Bars, Line or Mirror) of what you hear - after
+      Studio's EQ when Studio is on - with L / R level meters, peak hold and
+      the loudness of the moment;
+    - the whole song's shape, with a playhead; click it to jump there;
+    - loudness (LUFS, measured the way streaming services do), peak (marked
+      when the file itself clips), dynamics, and the real format (codec, bit
+      depth or bitrate, sample rate, channels) read from the file by the new
+      `GET /api/songs/:id/tags`; tempo only when the file has a BPM tag;
+    - **Even out loudness**: plays every song at about -14 LUFS from its
+      measured loudness (quiet songs are raised only as far as their peak
+      allows). Off by default.
+  - Studio sits straight on the player's backdrop (no card), in the player
+    color, and presets glide into place.
+  - Switching between Studio and Lyrics animates: one fades out while the
+    cover glides to its new place.
+  - Studio sits straight on the player's backdrop (no card), in the player
+    color, and presets glide into place.
+
 ## [Unreleased] - Player color, beat pulse & smoother lists - 2026-11-05
 
 ### Added

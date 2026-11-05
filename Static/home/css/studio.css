@@ -1,0 +1,848 @@
+/* Streamify Studio (js/studio.js) - the equalizer panel in the full player.
+   It is frosted glass over the player's cover-tinted backdrop (like the
+   lyrics pills), with the player color - picked from the cover - for its
+   highlights, so it reads as part of the player rather than a dark card. */
+
+.studio-panel {
+    --studio-accent: rgb(var(--player-accent-rgb, 48, 209, 88));
+    --studio-accent-soft: rgba(var(--player-accent-rgb, 48, 209, 88), 0.18);
+    --studio-surface: rgba(0, 0, 0, 0.22);
+    --studio-line: rgba(255, 255, 255, 0.12);
+}
+
+.studio-panel.hidden {
+    display: none !important;
+}
+
+/* --- Layout: cover + controls on the left, Studio on the right ----------- */
+@media (min-width: 901px) {
+    .dedicated-player-content.studio-active {
+        max-width: 1360px;
+        grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        column-gap: 56px;
+        row-gap: 18px;
+        align-content: center;
+        align-items: start;
+    }
+
+    .dedicated-player-content.studio-active .dedicated-art-wrapper {
+        grid-column: 1;
+        grid-row: 1;
+        max-width: 320px;
+        align-self: end;
+    }
+
+    /* The right panel's children (controls, lyrics, Studio) join the grid */
+    .dedicated-player-content.studio-active .dedicated-right-panel {
+        display: contents;
+    }
+
+    .dedicated-player-content.studio-active #dedicated-standard-container {
+        grid-column: 1;
+        grid-row: 2;
+        animation: none;
+    }
+
+    .dedicated-player-content.studio-active #dedicated-lyrics-container {
+        display: none !important;
+    }
+
+    .dedicated-player-content.studio-active .dedicated-info-container {
+        padding-top: 0;
+        margin-bottom: 12px;
+    }
+
+    .dedicated-player-content.studio-active #dedicated-player-title {
+        font-size: 24px;
+    }
+
+    .dedicated-player-content.studio-active .studio-panel {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        align-self: center;
+    }
+}
+
+/* Narrow windows: Studio covers the player */
+@media (max-width: 900px) {
+    .dedicated-player-content.studio-active .studio-panel {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        overflow-y: auto;
+        border-radius: 0;
+        padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+        background: rgba(14, 14, 18, 0.97);
+    }
+}
+
+/* --- Panel --------------------------------------------------------------- */
+/* No card: Studio sits straight on the player's backdrop, like the lyrics
+   view. Only the graph keeps a faint surface so the curve reads. */
+.studio-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #fff;
+}
+
+.studio-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.studio-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.studio-title i {
+    font-size: 22px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.studio-panel.is-on .studio-title i {
+    color: var(--studio-accent);
+}
+
+.studio-title h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+.studio-status {
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--studio-surface);
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.studio-panel.is-on .studio-status {
+    background: var(--studio-accent-soft);
+    color: var(--studio-accent);
+}
+
+.studio-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.studio-icon-btn {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    border: 1px solid var(--studio-line);
+    background: var(--studio-surface);
+    color: #fff;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.studio-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.studio-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.studio-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 13px;
+}
+
+.studio-panel select,
+.studio-panel input[type="number"] {
+    min-width: 0;
+    padding: 7px 10px;
+    border: 1px solid var(--studio-line);
+    border-radius: 10px;
+    background: var(--studio-surface);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+}
+
+.studio-panel select option {
+    background: #1b1b1f;
+}
+
+.studio-panel select:focus-visible,
+.studio-panel input[type="number"]:focus-visible {
+    border-color: var(--studio-accent);
+}
+
+.studio-panel input:disabled {
+    opacity: 0.4;
+}
+
+.studio-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border: 1px solid var(--studio-line);
+    border-radius: 999px;
+    background: var(--studio-surface);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    touch-action: none;
+}
+
+.studio-chip:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.studio-chip.is-holding {
+    border-color: rgba(255, 214, 10, 0.7);
+    background: rgba(255, 214, 10, 0.16);
+    color: #ffd60a;
+}
+
+/* Graph */
+.studio-graph {
+    position: relative;
+}
+
+#studio-canvas {
+    display: block;
+    width: 100%;
+    height: clamp(220px, 34vh, 320px);
+    border-radius: 18px;
+    background:
+        radial-gradient(120% 90% at 50% 100%, rgba(var(--player-accent-rgb, 48, 209, 88), 0.12), transparent 65%),
+        rgba(0, 0, 0, 0.14);
+    cursor: crosshair;
+    touch-action: none;
+}
+
+#studio-canvas.is-over-point {
+    cursor: grab;
+}
+
+#studio-canvas.is-dragging {
+    cursor: grabbing;
+}
+
+/* Band picker: ‹ [● Band 4 · 1k Hz] › */
+.studio-band-picker {
+    grid-column: 1 / span 3;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.studio-editor > .studio-check {
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: end;
+}
+
+.studio-band-step {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.studio-band-step:hover {
+    background: var(--studio-surface);
+    color: #fff;
+}
+
+.studio-band-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, var(--band, #fff) 55%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--band, #fff) 14%, transparent);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.studio-band-badge.is-off {
+    opacity: 0.5;
+}
+
+.studio-band-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--band, #fff);
+}
+
+/* Band editor */
+/* Two rows: [‹ Band 4 ›  ...  Band on] then Type / Frequency / Gain / Q */
+.studio-editor {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: end;
+    gap: 10px;
+}
+
+.studio-editor label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.studio-field {
+    position: relative;
+    display: flex;
+}
+
+.studio-field input {
+    width: 100%;
+}
+
+.studio-field em {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+    font-style: normal;
+    text-transform: none;
+    pointer-events: none;
+}
+
+.studio-field input {
+    padding-right: 30px !important;
+}
+
+.studio-check {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 8px !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    font-size: 13px !important;
+    font-weight: 600;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.studio-check + .studio-check,
+.studio-preamp .studio-check {
+    margin-left: 6px;
+}
+
+/* Checkboxes as small switches in the player color (like Studio's power
+   switch), instead of the browser's square boxes. */
+.studio-check input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    flex: 0 0 auto;
+    width: 30px;
+    height: 18px;
+    margin: 0;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.studio-check input[type="checkbox"]::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.studio-check input[type="checkbox"]:checked {
+    border-color: transparent;
+    background: var(--studio-accent);
+}
+
+.studio-check input[type="checkbox"]:checked::after {
+    transform: translateX(12px);
+}
+
+.studio-check input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--studio-accent);
+    outline-offset: 2px;
+}
+
+.studio-check input[type="checkbox"]:active::after {
+    width: 15px;
+}
+
+.studio-check input[type="checkbox"]:checked:active::after {
+    transform: translateX(9px);
+}
+
+/* Output */
+.studio-output {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--studio-line);
+}
+
+.studio-preamp,
+.studio-limiter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.studio-preamp {
+    flex: 1 1 280px;
+}
+
+.studio-label {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#studio-preamp {
+    flex: 1 1 auto;
+    min-width: 80px;
+    accent-color: var(--studio-accent);
+}
+
+#studio-preamp-value {
+    min-width: 58px;
+    color: #fff;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.studio-clip-light {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.16);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.studio-clip-light.is-lit {
+    background: #ff453a;
+    box-shadow: 0 0 10px rgba(255, 69, 58, 0.8);
+}
+
+/* --- Studio buttons ------------------------------------------------------ */
+/* Next to the lyrics button, with the same 14px gap on both sides.
+   The lyrics button floats at the row's left edge (player.css) and, when it
+   shows, the rest of the row moves 50px right. Studio moves with a margin,
+   not a transform: the shared .control-btn:active press effect sets
+   transform, which used to cancel the shift - the button jumped 50px
+   under the cursor on press and the click landed on the player instead.
+   Studio's margin already moves the slider, so the slider's own 50px
+   shift is switched off here. */
+.studio-btn {
+    position: relative;
+    flex: 0 0 auto;
+    margin: 0 14px 0 0;
+    font-size: 22px;
+    color: rgba(255, 255, 255, 0.7);
+    transition: color 0.2s ease, margin-left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.dedicated-bottom-actions.has-lyrics .studio-btn {
+    margin-left: 50px;
+}
+
+.dedicated-bottom-actions.has-lyrics .studio-btn ~ .dedicated-volume-wrapper {
+    transform: none;
+}
+
+.studio-btn:hover {
+    color: #fff;
+}
+
+.studio-btn .studio-btn-dot {
+    position: absolute;
+    top: 4px;
+    right: 2px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: transparent;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.studio-btn.is-active {
+    color: #30d158;
+}
+
+.studio-btn.is-active .studio-btn-dot {
+    background: #30d158;
+    box-shadow: 0 0 8px rgba(48, 209, 88, 0.8);
+}
+
+.studio-btn.is-clipping .studio-btn-dot {
+    background: #ff453a;
+    box-shadow: 0 0 8px rgba(255, 69, 58, 0.9);
+}
+
+.studio-btn[aria-pressed="true"] {
+    color: #fff;
+}
+
+#btn-eq.studio-active {
+    color: #30d158 !important;
+}
+
+/* --- About this track ---------------------------------------------------- */
+.studio-track {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--studio-line);
+}
+
+.studio-stat.hidden {
+    display: none;
+}
+
+/* Format has the most to say: codec · depth/bitrate · rate · channels */
+.studio-stat-wide {
+    grid-column: span 2;
+}
+
+.studio-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 0 14px;
+    border-left: 1px solid var(--studio-line);
+}
+
+.studio-stat:first-child {
+    padding-left: 0;
+    border-left: 0;
+}
+
+.studio-stat-label {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.studio-stat strong {
+    overflow: hidden;
+    color: #fff;
+    font-size: 22px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.studio-stat small {
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.studio-track.is-measuring .studio-stat strong {
+    animation: studioMeasuring 1.2s ease-in-out infinite;
+}
+
+@keyframes studioMeasuring {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.9; }
+}
+
+@media (max-width: 1100px) {
+    .studio-editor {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .studio-band-picker {
+        grid-column: 1;
+    }
+
+    .studio-editor > .studio-check {
+        grid-column: 2;
+    }
+
+    /* Loudness / Peak / Dynamics, then Format (and Tempo) on a second row */
+    .studio-track {
+        grid-auto-flow: row;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        row-gap: 12px;
+    }
+
+    .studio-stat-wide {
+        padding-left: 0;
+        border-left: 0;
+    }
+}
+
+/* --- Header page dots ------------------------------------------------------ */
+.studio-head {
+    position: relative;
+}
+
+.studio-dots {
+    position: absolute;
+    left: 50%;
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    transform: translateX(-50%);
+}
+
+.studio-dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.25s ease;
+}
+
+.studio-dot:hover {
+    background: rgba(255, 255, 255, 0.55);
+}
+
+.studio-dot.is-active {
+    width: 22px;
+    background: var(--studio-accent);
+}
+
+/* --- Pages: stacked in one cell, so the panel keeps one size ---------------- */
+.studio-pages {
+    display: grid;
+}
+
+.studio-page {
+    grid-area: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.studio-page:not(.is-active) {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* --- Sound page ---------------------------------------------------------------- */
+.studio-viz-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.studio-seg {
+    display: inline-flex;
+    padding: 3px;
+    border: 1px solid var(--studio-line);
+    border-radius: 999px;
+    background: var(--studio-surface);
+}
+
+.studio-seg-btn {
+    padding: 5px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.studio-seg-btn:hover {
+    color: #fff;
+}
+
+.studio-seg-btn.is-active {
+    background: var(--studio-accent-soft);
+    color: var(--studio-accent);
+}
+
+.studio-live {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 12px;
+}
+
+.studio-live strong {
+    min-width: 46px;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+#studio-viz {
+    display: block;
+    width: 100%;
+    height: clamp(170px, 26vh, 250px);
+}
+
+.studio-meters {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.studio-meter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.studio-meter-track {
+    position: relative;
+    flex: 1;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Full-width gradient revealed by clip-path: green-ish (player color) up to
+   about -9 dBFS, yellow near -3, red past 0 (the 0 dBFS mark is at 95%). */
+.studio-meter-track i {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg,
+        var(--studio-accent) 0%, var(--studio-accent) 80%,
+        #ffd60a 90%, #ff453a 95%, #ff453a 100%);
+    clip-path: inset(0 100% 0 0);
+}
+
+.studio-meter-track b {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.studio-meter-track b.is-over {
+    background: #ff453a;
+}
+
+.studio-overview {
+    position: relative;
+}
+
+#studio-overview {
+    display: block;
+    width: 100%;
+    height: 54px;
+    cursor: pointer;
+}
+
+.studio-overview-note {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.studio-overview-note:empty {
+    display: none;
+}
+
+.studio-level {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+}
+
+.studio-level-note {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 12px;
+}

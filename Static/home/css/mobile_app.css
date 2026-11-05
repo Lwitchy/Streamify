@@ -907,8 +907,8 @@ html:not(.is-ios) .ios-only-setting {
         height: 60px;
         flex-direction: row;
         align-items: center;
-        gap: 6px;
-        padding: 8px !important;
+        gap: 2px;
+        padding: 8px 6px 8px 8px !important;
         overflow: hidden;
         cursor: pointer;
         border: 1px solid rgba(255, 255, 255, 0.14);
@@ -972,13 +972,15 @@ html:not(.is-ios) .ios-only-setting {
         line-height: 1.25;
     }
 
-    /* Heart and play share one 40px button size so the right edge mirrors
-       the cover on the left. */
+    /* Heart and play/pause: one tight group of equal 36px buttons. The
+       glyphs are sized to look the same (boxicons' pause is much thinner
+       than the outlined heart), the gap between them matches the space to
+       the card's edge, and the play arrow loses its desktop nudge. */
     html.native-tabbar-on .music-player .player-like-btn,
     html.native-tabbar-on .music-player .play-pause-btn {
         flex: 0 0 auto;
-        width: 40px;
-        height: 40px;
+        width: 36px;
+        height: 36px;
         margin: 0;
         padding: 0;
         display: grid;
@@ -992,10 +994,15 @@ html:not(.is-ios) .ios-only-setting {
 
     html.native-tabbar-on .music-player .player-like-btn {
         font-size: 22px;
+        margin-left: 4px;
     }
 
     html.native-tabbar-on .music-player .play-pause-btn {
-        font-size: 26px;
+        font-size: 30px;
+    }
+
+    html.native-tabbar-on .music-player .play-pause-btn i {
+        margin-left: 0 !important;
     }
 
     html.native-tabbar-on .music-player .player-center {

@@ -548,8 +548,7 @@
 /* Inside the player, the player color *is* the accent: shuffle / repeat,
    liked hearts, the equalizer and focus rings all follow it. */
 :root[data-player-color]:not([data-player-color="theme"]) .music-player,
-:root[data-player-color]:not([data-player-color="theme"]) #player-section,
-:root[data-player-color]:not([data-player-color="theme"]) #eq-popup {
+:root[data-player-color]:not([data-player-color="theme"]) #player-section {
     --accent: rgb(var(--player-accent-rgb));
     --accent-rgb: var(--player-accent-rgb);
 }
