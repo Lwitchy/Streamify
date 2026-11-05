@@ -202,6 +202,8 @@ function loadSong(song) {
     telemetrySongId = song.id;
     lastTimeUpdateValue = 0;
 
+    // A song is loaded from now on (lets phone layouts hide an empty mini player)
+    document.documentElement.classList.add('has-track');
     playerTitle.textContent = song.title;
     playerArtist.textContent = song.artist; // No badge in mini player
     setTrackLink(playerTitle, 'album', song.album_uid);

@@ -24,7 +24,7 @@ function createHarness({ appearance = null, experiments = null } = {}) {
     const root = {
         dataset: {},
         offsetWidth: 100,
-        classList: { add() {}, remove() {} },
+        classList: { add() {}, remove() {}, toggle() {} },
         style: {
             setProperty(name, value) { properties.set(name, value); },
             removeProperty(name) { properties.delete(name); },
@@ -99,7 +99,8 @@ test('enables Themes and applies the selected palette', () => {
     assert.equal(harness.properties.get('--bg-color'), '#121212');
     assert.deepEqual(
         JSON.parse(harness.storage.get(harness.experiments.storageKey)),
-        { themes: true }
+        // Every other experiment is stored as off
+        Object.fromEntries(Object.keys(harness.experiments.definitions).map(f => [f, f === 'themes']))
     );
     assert.equal(harness.events.at(-2).type, 'streamifyexperimentchange');
     assert.equal(harness.events.at(-1).type, 'streamifythemechange');

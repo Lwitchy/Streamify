@@ -18,6 +18,10 @@
         lyricsSimpleBlur: Object.freeze({
             name: 'Simple lyric blur on iPhone',
             stage: 'Experimental'
+        }),
+        nativeTabBar: Object.freeze({
+            name: 'Native tab bar on iPhone',
+            stage: 'Experimental'
         })
     });
 

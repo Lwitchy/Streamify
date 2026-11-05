@@ -776,3 +776,39 @@ html:not(.is-ios) .ios-only-setting {
         background-color: var(--bg-color, #0b0b0e);
     }
 }
+
+/* Native tab bar (Settings > Experimental > "Native tab bar on iPhone").
+   The bar is a real UITabBar drawn by the app over the web view
+   (js/native_tabbar.js, ios/App/App/NativeTabBar.swift); it reports its
+   height as --native-tabbar-h. Here the mini player becomes a floating
+   card just above it, and stays out of the way until a song is chosen. */
+@media (max-width: 768px) {
+    html.native-tabbar-on .music-player {
+        transition:
+            bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 0.25s ease,
+            transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    html.native-tabbar-on.native-tabbar-visible .music-player {
+        bottom: calc(var(--native-tabbar-h, 0px) + 8px);
+        left: 8px;
+        width: calc(100% - 16px);
+        padding-bottom: 10px !important;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 18px;
+        background: rgba(28, 28, 32, 0.62);
+        -webkit-backdrop-filter: blur(30px) saturate(1.8);
+        backdrop-filter: blur(30px) saturate(1.8);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.12),
+            0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+
+    /* Nothing loaded yet: no "Select a Song" card */
+    html.native-tabbar-on:not(.has-track) .music-player {
+        opacity: 0;
+        transform: translate3d(0, 24px, 0);
+        pointer-events: none;
+    }
+}
