@@ -1,6 +1,6 @@
 // Bump this whenever cached app-shell assets change. Old shell caches are
 // removed during activation so clients cannot retain stale CSS or JavaScript.
-const CACHE_NAME = 'streamify-app-shell-v121';
+const CACHE_NAME = 'streamify-app-shell-v122';
 const MEDIA_CACHE_PREFIX = 'streamify-media-cache-';
 const OFFLINE_STATE_CACHE_NAME = 'streamify-offline-state-v1';
 const ACTIVE_USER_STATE_URL = '/__streamify_offline_state__/active-user';
@@ -22,7 +22,7 @@ const APP_SHELL = [
   '/Static/home/css/profile.css?v=4.10',
   '/Static/home/css/toasts.css?v=4.8',
 '/Static/home/css/home_mobile.css?v=4.31',
-  '/Static/home/css/mobile_app.css?v=1.10',
+  '/Static/home/css/mobile_app.css?v=1.11',
   '/Static/home/css/customize.css?v=1.3',
   '/Static/vendor/boxicons/boxicons.min.css?v=4.8',
   '/Static/vendor/boxicons/fonts/boxicons.eot',
@@ -85,9 +85,9 @@ const APP_SHELL = [
   '/Static/home/js/artists.js?v=1.2',
   '/Static/home/js/homepage.js?v=1.0',
   '/Static/home/js/downloads.js?v=4.45',
-  '/Static/home/js/ui.js?v=4.56',
+  '/Static/home/js/ui.js?v=4.57',
   '/Static/home/js/mobile_app.js?v=1.2',
-  '/Static/home/js/native_tabbar.js?v=1.0'
+  '/Static/home/js/native_tabbar.js?v=1.1'
 ];
 
 let activeUserKey;

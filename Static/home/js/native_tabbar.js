@@ -107,6 +107,8 @@
         var tabs = currentTabs();
         var key = tabs.map(function (t) { return t.id; }).join(',');
         var selected = currentTabId();
+        // The top bar shows the search field only on the Search page.
+        root.classList.toggle('native-tab-search', active && selected === 'search');
 
         if (want) {
             // show() also refreshes the items when owner status changes.
@@ -136,14 +138,78 @@
         if (scroller && scroller.scrollTo) scroller.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    /* Search page without the keyboard: last results (or a hint) show, and
+       the field in the top bar is there to tap when you want to type. */
     function openSearch() {
-        var input = document.querySelector('.search-wrapper input, #search-input');
-        if (!input) return;
+        if (typeof window.openSearchView === 'function') window.openSearchView();
         scrollToTop();
-        // WKWebView only raises the keyboard for focus() inside a user tap;
-        // a native tab tap is not one, so the field may need a second tap.
-        input.focus({ preventScroll: true });
-        if (input.select) input.select();
+    }
+
+    /* --- Library shelf ----------------------------------------------------
+       The sidebar (and its hamburger) is gone in this mode, so Library gets
+       the sidebar's Liked Songs, playlists and "New playlist" as a row of
+       chips. Each chip clicks the matching sidebar control, so behaviour is
+       the sidebar's own. */
+    var shelf = null;
+
+    function chip(label, iconClass, onClick, extraClass) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'native-shelf-chip' + (extraClass ? ' ' + extraClass : '');
+        var icon = document.createElement('i');
+        icon.className = 'bx ' + iconClass;
+        icon.setAttribute('aria-hidden', 'true');
+        var text = document.createElement('span');
+        text.textContent = label;
+        button.appendChild(icon);
+        button.appendChild(text);
+        button.addEventListener('click', onClick);
+        return button;
+    }
+
+    function renderShelf() {
+        if (!shelf) return;
+        shelf.textContent = '';
+        var liked = byId('liked-songs-link');
+        if (liked) shelf.appendChild(chip('Liked Songs', 'bxs-heart', function () { liked.click(); }, 'is-liked'));
+        document.querySelectorAll('#sidebar-playlist-list .sidebar-playlist-link').forEach(function (link) {
+            var name = (link.textContent || '').trim();
+            if (!name) return;
+            shelf.appendChild(chip(name, 'bx-list-ul', function () { link.click(); }));
+        });
+        var create = byId('create-playlist-btn');
+        if (create) shelf.appendChild(chip('New playlist', 'bx-plus', function () { create.click(); }, 'is-create'));
+    }
+
+    function mountShelf() {
+        var library = byId('trending-section');
+        if (!library || shelf) return;
+        shelf = document.createElement('div');
+        shelf.className = 'native-library-shelf';
+        shelf.setAttribute('role', 'list');
+        shelf.setAttribute('aria-label', 'Playlists');
+        library.insertBefore(shelf, library.firstChild);
+        renderShelf();
+        var list = byId('sidebar-playlist-list');
+        if (list && typeof MutationObserver === 'function') {
+            var observer = new MutationObserver(renderShelf);
+            observer.observe(list, { childList: true, subtree: true, characterData: true });
+            observers.push(observer);
+        }
+    }
+
+    function unmountShelf() {
+        if (shelf && shelf.parentNode) shelf.parentNode.removeChild(shelf);
+        shelf = null;
+    }
+
+    /* Compact mini player: the whole title area opens the full player, like
+       tapping the cover does. */
+    function onMiniPlayerTap(event) {
+        if (!active || event.target.closest('button, input, a')) return;
+        if (!event.target.closest('.music-player .track-info')) return;
+        var cover = byId('player-img');
+        if (cover) cover.click();
     }
 
     function onTabSelected(event) {
@@ -185,6 +251,8 @@
         observe(ownerItem, classOnly);
         observe(byId('sidebar-playlist-list'), { attributes: true, attributeFilter: ['class'], subtree: true });
         document.querySelectorAll('.modal-overlay').forEach(function (overlay) { observe(overlay, classOnly); });
+        mountShelf();
+        document.addEventListener('click', onMiniPlayerTap);
 
         Promise.resolve(plugin.addListener('tabSelected', onTabSelected)).then(function (handle) { listeners.push(handle); });
         Promise.resolve(plugin.addListener('layout', applyMetrics)).then(function (handle) { listeners.push(handle); });
@@ -202,7 +270,9 @@
         listeners.forEach(function (h) { if (h && h.remove) h.remove(); });
         listeners = [];
         if (PHONE.removeEventListener) PHONE.removeEventListener('change', queueSync);
-        root.classList.remove('native-tabbar-on', 'native-tabbar-visible');
+        document.removeEventListener('click', onMiniPlayerTap);
+        unmountShelf();
+        root.classList.remove('native-tabbar-on', 'native-tabbar-visible', 'native-tab-search');
         root.style.removeProperty('--native-tabbar-h');
         plugin.remove().catch(function () {});
     }

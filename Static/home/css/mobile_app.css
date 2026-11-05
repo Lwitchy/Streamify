@@ -779,30 +779,196 @@ html:not(.is-ios) .ios-only-setting {
 
 /* Native tab bar (Settings > Experimental > "Native tab bar on iPhone").
    The bar is a real UITabBar drawn by the app over the web view
-   (js/native_tabbar.js, ios/App/App/NativeTabBar.swift); it reports its
-   height as --native-tabbar-h. Here the mini player becomes a floating
-   card just above it, and stays out of the way until a song is chosen. */
+   (js/native_tabbar.js, ios/App/App/NativeTabBar.swift); it reports the
+   space it covers as --native-tabbar-h. In this mode:
+     - the top bar is just the profile button (left), plus the search field
+       on the Search tab; no hamburger, the sidebar is not used;
+     - Library shows the sidebar's playlists as a row of chips;
+     - the mini player is a one-row glass card above the tab bar, hidden
+       until a song is chosen. */
 @media (max-width: 768px) {
-    html.native-tabbar-on .music-player {
-        transition:
-            bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-            opacity 0.25s ease,
-            transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    /* Top bar */
+    html.native-tabbar-on #menu-btn,
+    html.native-tabbar-on .top-bar-logo {
+        display: none !important;
     }
 
-    html.native-tabbar-on.native-tabbar-visible .music-player {
-        bottom: calc(var(--native-tabbar-h, 0px) + 8px);
+    html.native-tabbar-on:not(.native-tab-search) .top-bar .search-wrapper {
+        display: none;
+    }
+
+    html.native-tabbar-on .top-bar .user-wrapper {
+        order: -1;
+        margin-right: auto;
+    }
+
+    html.native-tabbar-on.native-tab-search .top-bar .user-wrapper {
+        margin-right: 0;
+    }
+
+    html.native-tabbar-on .user-menu {
+        left: 0 !important;
+        right: auto !important;
+    }
+
+    /* Library: playlists shelf */
+    .native-library-shelf {
+        display: flex;
+        gap: 8px;
+        margin: 0 -12px 18px;
+        padding: 2px 12px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .native-library-shelf::-webkit-scrollbar {
+        display: none;
+    }
+
+    .native-shelf-chip {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 200px;
+        padding: 8px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .native-shelf-chip span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .native-shelf-chip.is-liked i {
+        color: var(--accent, #1db954);
+    }
+
+    .native-shelf-chip.is-create {
+        background: transparent;
+        border-style: dashed;
+    }
+
+    .native-shelf-chip:active {
+        transform: scale(0.96);
+    }
+
+    /* Mini player: one row (cover, title, like, play) with a hairline of
+       progress along the bottom. Tapping the cover or title opens the
+       full player. */
+    html.native-tabbar-on .music-player {
         left: 8px;
         width: calc(100% - 16px);
-        padding-bottom: 10px !important;
+        bottom: calc(max(var(--native-tabbar-h, 0px), var(--safe-bottom)) + 8px);
+        height: 60px;
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 10px 8px 8px !important;
+        overflow: hidden;
         border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 18px;
+        border-radius: 16px;
         background: rgba(28, 28, 32, 0.62);
         -webkit-backdrop-filter: blur(30px) saturate(1.8);
         backdrop-filter: blur(30px) saturate(1.8);
         box-shadow:
             inset 0 1px 0 rgba(255, 255, 255, 0.12),
             0 10px 30px rgba(0, 0, 0, 0.45);
+        transition:
+            bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 0.25s ease,
+            transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    html.native-tabbar-on .music-player .player-left {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        gap: 10px;
+    }
+
+    html.native-tabbar-on .music-player .now-playing-img {
+        flex: 0 0 auto;
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
+    }
+
+    html.native-tabbar-on .music-player .track-info {
+        flex: 1 1 auto;
+        min-width: 0;
+        cursor: pointer;
+    }
+
+    html.native-tabbar-on .music-player .track-info .track-name,
+    html.native-tabbar-on .music-player .track-info .track-artist {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    html.native-tabbar-on .music-player .track-info .track-name {
+        font-size: 15px;
+    }
+
+    html.native-tabbar-on .music-player .track-info .track-artist {
+        font-size: 13px;
+    }
+
+    html.native-tabbar-on .music-player .player-center {
+        flex: 0 0 auto;
+        width: auto;
+    }
+
+    html.native-tabbar-on .music-player .player-controls {
+        margin: 0;
+        gap: 0;
+    }
+
+    html.native-tabbar-on .music-player #btn-shuffle,
+    html.native-tabbar-on .music-player #btn-prev,
+    html.native-tabbar-on .music-player #btn-next,
+    html.native-tabbar-on .music-player #btn-repeat,
+    html.native-tabbar-on .music-player #current-time,
+    html.native-tabbar-on .music-player #duration {
+        display: none !important;
+    }
+
+    html.native-tabbar-on .music-player .play-pause-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 22px;
+        background: transparent;
+        color: #fff;
+    }
+
+    /* Progress: a 2px line inside the card's bottom edge, display only */
+    html.native-tabbar-on .music-player .progress-container {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 3px;
+        width: auto;
+        height: 2px;
+        margin: 0;
+        pointer-events: none;
+    }
+
+    html.native-tabbar-on .music-player .progress-bar-wrapper {
+        height: 2px;
+        border-radius: 2px;
+    }
+
+    html.native-tabbar-on .music-player .progress-bar-wrapper::before {
+        display: none;
     }
 
     /* Nothing loaded yet: no "Select a Song" card */
@@ -811,4 +977,22 @@ html:not(.is-ios) .ios-only-setting {
         transform: translate3d(0, 24px, 0);
         pointer-events: none;
     }
+}
+
+/* Search page before anything was searched (js/ui.js openSearchView) */
+.search-idle-hint {
+    display: none;
+}
+
+.search-section.search-idle .search-idle-hint {
+    display: block;
+    margin-top: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 15px;
+}
+
+.search-section.search-idle .section-title ~ h3,
+.search-section.search-idle #search-songs-list,
+.search-section.search-idle #search-albums-block {
+    display: none !important;
 }

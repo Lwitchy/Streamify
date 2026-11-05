@@ -2219,20 +2219,43 @@ themeInputs.forEach(input => {
     const searchInput = document.getElementById('gsearch');
     let searchTimeout = null;
 
+    // With the native tab bar (js/native_tabbar.js) Search is a page of its
+    // own, so clearing the field stays there instead of jumping to Library.
+    const searchIsTab = () => document.documentElement.classList.contains('native-tabbar-on');
+
+    function runSearch(query) {
+        window.currentActiveView = 'search';
+        hideAllSections();
+        if (searchSection) searchSection.classList.remove('search-idle');
+        showSection(searchSection);
+        performSearch(query);
+    }
+
+    /* Opens the Search page without focusing the field (no keyboard): the
+       last results stay on screen, or a short hint when nothing was searched. */
+    window.openSearchView = function openSearchView() {
+        if (!searchSection) return;
+        const query = searchInput ? searchInput.value.trim() : '';
+        window.currentActiveView = 'search';
+        hideAllSections();
+        searchSection.classList.toggle('search-idle', !query);
+        showSection(searchSection);
+    };
+
+    function leaveEmptySearch() {
+        if (searchIsTab()) window.openSearchView();
+        else if (libraryLink) libraryLink.click();
+    }
+
     if (searchInput) {
         searchInput.addEventListener('input', e => {
             const query = e.target.value.trim();
             if (searchTimeout) clearTimeout(searchTimeout);
             if (typeof window.cancelSearchRequest === 'function') window.cancelSearchRequest(true);
             if (query.length > 0) {
-                searchTimeout = setTimeout(() => {
-                    window.currentActiveView = 'search';
-                    hideAllSections();
-                    showSection(searchSection);
-                    performSearch(query);
-                }, 500);
+                searchTimeout = setTimeout(() => runSearch(query), 500);
             } else {
-                if (libraryLink) libraryLink.click();
+                leaveEmptySearch();
             }
         });
 
@@ -2241,13 +2264,10 @@ themeInputs.forEach(input => {
                 if (searchTimeout) clearTimeout(searchTimeout);
                 const query = searchInput.value.trim();
                 if (!query) {
-                    if (libraryLink) libraryLink.click();
+                    leaveEmptySearch();
                     return;
                 }
-                window.currentActiveView = 'search';
-                hideAllSections();
-                showSection(searchSection);
-                performSearch(query);
+                runSearch(query);
             }
         });
     }
